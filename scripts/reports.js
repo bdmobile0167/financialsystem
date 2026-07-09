@@ -73,10 +73,6 @@ export function getEquityAnalysis(transactions) {
   return buildEquityAnalysis(transactions);
 }
 
-export function getEquityAnalysis(transactions) {
-  return buildEquityAnalysis(transactions);
-}
-
 export function getTrialBalance(transactions) {
   return runAccountingPipeline(transactions).trialBalance;
 }
