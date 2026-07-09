@@ -1,5 +1,5 @@
 ﻿import { USER_KEY } from './state.js';
-import { ADMIN_EMAIL } from './config.js';
+import { ADMIN_USERNAME } from './config.js';
 import { requestApproval, isEmailApproved } from './approval.js';
 
 function normalizeEmail(value) {
@@ -22,7 +22,7 @@ export function formatUser(user) {
 }
 
 export function isAdminUser(email) {
-  return normalizeEmail(email) === normalizeEmail(ADMIN_EMAIL);
+  return normalizeEmail(email) === normalizeEmail(ADMIN_USERNAME);
 }
 
 export function saveCurrentUser(user) {

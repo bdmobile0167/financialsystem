@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
 
   try {
     const { username = '', password = '' } = req.body || {};
-    const adminUsername = (process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const adminUsername = (process.env.ADMIN_USERNAME || process.env.ADMIN_USERNAME || '').trim().toLowerCase();
     const storedHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
     const storedSalt = (process.env.ADMIN_PASSWORD_SALT || '').trim();
 
