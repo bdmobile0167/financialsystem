@@ -1,3 +1,3 @@
-export const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
-export const STORAGE_KEY = process.env.STORAGE_KEY;
-export const USER_KEY = process.env.USER_KEY;
+export const ADMIN_USERNAME = 'bdmobile0167@gmail.com';
+export const STORAGE_KEY = 'finance_netlify_app_v1';
+export const USER_KEY = 'finance_netlify_user';

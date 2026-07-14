@@ -1,4 +1,3 @@
-import './ui.js';
 async function bootstrap() {
   try {
     await import('./ui.js');
