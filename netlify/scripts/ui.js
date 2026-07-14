@@ -1,0 +1,485 @@
+﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
+import { isAdminUser, handleLoginApproval, setPasswordForUser, loginWithEmailPassword, saveCurrentUser, loadCurrentUser } from './auth.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
+import { requestApproval, approveEmail, isEmailApproved, loadApprovalRequests } from './approval.js';
+import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
+import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
+
+const state = { ...defaultState };
+
+function setText(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function showMessage(text, isError = false) {
+  const el = document.getElementById('loginMessage');
+  if (!el) return;
+  el.className = `message ${isError ? 'error' : 'success'}`;
+  el.textContent = text;
+}
+
+function render() {
+  const passwordEmail = document.getElementById('passwordUserEmail');
+  if (state.currentUser) {
+    setText('#welcomeText', `歡迎，${state.currentUser.name}`);
+    if (passwordEmail) passwordEmail.value = state.currentUser.username || '';
+  } else {
+    setText('#welcomeText', '歡迎，使用者');
+  }
+  document.getElementById('systemName').value = state.systemName;
+  document.title = `${state.systemName} | Netlify Demo`;
+
+  renderDashboard();
+  renderTransactionTable();
+  renderReports();
+  renderApprovalTable();
+  renderCompanyData();
+  renderBusinessData();
+  updateSettings();
+  renderTabs();
+}
+
+function renderCompanyData() {
+  const container = document.getElementById('companyInfoContent');
+  if (!container) return;
+  const info = state.companyInfo || {};
+  const entries = [
+    ['公司名稱（中文）', info.companyNameZh],
+    ['公司名稱（英文）', info.companyNameEn],
+    ['公司地址', info.address],
+    ['公司電話', info.phone],
+    ['統一編號', info.taxId],
+    ['預查編號', info.precheckNumber],
+    ['預定開業日期', info.plannedOpenDate],
+    ['資本總額', info.totalCapital?.toLocaleString()],
+    ['董事人數', info.boardCount],
+    ['代表人', info.representativeName],
+    ['章程訂定日期', info.articlesDate],
+    ['資本-現金', info.capitalCash?.toLocaleString()],
+    ['資本-財產', info.capitalProperty?.toLocaleString()],
+    ['資本-技術', info.capitalTechnology?.toLocaleString()],
+    ['資本-合併新設', info.capitalMergeNew?.toLocaleString()],
+    ['合併公司名稱', info.mergedCompanyName],
+    ['合併公司統編', info.mergedCompanyTaxId],
+    ['合併基準日', info.mergedCompanyBaseDate]
+  ];
+  container.innerHTML = entries
+    .map(([label, value]) => `<div class="info-row"><strong>${label}</strong><span>${value ?? '-'}</span></div>`)
+    .join('');
+}
+
+function renderBusinessData() {
+  const container = document.getElementById('businessInfoContent');
+  if (!container) return;
+  const businessRows = (state.businessItems || []).map(item => `<li>${item.code} - ${item.item}</li>`).join('');
+  const directorRows = (state.directorShareholders || []).map(person => `<li>姓名：${person.name} / 職務：${person.role} / 身分證：${person.idNumber} / 出資：${Number(person.amount).toLocaleString()} / 地址：${person.address}</li>`).join('');
+  container.innerHTML = `
+    <div class="info-block">
+      <h4>營業項目</h4>
+      <ul>${businessRows}</ul>
+    </div>
+    <div class="info-block">
+      <h4>董監名單</h4>
+      <ul>${directorRows}</ul>
+    </div>
+  `;
+}
+
+function renderDashboard() {
+  const { revenue, expense, netProfit } = summarizeTransactions(state.transactions);
+  setText('#countValue', state.transactions.length);
+  setText('#incomeValue', revenue.toLocaleString());
+  setText('#expenseValue', expense.toLocaleString());
+  setText('#profitValue', netProfit.toLocaleString());
+
+  const body = document.getElementById('dashboardTableBody');
+  body.innerHTML = '';
+  const recent = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+  if (!recent.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無交易資料。</td></tr>';
+    return;
+  }
+  recent.forEach(tx => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${tx.date}</td><td>${tx.bank}</td><td>${tx.detail}</td><td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>`;
+    body.appendChild(row);
+  });
+}
+
+function renderTransactionTable() {
+  const body = document.getElementById('transactionTableBody');
+  body.innerHTML = '';
+  if (!state.transactions.length) {
+    body.innerHTML = '<tr><td colspan="8" class="muted">目前尚無交易資料。</td></tr>';
+    return;
+  }
+  state.transactions.forEach((tx, index) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${tx.date}</td><td>${tx.bank}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}${tx.attachmentId ? ` <button class="secondary view-attachment-btn" data-attachment="${tx.attachmentId}">📎</button>` : ''}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
+    body.appendChild(row);
+  });
+}
+
+function renderReports() {
+  renderTable('incomeTable', buildIncomeStatement(state.transactions));
+  renderTable('balanceTable', buildBalanceSheet(state.transactions));
+  renderTable('cashflowTable', buildCashflowStatement(state.transactions));
+  renderTable('equityTable', buildEquityStatement(state.transactions));
+  
+  const analysis = getEquityAnalysis(state.transactions);
+  const note = document.getElementById('fundraisingNote');
+  if (note) {
+    note.textContent = `現金水位：${analysis.cashBalance.toLocaleString()}｜可撐月數：${analysis.cashRunwayMonths ? analysis.cashRunwayMonths.toFixed(1) + ' 個月' : '尚無支出紀錄'}｜建議：${analysis.fundraisingSuggestion}`;
+  }
+
+  const journalBody = document.getElementById('journalTableBody');
+  journalBody.innerHTML = '';
+  const journal = buildJournal(state.transactions);
+  if (!journal.length) {
+    journalBody.innerHTML = '<tr><td colspan="9" class="muted">目前尚無會計分錄。</td></tr>';
+    return;
+  }
+  journal.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.date}</td><td>${row.summary}</td><td>${row.bank}</td><td>${row.debitAccount}</td><td>${Number(row.debitAmount).toLocaleString()}</td><td>${row.creditAccount}</td><td>${Number(row.creditAmount).toLocaleString()}</td><td>${row.voucher || '-'}</td><td>${row.status}</td>`;
+    journalBody.appendChild(tr);
+  });
+}
+
+function renderVoucherSummary() {
+  const container = document.getElementById('voucherSummaryContent');
+  if (!container) return;
+  const summary = getCurrentMonthVoucherSummary(state.transactions);
+
+  const counterpartyRows = Object.entries(summary.byCounterparty)
+    .map(([name, v]) => `<tr><td>${name}</td><td>${v.received.toLocaleString()}</td><td>${v.paid.toLocaleString()}</td></tr>`)
+    .join('') || '<tr><td colspan="3" class="muted">本月尚無交易</td></tr>';
+
+  const bankRows = Object.entries(summary.byBank)
+    .map(([name, v]) => `<tr><td>${name}</td><td>${v.received.toLocaleString()}</td><td>${v.paid.toLocaleString()}</td></tr>`)
+    .join('') || '<tr><td colspan="3" class="muted">本月尚無交易</td></tr>';
+
+  container.innerHTML = `
+    <div class="summary" style="margin-bottom: 16px;">
+      <div class="summary-item"><span class="muted">本月憑證總數</span><strong>${summary.totalCount}</strong></div>
+      <div class="summary-item"><span class="muted">已對應</span><strong>${summary.matchedCount}</strong></div>
+      <div class="summary-item"><span class="muted">待補憑證</span><strong>${summary.unmatchedCount}</strong></div>
+    </div>
+    <div class="grid grid-2">
+      <div>
+        <h4>依對象（收誰的錢 / 付給誰）</h4>
+        <table><thead><tr><th>對象</th><th>收入</th><th>支出</th></tr></thead><tbody>${counterpartyRows}</tbody></table>
+      </div>
+      <div>
+        <h4>依銀行帳戶（哪個帳戶收 / 付）</h4>
+        <table><thead><tr><th>銀行</th><th>收入</th><th>支出</th></tr></thead><tbody>${bankRows}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function renderTable(id, rows) {
+  const table = document.getElementById(id);
+  table.innerHTML = '<thead><tr><th>項目</th><th>金額</th></tr></thead><tbody></tbody>';
+  const body = table.querySelector('tbody');
+  rows.forEach(([label, amount]) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${label}</td><td>${Number(amount).toLocaleString()}</td>`;
+    body.appendChild(row);
+  });
+}
+
+function renderApprovalTable() {
+  const body = document.getElementById('approvalTableBody');
+  body.innerHTML = '';
+  if (!state.currentUser || !isAdminUser(state.currentUser.username)) {
+    body.innerHTML = '<tr><td colspan="4" class="muted">僅限管理者檢視核准申請。</td></tr>';
+    return;
+  }
+  const approvals = loadApprovalRequests();
+  if (!approvals.length) {
+    body.innerHTML = '<tr><td colspan="4" class="muted">目前尚無使用者申請。</td></tr>';
+    return;
+  }
+  approvals.forEach(item => {
+    const tr = document.createElement('tr');
+    const action = item.status === 'pending' ? `<button class="secondary approve-btn" data-email="${item.email}">核准</button>` : '已核准';
+    tr.innerHTML = `<td>${item.email}</td><td>${new Date(item.timestamp).toLocaleString()}</td><td>${item.status}</td><td>${action}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function updateSettings() {
+  const passwordCard = document.getElementById('passwordCard');
+  if (passwordCard) {
+    passwordCard.style.display = state.currentUser && isAdminUser(state.currentUser.username) ? 'block' : 'none';
+  }
+}
+
+async function updateGoogleButtonState() {
+  const button = document.getElementById('googleBtn');
+  if (!button) return;
+  const enabled = await checkIdentityEndpoint();
+  button.disabled = !enabled;
+  button.textContent = enabled ? '使用 Google 登入' : 'Google 登入（需 netlify dev / 部署）';
+  button.title = enabled ? '使用 Netlify Identity 登入' : '請使用 netlify dev 或部署到 Netlify 後再試 Google 登入。';
+  if (!enabled) {
+    showMessage('Google 登入目前僅支援 Netlify Identity，請使用 netlify dev 或部署至 Netlify。', true);
+  }
+}
+
+function renderTabs() {
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.style.display = 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === state.activeTab));
+  const currentPanel = document.getElementById(state.activeTab);
+  if (currentPanel) currentPanel.style.display = 'block';
+}
+
+function showApp() {
+  if (!state.currentUser) {
+    document.getElementById('loginView').style.display = 'grid';
+    document.getElementById('appView').classList.remove('active');
+    return;
+  }
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').classList.add('active');
+  render();
+  state.activeTab = 'dashboard';
+  renderTabs();
+}
+
+function showForcePasswordView() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').classList.remove('active');
+  document.getElementById('forcePasswordView').style.display = 'grid';
+}
+
+function initializeEvents() {
+  const menuToggleBtn = document.getElementById('menuToggleBtn');
+  const sidebarEl = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  function closeSidebar() {
+    sidebarEl?.classList.remove('open');
+    sidebarOverlay?.classList.remove('open');
+    menuToggleBtn?.classList.remove('open');
+    menuToggleBtn?.setAttribute('aria-expanded', 'false');
+  }
+
+  function openSidebar() {
+    sidebarEl?.classList.add('open');
+    sidebarOverlay?.classList.add('open');
+    menuToggleBtn?.classList.add('open');
+    menuToggleBtn?.setAttribute('aria-expanded', 'true');
+  }
+
+  menuToggleBtn?.addEventListener('click', () => {
+    sidebarEl?.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+
+  sidebarOverlay?.addEventListener('click', closeSidebar);
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.activeTab = btn.dataset.tab;
+      renderTabs();
+      closeSidebar();
+    });
+  });
+
+  document.getElementById('forcePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById('forceNewPassword').value;
+    const confirmPassword = document.getElementById('forceConfirmPassword').value;
+    const messageEl = document.getElementById('forcePasswordMessage');
+
+    if (newPassword !== confirmPassword) {
+      messageEl.className = 'message error';
+      messageEl.textContent = '兩次輸入的密碼不一致。';
+      return;
+    }
+    const result = await changeMyPassword(newPassword);
+    if (!result.ok) {
+      messageEl.className = 'message error';
+      messageEl.textContent = result.message;
+      return;
+    }
+    state.currentUser.mustChangePassword = false;
+    document.getElementById('forcePasswordView').style.display = 'none';
+    showApp();
+  });
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('username').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+    const result = await signInWithSupabase(email, password);
+    if (!result.ok) {
+      showMessage(result.message, true);
+      return;
+    }
+    state.currentUser = result.user;
+    if (result.user.mustChangePassword) {
+      showForcePasswordView();
+      return;
+    }
+    showApp();
+  });
+
+
+  document.getElementById('transactionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    let attachmentId = '';
+    const file = document.getElementById('txAttachment').files[0];
+    if (file) {
+      try {
+        attachmentId = await saveAttachment(file);
+      } catch (error) {
+        showMessage(error.message, true);
+        return;
+      }
+    }
+    const item = {
+      date: document.getElementById('txDate').value,
+      bank: document.getElementById('txBank').value.trim(),
+      customer: document.getElementById('txCustomer').value.trim(),
+      detail: document.getElementById('txDetail').value.trim(),
+      type: document.getElementById('txType').value,
+      category: document.getElementById('txCategory').value,
+      amount: Number(document.getElementById('txAmount').value),
+      voucher: document.getElementById('txVoucher').value.trim(),
+      remark: document.getElementById('txRemark').value.trim(),
+      source: 'input'
+    };
+    state.transactions.unshift(item);
+    saveState(state);
+    render();
+    e.target.reset();
+    showMessage('交易已新增並已儲存。');
+  });
+
+  document.getElementById('transactionTableBody').addEventListener('click', (event) => {
+    const viewButton = event.target.closest('.view-attachment-btn');
+    if (viewButton) {
+      openAttachment(viewButton.dataset.attachment);
+      return;
+    }
+    const button = event.target.closest('.delete-btn');
+    if (!button) return;
+    const idx = Number(button.dataset.index);
+    if (Number.isInteger(idx)) {
+      state.transactions.splice(idx, 1);
+      saveState(state);
+      render();
+      showMessage('交易已刪除。', false);
+    }
+  });
+
+  document.getElementById('loadSampleBtn').addEventListener('click', () => {
+    state.transactions = SAMPLE_DATA;
+    saveState(state);
+    render();
+    showMessage('已載入 notebook 範例資料。');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    state.transactions = [];
+    saveState(state);
+    render();
+    showMessage('已清空本機交易資料。', true);
+  });
+
+  document.getElementById('exportReportBtn').addEventListener('click', () => {
+    state.activeTab = 'reports';
+    renderTabs();
+    setTimeout(() => window.print(), 100);
+  });
+
+  document.getElementById('printReportBtn').addEventListener('click', () => {
+    state.activeTab = 'reports';
+    renderTabs();
+    setTimeout(() => window.print(), 100);
+  });
+
+  document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+    state.systemName = document.getElementById('systemName').value.trim() || '財務管理系統';
+    saveState(state);
+    render();
+    showMessage('系統設定已儲存。');
+  });
+
+  document.getElementById('setPasswordBtn').addEventListener('click', async () => {
+    const password = document.getElementById('newPassword').value;
+    const confirm = document.getElementById('confirmPassword').value;
+    if (!password || password !== confirm) {
+      showMessage('請輸入一致的新密碼。', true);
+      return;
+    }
+    await setPasswordForUser(state.currentUser.username, password);
+    showMessage('管理者密碼已儲存。');
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+  });
+
+  document.getElementById('approvalTableBody').addEventListener('click', (event) => {
+    const button = event.target.closest('.approve-btn');
+    if (!button) return;
+    const email = button.dataset.email;
+    approveEmail(email);
+    renderApprovalTable();
+    showMessage(`${email} 已核准。`);
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const data = JSON.stringify({
+      transactions: state.transactions,
+      companyInfo: state.companyInfo,
+      businessItems: state.businessItems,
+      directorShareholders: state.directorShareholders,
+      structureSettings: state.structureSettings,
+      optionList: state.optionList,
+      standardizedSettings: state.standardizedSettings
+    }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'finance_data_export.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage('已匯出交易與公司資料 JSON。');
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await signOutSupabase();
+    localStorage.removeItem('finance_netlify_user');
+    state.currentUser = null;
+    document.getElementById('loginView').style.display = 'grid';
+    document.getElementById('appView').classList.remove('active');
+});
+}   // ← 新增這一行，補上 initializeEvents() 函式的結尾
+
+async function initialize() {
+
+async function initialize() {
+  loadState(state);
+  initializeEvents();
+
+  const user = await getCurrentSessionUser();
+  if (user) {
+    state.currentUser = user;
+    if (user.mustChangePassword) {
+      showForcePasswordView();
+    } else {
+      showApp();
+    }
+  }
+}
+
+window.addEventListener('DOMContentLoaded', initialize);

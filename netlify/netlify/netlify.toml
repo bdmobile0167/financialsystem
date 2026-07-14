@@ -1,0 +1,19 @@
+[build]
+  publish = "."
+  command = ""
+
+[functions]
+  directory = "functions"
+
+# 保留 Netlify API
+[[redirects]]
+from = "/.netlify/*"
+to = "/.netlify/:splat"
+status = 200
+force = false
+
+# SPA
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
