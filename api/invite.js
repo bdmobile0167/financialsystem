@@ -1,7 +1,17 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-const DEFAULT_PASSWORD = 'Bd@1234';
+if(
+  !process.env.SUPABASE_URL ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY
+){
+
+    return res.status(500).json({
+        ok:false,
+        message:"Supabase 環境變數未設定"
+    });
+
+}
+const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD;
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -10,7 +20,10 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    const authHeader = req.headers.authorization || '';
+    const token =
+      authHeader.replace(/^Bearer\s+/i, '');
+
     if (!token) {
       res.status(401).json({ ok: false, message: '未登入。' });
       return;
@@ -42,7 +55,8 @@ module.exports = async (req, res) => {
     const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: DEFAULT_PASSWORD,
-      email_confirm: true
+      email_confirm: true,
+      user_metadata: { full_name: fullName }
     });
 
     if (createError) {

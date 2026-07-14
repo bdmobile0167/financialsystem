@@ -19,12 +19,12 @@ module.exports = async (req, res) => {
 
   try {
     const { username = '', password = '' } = req.body || {};
-    const adminUsername = (process.env.ADMIN_USERNAME || process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+    const adminUsername = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
     const storedHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
     const storedSalt = (process.env.ADMIN_PASSWORD_SALT || '').trim();
 
     const normalizedUsername = username.trim().toLowerCase();
-    const normalizedPassword = password.trim();
+    const normalizedPassword = String(password);
 
     if (!adminUsername || !storedHash || !storedSalt) {
       res.status(500).json({ ok: false, message: '後端尚未正確設定管理者帳號或密碼雜湊值，請檢查 Vercel 環境變數。' });
@@ -39,8 +39,19 @@ module.exports = async (req, res) => {
       return;
     }
 
-    res.status(401).json({ ok: false, message: '帳號或密碼錯誤。請確認你在 Vercel 中已設定正確的管理者帳號與加密密碼。' });
-  } catch (error) {
-    res.status(500).json({ ok: false, message: '驗證時發生錯誤。' });
+    console.log({
+      loginUser: normalizedUsername,
+      envUser: adminUsername
+    });
+
+  }catch(error){
+
+    console.error(error);
+
+    res.status(500).json({
+        ok:false,
+        message:error.message
+    });
+
   }
 };

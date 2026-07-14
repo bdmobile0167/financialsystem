@@ -1,8 +1,7 @@
 ﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
-import { isAdminUser, handleLoginApproval, setPasswordForUser, loginWithEmailPassword, saveCurrentUser, loadCurrentUser } from './auth.js';
+import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
-import { requestApproval, approveEmail, isEmailApproved, loadApprovalRequests } from './approval.js';
 import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 
@@ -414,19 +413,6 @@ function initializeEvents() {
     showMessage('系統設定已儲存。');
   });
 
-  document.getElementById('setPasswordBtn').addEventListener('click', async () => {
-    const password = document.getElementById('newPassword').value;
-    const confirm = document.getElementById('confirmPassword').value;
-    if (!password || password !== confirm) {
-      showMessage('請輸入一致的新密碼。', true);
-      return;
-    }
-    await setPasswordForUser(state.currentUser.username, password);
-    showMessage('管理者密碼已儲存。');
-    document.getElementById('newPassword').value = '';
-    document.getElementById('confirmPassword').value = '';
-  });
-
   document.getElementById('approvalTableBody').addEventListener('click', (event) => {
     const button = event.target.closest('.approve-btn');
     if (!button) return;
@@ -466,20 +452,18 @@ function initializeEvents() {
 }   // ← 新增這一行，補上 initializeEvents() 函式的結尾
 
 async function initialize() {
+    loadState(state);
+    initializeEvents();
 
-async function initialize() {
-  loadState(state);
-  initializeEvents();
-
-  const user = await getCurrentSessionUser();
-  if (user) {
-    state.currentUser = user;
-    if (user.mustChangePassword) {
-      showForcePasswordView();
-    } else {
-      showApp();
+    const user = await getCurrentSessionUser();
+    if(user){
+        state.currentUser=user;
+        if(user.mustChangePassword){
+            showForcePasswordView();
+        }else{
+            showApp();
+        }
     }
-  }
 }
 
-window.addEventListener('DOMContentLoaded', initialize);
+window.addEventListener('DOMContentLoaded',initialize);
