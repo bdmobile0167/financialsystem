@@ -163,3 +163,52 @@ export async function loginWithEmailPassword(email, password) {
   }
   return { ok: true, user: { username: normalized, name: normalized, role: isAdminUser(normalized) ? 'admin' : 'member' } };
 }
+import { supabase } from './supabaseClient.js';
+
+export async function getCurrentSessionUser() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return null;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', sessionData.session.user.id)
+    .single();
+
+  if (!profile) return null;
+
+  return {
+    id: sessionData.session.user.id,
+    username: profile.email,
+    name: profile.full_name,
+    role: profile.role,
+    department: profile.department,
+    mustChangePassword: profile.must_change_password
+  };
+}
+
+export async function signInWithSupabase(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    const message = error.message === 'Invalid login credentials' ? '帳號或密碼錯誤。' : error.message;
+    return { ok: false, message };
+  }
+  const user = await getCurrentSessionUser();
+  if (!user) {
+    return { ok: false, message: '登入成功但找不到使用者資料，請聯絡管理員。' };
+  }
+  return { ok: true, user };
+}
+
+export async function changeMyPassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) return { ok: false, message: error.message };
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  await supabase.from('profiles').update({ must_change_password: false }).eq('id', sessionData.session.user.id);
+  return { ok: true };
+}
+
+export async function signOutSupabase() {
+  await supabase.auth.signOut();
+}

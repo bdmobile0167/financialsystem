@@ -4,6 +4,7 @@ import { isAdminUser, handleLoginApproval, setPasswordForUser, loginWithEmailPas
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
 import { requestApproval, approveEmail, isEmailApproved, loadApprovalRequests } from './approval.js';
 import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
+import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 
 const state = { ...defaultState };
 
@@ -252,6 +253,12 @@ function showApp() {
   renderTabs();
 }
 
+function showForcePasswordView() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').classList.remove('active');
+  document.getElementById('forcePasswordView').style.display = 'grid';
+}
+
 function initializeEvents() {
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
@@ -285,24 +292,42 @@ function initializeEvents() {
     });
   });
 
+  document.getElementById('forcePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById('forceNewPassword').value;
+    const confirmPassword = document.getElementById('forceConfirmPassword').value;
+    const messageEl = document.getElementById('forcePasswordMessage');
+
+    if (newPassword !== confirmPassword) {
+      messageEl.className = 'message error';
+      messageEl.textContent = '兩次輸入的密碼不一致。';
+      return;
+    }
+    const result = await changeMyPassword(newPassword);
+    if (!result.ok) {
+      messageEl.className = 'message error';
+      messageEl.textContent = result.message;
+      return;
+    }
+    state.currentUser.mustChangePassword = false;
+    document.getElementById('forcePasswordView').style.display = 'none';
+    showApp();
+  });
+
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('username').value.trim().toLowerCase();
     const password = document.getElementById('password').value;
-
-    if (!email || !password) {
-      showMessage('請輸入完整的電子郵件與密碼。', true);
-      return;
-    }
-
-    const result = await loginWithEmailPassword(email, password);
+    const result = await signInWithSupabase(email, password);
     if (!result.ok) {
       showMessage(result.message, true);
       return;
     }
-
     state.currentUser = result.user;
-    saveCurrentUser(result.user);
+    if (result.user.mustChangePassword) {
+      showForcePasswordView();
+      return;
+    }
     showApp();
   });
 
@@ -431,22 +456,29 @@ function initializeEvents() {
     showMessage('已匯出交易與公司資料 JSON。');
   });
 
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    localStorage.removeItem(USER_KEY);
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await signOutSupabase();
+    localStorage.removeItem('finance_netlify_user');
     state.currentUser = null;
     document.getElementById('loginView').style.display = 'grid';
     document.getElementById('appView').classList.remove('active');
-  });
-}
+});
+}   // ← 新增這一行，補上 initializeEvents() 函式的結尾
 
-function initialize() {
+async function initialize() {
+
+async function initialize() {
   loadState(state);
   initializeEvents();
 
-  const stored = loadCurrentUser();
-  if (stored) {
-    state.currentUser = stored;
-    showApp();
+  const user = await getCurrentSessionUser();
+  if (user) {
+    state.currentUser = user;
+    if (user.mustChangePassword) {
+      showForcePasswordView();
+    } else {
+      showApp();
+    }
   }
 }
 
