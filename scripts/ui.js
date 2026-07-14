@@ -35,7 +35,6 @@ function render() {
   renderDashboard();
   renderTransactionTable();
   renderReports();
-  renderApprovalTable();
   renderCompanyData();
   renderBusinessData();
   updateSettings();
