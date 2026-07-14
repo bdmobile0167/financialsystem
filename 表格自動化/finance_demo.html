@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>財務記帳 Demo 系統</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --primary: #2563eb;
+      --accent: #0f766e;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --danger: #dc2626;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft JhengHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color: white;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.18);
+      margin-bottom: 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    }
+    h2, h3 { margin-top: 0; }
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 14px;
+      margin-bottom: 12px;
+      font-family: inherit;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--primary);
+      color: white;
+      border: none;
+    }
+    button.secondary { background: var(--accent); }
+    button.danger { background: var(--danger); }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .summary-item {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .summary-item strong { display: block; font-size: 20px; margin-top: 6px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #e0f2fe;
+      color: #075985;
+    }
+    .badge.wait { background: #fef3c7; color: #92400e; }
+    .muted { color: var(--muted); }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>財務記帳 Demo 系統</h1>
+      <p>可手動輸入交易、查看摘要，並把資料保存在這個瀏覽器的本機記憶體中。</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>新增交易</h2>
+        <form id="transactionForm">
+          <label>日期</label>
+          <input type="date" id="date" required />
+
+          <label>銀行</label>
+          <input type="text" id="bank" placeholder="例如：玉山187" required />
+
+          <label>客戶 / 供應商</label>
+          <input type="text" id="customer" placeholder="例如：臺銀" />
+
+          <label>明細</label>
+          <input type="text" id="detail" placeholder="例如：電信費" required />
+
+          <label>類型</label>
+          <select id="type">
+            <option value="支出">支出</option>
+            <option value="收入">收入</option>
+          </select>
+
+          <label>金額</label>
+          <input type="number" id="amount" min="0" step="1" required />
+
+          <label>憑證編號</label>
+          <input type="text" id="voucher" placeholder="可留空" />
+
+          <label>備註</label>
+          <textarea id="remark" rows="3" placeholder="可留空"></textarea>
+
+          <button type="submit">新增交易</button>
+        </form>
+        <button class="secondary" id="loadSampleBtn">載入範例資料</button>
+        <button class="danger" id="clearBtn">清空本機資料</button>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>摘要</h3>
+          <div class="summary">
+            <div class="summary-item">
+              <span class="muted">交易筆數</span>
+              <strong id="countValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">總收入</span>
+              <strong id="incomeValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">總支出</span>
+              <strong id="expenseValue">0</strong>
+            </div>
+          </div>
+          <div class="summary">
+            <div class="summary-item">
+              <span class="muted">本期淨利</span>
+              <strong id="profitValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">待補憑證</span>
+              <strong id="pendingValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">銀行帳戶</span>
+              <strong id="bankValue">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <h3>交易清單</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>銀行</th>
+                <th>明細</th>
+                <th>類型</th>
+                <th>金額</th>
+                <th>憑證</th>
+              </tr>
+            </thead>
+            <tbody id="transactionTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'finance_demo_transactions';
+
+    const sampleData = [
+      { date: '2025-03-14', bank: '玉山187', customer: '交大', detail: '企網非約轉帳', type: '支出', amount: 5642, voucher: '', remark: '玉山範例' },
+      { date: '2025-03-17', bank: '玉山187', customer: '臺銀', detail: '中華電信費用', type: '支出', amount: 5500, voucher: '', remark: '玉山範例' },
+      { date: '2025-03-21', bank: '玉山187', customer: 'ZW27817601', detail: '企網本行轉帳', type: '支出', amount: 1780000, voucher: '', remark: '玉山範例' },
+      { date: '2025-03-28', bank: '玉山187', customer: '兆豐銀', detail: 'ATM跨行轉', type: '收入', amount: 10644, voucher: '', remark: '玉山範例' },
+      { date: '2025-03-31', bank: '玉山187', customer: '國世銀', detail: 'ATM跨行轉', type: '收入', amount: 2000000, voucher: '', remark: '玉山範例' },
+      { date: '2025-03-04', bank: '台新796', customer: '', detail: '代繳勞保(11401)', type: '支出', amount: 27559, voucher: '', remark: '台新範例' },
+      { date: '2025-03-04', bank: '台新796', customer: '', detail: '代繳勞退(11312)', type: '支出', amount: 9543, voucher: '', remark: '台新範例' },
+    ];
+
+    let transactions = [];
+
+    function loadTransactions() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        transactions = JSON.parse(stored);
+      } else {
+        transactions = sampleData;
+        saveTransactions();
+      }
+      render();
+    }
+
+    function saveTransactions() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+    }
+
+    function render() {
+      const body = document.getElementById('transactionTableBody');
+      body.innerHTML = '';
+      if (!transactions.length) {
+        body.innerHTML = '<tr><td colspan="6" class="muted">目前沒有交易資料</td></tr>';
+      } else {
+        transactions.forEach(tx => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${tx.date}</td>
+            <td>${tx.bank}</td>
+            <td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td>
+            <td>${tx.type}</td>
+            <td>${Number(tx.amount).toLocaleString()}</td>
+            <td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>
+          `;
+          body.appendChild(row);
+        });
+      }
+
+      const income = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const expense = transactions.filter(t => t.type === '支出').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const pending = transactions.filter(t => !t.voucher).length;
+      const banks = new Set(transactions.map(t => t.bank)).size;
+
+      document.getElementById('countValue').textContent = transactions.length;
+      document.getElementById('incomeValue').textContent = income.toLocaleString();
+      document.getElementById('expenseValue').textContent = expense.toLocaleString();
+      document.getElementById('profitValue').textContent = (income - expense).toLocaleString();
+      document.getElementById('pendingValue').textContent = pending;
+      document.getElementById('bankValue').textContent = banks;
+    }
+
+    document.getElementById('transactionForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const data = {
+        date: document.getElementById('date').value,
+        bank: document.getElementById('bank').value.trim(),
+        customer: document.getElementById('customer').value.trim(),
+        detail: document.getElementById('detail').value.trim(),
+        type: document.getElementById('type').value,
+        amount: Number(document.getElementById('amount').value || 0),
+        voucher: document.getElementById('voucher').value.trim(),
+        remark: document.getElementById('remark').value.trim(),
+      };
+      transactions.unshift(data);
+      saveTransactions();
+      render();
+      this.reset();
+      document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+    });
+
+    document.getElementById('loadSampleBtn').addEventListener('click', () => {
+      transactions = sampleData;
+      saveTransactions();
+      render();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      if (confirm('確定要清空本機資料嗎？')) {
+        localStorage.removeItem(STORAGE_KEY);
+        transactions = [];
+        render();
+      }
+    });
+
+    document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+    loadTransactions();
+  </script>
+</body>
+</html>
