@@ -22,6 +22,21 @@
     </div>
   </div>
 
+  <div id="forcePasswordView" class="login-shell" style="display:none;">
+    <div class="card">
+      <h2>請設定新密碼</h2>
+      <p class="muted">首次登入需要修改預設密碼，才能繼續使用系統。</p>
+      <div id="forcePasswordMessage" class="message"></div>
+      <form id="forcePasswordForm">
+        <label>新密碼</label>
+        <input id="forceNewPassword" type="password" required minlength="6" />
+        <label>確認新密碼</label>
+        <input id="forceConfirmPassword" type="password" required minlength="6" />
+        <button type="submit" style="margin-top: 10px;">確認更新密碼</button>
+      </form>
+    </div>
+  </div>
+  
   <div id="appView" class="app-shell">
     <div class="container app-layout">
         <div id="sidebarOverlay" class="sidebar-overlay"></div>
