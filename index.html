@@ -337,6 +337,51 @@
             <input id="systemName" value="財務管理系統" />
             <button id="saveSettingsBtn" style="margin-top: 10px;">儲存設定</button>
           </div>
+          <div class="panel" style="margin-top:16px;">
+            <h3>公司基本資料</h3>
+            <p class="muted">這裡的資料會套用到四大財報抬頭、公司登記文件產出。</p>
+            <form id="companyInfoForm">
+              <div class="form-grid">
+                <div>
+                  <label>公司名稱（中文）</label>
+                  <input type="text" id="companyNameZh" required />
+                </div>
+                <div>
+                  <label>公司名稱（英文）</label>
+                  <input type="text" id="companyNameEn" />
+                </div>
+                <div>
+                  <label>統一編號</label>
+                  <input type="text" id="companyTaxId" required />
+                </div>
+                <div>
+                  <label>公司電話</label>
+                  <input type="text" id="companyPhone" />
+                </div>
+                <div class="full-width">
+                  <label>公司地址</label>
+                  <input type="text" id="companyAddress" />
+                </div>
+                <div>
+                  <label>代表人姓名</label>
+                  <input type="text" id="companyRepresentative" />
+                </div>
+                <div>
+                  <label>董事人數</label>
+                  <input type="number" id="companyBoardCount" min="0" />
+                </div>
+                <div>
+                  <label>資本總額</label>
+                  <input type="number" id="companyTotalCapital" min="0" />
+                </div>
+                <div>
+                  <label>預定開業日期</label>
+                  <input type="date" id="companyOpenDate" />
+                </div>
+              </div>
+              <button type="submit" class="primary-btn" style="margin-top:14px;">儲存公司資料</button>
+            </form>
+          </div>
           <div class="panel" id="passwordCard">
             <h3>密碼設定</h3>
             <p class="muted">管理者登入後，可設定帳號密碼登入。</p>

@@ -50,6 +50,7 @@ function render() {
   renderTransactionTable();
   renderReports();
   renderCompanyData();
+  fillCompanyInfoForm();
   renderBusinessData();
   updateSettings();
   renderBankAccounts();
@@ -86,6 +87,23 @@ function renderCompanyData() {
   container.innerHTML = entries
     .map(([label, value]) => `<div class="info-row"><strong>${label}</strong><span>${value ?? '-'}</span></div>`)
     .join('');
+}
+
+function fillCompanyInfoForm() {
+  const info = state.companyInfo || {};
+  const setVal = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  };
+  setVal('companyNameZh', info.companyNameZh);
+  setVal('companyNameEn', info.companyNameEn);
+  setVal('companyTaxId', info.taxId);
+  setVal('companyPhone', info.phone);
+  setVal('companyAddress', info.address);
+  setVal('companyRepresentative', info.representativeName);
+  setVal('companyBoardCount', info.boardCount);
+  setVal('companyTotalCapital', info.totalCapital);
+  setVal('companyOpenDate', info.plannedOpenDate);
 }
 
 function renderBusinessData() {
@@ -501,6 +519,24 @@ function initializeEvents() {
     showApp();
   });
 
+  document.getElementById('companyInfoForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    state.companyInfo = {
+      ...state.companyInfo,
+      companyNameZh: document.getElementById('companyNameZh').value.trim(),
+      companyNameEn: document.getElementById('companyNameEn').value.trim(),
+      taxId: document.getElementById('companyTaxId').value.trim(),
+      phone: document.getElementById('companyPhone').value.trim(),
+      address: document.getElementById('companyAddress').value.trim(),
+      representativeName: document.getElementById('companyRepresentative').value.trim(),
+      boardCount: Number(document.getElementById('companyBoardCount').value || 0),
+      totalCapital: Number(document.getElementById('companyTotalCapital').value || 0),
+      plannedOpenDate: document.getElementById('companyOpenDate').value
+    };
+    saveState(state);
+    render();
+    showMessage('公司資料已儲存。');
+  });
 
   document.getElementById('transactionForm').addEventListener('submit', async (e) => {
     e.preventDefault();
