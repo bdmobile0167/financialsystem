@@ -46,10 +46,29 @@
           <p class="muted">直覺式管理頁面</p>
         </div>
         <nav class="side-nav">
-          <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-          <button class="tab-btn" data-tab="transactions">交易管理</button>
-          <button class="tab-btn" data-tab="reports">財務報表</button>
-          <button class="tab-btn" data-tab="settings">設定</button>
+          <div class="nav-group">
+            <div class="nav-group-title">總覽</div>
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">記帳作業</div>
+            <button class="tab-btn" data-tab="transactions">交易管理</button>
+            <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">財務報表</div>
+            <button class="tab-btn" data-tab="reports">四大財報</button>
+            <button class="tab-btn" data-tab="voucherCenter">憑證中心</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">規劃分析</div>
+            <button class="tab-btn" data-tab="budget">預算管理</button>
+            <button class="tab-btn" data-tab="equity">股東權益／募資</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">系統</div>
+            <button class="tab-btn" data-tab="settings">設定</button>
+          </div>
         </nav>
         <div class="sidebar-footer">
           <button id="logoutBtn" class="danger">登出</button>
@@ -109,8 +128,8 @@
                   <input type="date" id="txDate" required />
                 </div>
                 <div>
-                  <label>銀行</label>
-                  <input type="text" id="txBank" placeholder="例如：玉山187" required />
+                  <label>銀行帳戶</label>
+                  <select id="txBankAccount" required></select>
                 </div>
                 <div>
                   <label>客戶/供應商</label>
@@ -140,12 +159,20 @@
                   <input type="number" id="txAmount" min="0" step="1" required />
                 </div>
                 <div>
-                  <label>憑證編號</label>
-                  <input type="text" id="txVoucher" placeholder="可留空" />
-                    <div>
-                      <label>憑證附件（圖片/PDF，1.5MB 以內）</label>
-                      <input type="file" id="txAttachment" accept="image/*,.pdf" />
-                    </div>
+                  <label>憑證類型</label>
+                  <select id="txVoucherType">
+                    <option value="發票">發票（有統一發票號碼）</option>
+                    <option value="收據">收據（系統自動編號）</option>
+                    <option value="無">無憑證</option>
+                  </select>
+                </div>
+                <div>
+                  <label>發票號碼（僅發票需填寫，收據留空自動編號）</label>
+                  <input type="text" id="txVoucher" placeholder="例如：AB12345678" />
+                </div>
+                <div class="full-width">
+                  <label>憑證附件（圖片/PDF，1.5MB 以內）</label>
+                  <input type="file" id="txAttachment" accept="image/*,.pdf" />
                 </div>
                 <div class="full-width">
                   <label>備註</label>
@@ -167,6 +194,84 @@
               </thead>
               <tbody id="transactionTableBody"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="bankAccounts" class="tab-panel" style="display:none;">
+          <div class="grid grid-2">
+            <div class="panel">
+              <h3>新增銀行帳戶</h3>
+              <form id="bankAccountForm">
+                <label>銀行名稱</label>
+                <input type="text" id="bankName" placeholder="例如：玉山銀行" required />
+                <label>帳號末幾碼／代號</label>
+                <input type="text" id="bankAccountNumber" placeholder="例如：86187" required />
+                <label>顯示暱稱</label>
+                <input type="text" id="bankNickname" placeholder="例如：玉山187" />
+                <label>期初餘額</label>
+                <input type="number" id="bankOpeningBalance" value="0" />
+                <button type="submit" class="primary-btn" style="margin-top:10px;">新增帳戶</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h3>目前銀行帳戶</h3>
+              <table>
+                <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>目前餘額</th><th>操作</th></tr></thead>
+                <tbody id="bankAccountTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="voucherCenter" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <h3>憑證中心</h3>
+            <p class="muted">所有交易的憑證彙總，方便會計師依編號、對象、金額搜尋核對。</p>
+            <div class="search-row">
+              <input type="text" id="voucherSearchInput" placeholder="搜尋憑證編號、對象、銀行、明細..." />
+            </div>
+            <table>
+              <thead><tr><th>日期</th><th>類型</th><th>憑證編號</th><th>銀行帳戶</th><th>對象/明細</th><th>收支</th><th>金額</th></tr></thead>
+              <tbody id="voucherCenterTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="budget" class="tab-panel" style="display:none;">
+          <div class="grid grid-2">
+            <div class="panel">
+              <h3>設定預算目標</h3>
+              <form id="budgetForm">
+                <label>月份</label>
+                <input type="month" id="budgetPeriod" required />
+                <label>會計科目</label>
+                <select id="budgetAccountCode">
+                  <option value="6100">6100 營業費用</option>
+                  <option value="4111">4111 營業收入</option>
+                </select>
+                <label>預算金額</label>
+                <input type="number" id="budgetAmount" min="0" required />
+                <button type="submit" class="primary-btn" style="margin-top:10px;">儲存預算目標</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h3>預算 vs 實際（自動計算）</h3>
+              <label>查看月份</label>
+              <input type="month" id="budgetViewPeriod" />
+              <table style="margin-top:12px;">
+                <thead><tr><th>科目</th><th>預算</th><th>實際</th><th>差異</th><th>差異%</th></tr></thead>
+                <tbody id="budgetTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="equity" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <h3>股東權益與募資健康度</h3>
+            <p class="muted">依實際分錄自動計算，判斷目前是否需要規劃增資。</p>
+            <table id="equityDetailTable"></table>
+            <p id="fundraisingNoteDetail" class="muted" style="margin-top:16px; font-size:15px; font-weight:600;"></p>
           </div>
         </section>
 
@@ -199,7 +304,10 @@
             </div>
           </div>
           <div class="panel" style="margin-top: 16px;">
-            <h3>會計分錄</h3>
+            <h3>會計分錄（日記帳）</h3>
+            <div class="search-row">
+              <input type="text" id="journalSearchInput" placeholder="搜尋摘要、銀行、科目、憑證編號..." />
+            </div>
             <table>
               <thead>
                 <tr><th>日期</th><th>摘要</th><th>銀行</th><th>借方科目</th><th>借方金額</th><th>貸方科目</th><th>貸方金額</th><th>憑證</th><th>狀態</th></tr>

@@ -4,8 +4,22 @@ import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
 import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
+import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } from '../src/modules/bank/bankAccounts.js';
+import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
+import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/modules/budget/budget.js';
 
 const state = { ...defaultState };
+
+function getBankNickname(bankAccountId) {
+  const account = loadBankAccounts().find(a => a.id === bankAccountId);
+  return account ? account.nickname : '未設定';
+}
+
+function populateBankSelect(selectEl) {
+  if (!selectEl) return;
+  const accounts = loadBankAccounts();
+  selectEl.innerHTML = accounts.map(a => `<option value="${a.id}">${a.nickname}</option>`).join('');
+}
 
 function setText(selector, value) {
   const element = document.querySelector(selector);
@@ -38,6 +52,10 @@ function render() {
   renderCompanyData();
   renderBusinessData();
   updateSettings();
+  renderBankAccounts();
+  renderVoucherCenter();
+  renderBudget();
+  renderEquityTab();
   renderTabs();
 }
 
@@ -117,7 +135,7 @@ function renderTransactionTable() {
   }
   state.transactions.forEach((tx, index) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${tx.date}</td><td>${tx.bank}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}${tx.attachmentId ? ` <button class="secondary view-attachment-btn" data-attachment="${tx.attachmentId}">📎</button>` : ''}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
+    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}${tx.attachmentId ? ` <button class="secondary view-attachment-btn" data-attachment="${tx.attachmentId}">📎</button>` : ''}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
     body.appendChild(row);
   });
 }
@@ -134,18 +152,7 @@ function renderReports() {
     note.textContent = `現金水位：${analysis.cashBalance.toLocaleString()}｜可撐月數：${analysis.cashRunwayMonths ? analysis.cashRunwayMonths.toFixed(1) + ' 個月' : '尚無支出紀錄'}｜建議：${analysis.fundraisingSuggestion}`;
   }
 
-  const journalBody = document.getElementById('journalTableBody');
-  journalBody.innerHTML = '';
-  const journal = buildJournal(state.transactions);
-  if (!journal.length) {
-    journalBody.innerHTML = '<tr><td colspan="9" class="muted">目前尚無會計分錄。</td></tr>';
-    return;
-  }
-  journal.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${row.date}</td><td>${row.summary}</td><td>${row.bank}</td><td>${row.debitAccount}</td><td>${Number(row.debitAmount).toLocaleString()}</td><td>${row.creditAccount}</td><td>${Number(row.creditAmount).toLocaleString()}</td><td>${row.voucher || '-'}</td><td>${row.status}</td>`;
-    journalBody.appendChild(tr);
-  });
+  renderJournalFiltered();
 }
 
 function renderVoucherSummary() {
@@ -229,6 +236,83 @@ async function updateGoogleButtonState() {
   }
 }
 
+function renderBankAccounts() {
+  const body = document.getElementById('bankAccountTableBody');
+  if (!body) return;
+  const accounts = loadBankAccounts();
+  body.innerHTML = accounts.map(a => `
+    <tr>
+      <td>${a.bankName}</td><td>${a.accountNumber}</td><td>${a.nickname}</td>
+      <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
+      <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
+  populateBankSelect(document.getElementById('txBankAccount'));
+}
+
+function renderVoucherCenter() {
+  const body = document.getElementById('voucherCenterTableBody');
+  if (!body) return;
+  const keyword = (document.getElementById('voucherSearchInput')?.value || '').trim().toLowerCase();
+  const filtered = state.transactions.filter(tx => {
+    if (!keyword) return true;
+    return [tx.detail, tx.customer, tx.voucher, getBankNickname(tx.bankAccountId)]
+      .some(field => (field || '').toLowerCase().includes(keyword));
+  });
+  body.innerHTML = filtered.map(tx => `
+    <tr>
+      <td>${tx.date}</td><td>${tx.voucherType || '無'}</td><td>${tx.voucher || '-'}</td>
+      <td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.customer || tx.detail}</td>
+      <td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">沒有符合條件的憑證資料。</td></tr>';
+}
+
+function renderBudget() {
+  const body = document.getElementById('budgetTableBody');
+  if (!body) return;
+  const period = document.getElementById('budgetViewPeriod')?.value || new Date().toISOString().slice(0, 7);
+  const rows = buildBudgetReport(state.transactions, period);
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.accountCode} ${r.accountName}</td>
+      <td>${r.budget.toLocaleString()}</td>
+      <td>${r.actual.toLocaleString()}</td>
+      <td style="color:${r.variance > 0 && r.accountCode === '6100' ? 'var(--danger)' : 'inherit'}">${r.variance.toLocaleString()}</td>
+      <td>${r.variancePercent.toFixed(1)}%</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">這個月尚未設定預算目標。</td></tr>';
+}
+
+function renderEquityTab() {
+  const table = document.getElementById('equityDetailTable');
+  const note = document.getElementById('fundraisingNoteDetail');
+  if (!table) return;
+  renderTable('equityDetailTable', buildEquityStatement(state.transactions));
+  if (note) {
+    const analysis = getEquityAnalysis(state.transactions);
+    note.textContent = `現金水位：${analysis.cashBalance.toLocaleString()}｜可撐月數：${analysis.cashRunwayMonths ? analysis.cashRunwayMonths.toFixed(1) + ' 個月' : '尚無支出紀錄'}｜建議：${analysis.fundraisingSuggestion}`;
+  }
+}
+
+function renderJournalFiltered() {
+  const keyword = (document.getElementById('journalSearchInput')?.value || '').trim().toLowerCase();
+  const journalBody = document.getElementById('journalTableBody');
+  if (!journalBody) return;
+  const journal = buildJournal(state.transactions).filter(row => {
+    if (!keyword) return true;
+    return [row.summary, row.bank, row.debitAccount, row.creditAccount, row.voucher]
+      .some(field => (field || '').toLowerCase().includes(keyword));
+  });
+  journalBody.innerHTML = '';
+  if (!journal.length) {
+    journalBody.innerHTML = '<tr><td colspan="9" class="muted">沒有符合條件的分錄。</td></tr>';
+    return;
+  }
+  journal.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.date}</td><td>${row.summary}</td><td>${row.bank}</td><td>${row.debitAccount}</td><td>${Number(row.debitAmount).toLocaleString()}</td><td>${row.creditAccount}</td><td>${Number(row.creditAmount).toLocaleString()}</td><td>${row.voucher || '-'}</td><td>${row.status}</td>`;
+    journalBody.appendChild(tr);
+  });
+}
+
 function renderTabs() {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.style.display = 'none';
@@ -281,6 +365,43 @@ function initializeEvents() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
+  
+  document.getElementById('bankAccountForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    addBankAccount({
+      bankName: document.getElementById('bankName').value.trim(),
+      accountNumber: document.getElementById('bankAccountNumber').value.trim(),
+      nickname: document.getElementById('bankNickname').value.trim(),
+      openingBalance: document.getElementById('bankOpeningBalance').value
+    });
+    e.target.reset();
+    renderBankAccounts();
+    showMessage('銀行帳戶已新增。');
+  });
+
+  document.getElementById('bankAccountTableBody')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-bank-btn');
+    if (!btn) return;
+    deleteBankAccount(btn.dataset.id);
+    renderBankAccounts();
+    showMessage('銀行帳戶已刪除。');
+  });
+
+  document.getElementById('voucherSearchInput')?.addEventListener('input', renderVoucherCenter);
+  document.getElementById('journalSearchInput')?.addEventListener('input', renderJournalFiltered);
+
+  document.getElementById('budgetForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    setBudgetTarget(
+      document.getElementById('budgetPeriod').value,
+      document.getElementById('budgetAccountCode').value,
+      document.getElementById('budgetAmount').value
+    );
+    renderBudget();
+    showMessage('預算目標已儲存。');
+  });
+
+  document.getElementById('budgetViewPeriod')?.addEventListener('change', renderBudget);
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -343,16 +464,22 @@ function initializeEvents() {
         return;
       }
     }
+    const voucherType = document.getElementById('txVoucherType').value;
+    const rawVoucher = document.getElementById('txVoucher').value.trim();
+    const date = document.getElementById('txDate').value;
+
     const item = {
-      date: document.getElementById('txDate').value,
-      bank: document.getElementById('txBank').value.trim(),
+      date,
+      bankAccountId: document.getElementById('txBankAccount').value,
       customer: document.getElementById('txCustomer').value.trim(),
       detail: document.getElementById('txDetail').value.trim(),
       type: document.getElementById('txType').value,
       category: document.getElementById('txCategory').value,
       amount: Number(document.getElementById('txAmount').value),
-      voucher: document.getElementById('txVoucher').value.trim(),
+      voucherType,
+      voucher: resolveVoucherNumber(voucherType, rawVoucher, date),
       remark: document.getElementById('txRemark').value.trim(),
+      attachmentId,
       source: 'input'
     };
     state.transactions.unshift(item);

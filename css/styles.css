@@ -376,3 +376,21 @@ td button {
     padding: 8px !important;
   }
 }
+
+.nav-group {
+  margin-bottom: 4px;
+}
+.nav-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 16px 6px;
+}
+.search-row {
+  margin-bottom: 16px;
+}
+.search-row input {
+  max-width: 360px;
+}
