@@ -224,6 +224,54 @@ function renderReports() {
   renderJournalFiltered();
 }
 
+async function exportReportsToExcel() {
+  showMessage('正在產生 Excel，請稍候…');
+  const XLSX = await import('https://esm.sh/xlsx@0.18.5');
+
+  const periodTx = getReportPeriodTransactions();
+  const company = state.companyInfo || {};
+  const start = document.getElementById('reportPeriodStart')?.value;
+  const end = document.getElementById('reportPeriodEnd')?.value;
+  const periodText = start && end ? `${start} 至 ${end}` : (start ? `${start} 起` : (end ? `截至 ${end}` : '全部歷史資料'));
+  const printDate = new Date().toLocaleDateString('zh-TW');
+
+  const wb = XLSX.utils.book_new();
+
+  function addStatementSheet(sheetName, title, rows) {
+    const aoa = [
+      [company.companyNameZh || '（尚未設定公司名稱）'],
+      [`統一編號：${company.taxId || '-'}`],
+      [title],
+      [`期間：${periodText}`],
+      [`列印日期：${printDate}`],
+      [],
+      ['項目', '金額'],
+      ...rows.map(([label, amount]) => [label, amount])
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
+    sheet['!cols'] = [{ wch: 26 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, sheet, sheetName);
+  }
+
+  addStatementSheet('損益表', '損益表', buildIncomeStatement(periodTx));
+  addStatementSheet('資產負債表', '資產負債表', buildBalanceSheet(periodTx));
+  addStatementSheet('現金流量表', '現金流量表', buildCashflowStatement(periodTx));
+  addStatementSheet('權益變動表', '權益變動表', buildEquityStatement(periodTx));
+
+  const journal = buildJournal(periodTx);
+  const journalAoa = [
+    ['日期', '摘要', '銀行', '借方科目', '借方金額', '貸方科目', '貸方金額', '憑證', '狀態'],
+    ...journal.map(row => [row.date, row.summary, row.bank, row.debitAccount, row.debitAmount, row.creditAccount, row.creditAmount, row.voucher || '-', row.status])
+  ];
+  const journalSheet = XLSX.utils.aoa_to_sheet(journalAoa);
+  journalSheet['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, journalSheet, '會計分錄');
+
+  const fileName = `財務報表_${start || '全部'}_${end || '至今'}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showMessage('Excel 已匯出完成。');
+}
+
 function renderVoucherSummary() {
   const container = document.getElementById('voucherSummaryContent');
   if (!container) return;
@@ -663,6 +711,15 @@ function initializeEvents() {
     document.getElementById('appView').classList.remove('active');
     document.getElementById('reportPeriodStart')?.addEventListener('change', renderReports);
     document.getElementById('reportPeriodEnd')?.addEventListener('change', renderReports);
+    document.getElementById('printReportBtn')?.addEventListener('click', () => {
+      state.activeTab = 'reports';
+      renderTabs();
+      window.print();
+    });
+
+    document.getElementById('exportExcelBtn')?.addEventListener('click', () => {
+      exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
+    });
 });
 }   // ← 新增這一行，補上 initializeEvents() 函式的結尾
 
