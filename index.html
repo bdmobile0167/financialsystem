@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
@@ -278,28 +278,41 @@
         <section id="reports" class="tab-panel" style="display:none;">
           <div class="panel">
             <h3>四大財報</h3>
-            <p class="muted">系統由交易資料生成財報，可快速查看本期狀況。</p>
-            <div class="button-row" style="margin-top: 16px;">
-              <button id="exportReportBtn" class="primary-btn">匯出報表為 PDF</button>
-              <button id="printReportBtn" class="secondary">列印報表</button>
+            <div class="form-grid">
+              <div>
+                <label>報表期間（起）</label>
+                <input type="date" id="reportPeriodStart" />
+              </div>
+              <div>
+                <label>報表期間（迄）</label>
+                <input type="date" id="reportPeriodEnd" />
+              </div>
             </div>
+            <p class="muted" style="margin-top:8px;">不填期間預設顯示全部歷史資料加總。</p>
             <div class="grid grid-2" style="margin-top: 12px;">
               <div>
+                <div id="incomeLetterhead" class="report-letterhead"></div>
                 <h4>損益表</h4>
                 <table id="incomeTable"></table>
+                <div id="incomeSignature" class="report-signature-row"></div>
               </div>
               <div>
+                <div id="balanceLetterhead" class="report-letterhead"></div>
                 <h4>資產負債表</h4>
                 <table id="balanceTable"></table>
+                <div id="balanceSignature" class="report-signature-row"></div>
               </div>
               <div>
+                <div id="cashflowLetterhead" class="report-letterhead"></div>
                 <h4>現金流量表</h4>
                 <table id="cashflowTable"></table>
+                <div id="cashflowSignature" class="report-signature-row"></div>
               </div>
               <div>
+                <div id="equityLetterhead" class="report-letterhead"></div>
                 <h4>權益變動表</h4>
                 <table id="equityTable"></table>
-                  <p id="fundraisingNote" class="muted" style="margin-top: 8px;"></p>
+                <div id="equitySignature" class="report-signature-row"></div>
               </div>
             </div>
           </div>

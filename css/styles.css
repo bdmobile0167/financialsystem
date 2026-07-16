@@ -394,3 +394,48 @@ td button {
 .search-row input {
   max-width: 360px;
 }
+
+.report-letterhead {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--text);
+}
+.report-company {
+  font-size: 18px;
+  font-weight: 700;
+}
+.report-meta, .report-period, .report-printdate {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.report-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.report-signature-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+}
+.sign-box {
+  flex: 1;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media print {
+  .report-letterhead,
+  .report-signature-row {
+    display: block !important;
+  }
+  .report-signature-row {
+    display: flex !important;
+  }
+}

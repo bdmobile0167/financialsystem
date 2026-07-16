@@ -1,4 +1,4 @@
-﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+﻿﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
@@ -140,13 +140,64 @@ function renderTransactionTable() {
   });
 }
 
+function getReportPeriodTransactions() {
+  const start = document.getElementById('reportPeriodStart')?.value;
+  const end = document.getElementById('reportPeriodEnd')?.value;
+  if (!start && !end) return state.transactions;
+  return state.transactions.filter(tx => {
+    if (start && tx.date < start) return false;
+    if (end && tx.date > end) return false;
+    return true;
+  });
+}
+
+function renderReportLetterhead(elementId, reportTitle) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const start = document.getElementById('reportPeriodStart')?.value;
+  const end = document.getElementById('reportPeriodEnd')?.value;
+  const periodText = start && end ? `${start} 至 ${end}` : (start ? `${start} 起` : (end ? `截至 ${end}` : '全部歷史資料'));
+  const today = new Date().toLocaleDateString('zh-TW');
+  const company = state.companyInfo || {};
+  el.innerHTML = `
+    <div class="report-company">${company.nameZh || company.name || '（尚未設定公司名稱）'}</div>
+    <div class="report-meta">統一編號：${company.taxId || '-'}</div>
+    <div class="report-title">${reportTitle}</div>
+    <div class="report-period">期間：${periodText}</div>
+    <div class="report-printdate">列印日期：${today}</div>
+  `;
+}
+
+function renderReportSignature(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="sign-box">製表</div>
+    <div class="sign-box">會計</div>
+    <div class="sign-box">主管</div>
+  `;
+}
+
 function renderReports() {
-  renderTable('incomeTable', buildIncomeStatement(state.transactions));
-  renderTable('balanceTable', buildBalanceSheet(state.transactions));
-  renderTable('cashflowTable', buildCashflowStatement(state.transactions));
-  renderTable('equityTable', buildEquityStatement(state.transactions));
-  
-  const analysis = getEquityAnalysis(state.transactions);
+  const periodTx = getReportPeriodTransactions();
+
+  renderReportLetterhead('incomeLetterhead', '損益表');
+  renderTable('incomeTable', buildIncomeStatement(periodTx));
+  renderReportSignature('incomeSignature');
+
+  renderReportLetterhead('balanceLetterhead', '資產負債表');
+  renderTable('balanceTable', buildBalanceSheet(periodTx));
+  renderReportSignature('balanceSignature');
+
+  renderReportLetterhead('cashflowLetterhead', '現金流量表');
+  renderTable('cashflowTable', buildCashflowStatement(periodTx));
+  renderReportSignature('cashflowSignature');
+
+  renderReportLetterhead('equityLetterhead', '權益變動表');
+  renderTable('equityTable', buildEquityStatement(periodTx));
+  renderReportSignature('equitySignature');
+
+  const analysis = getEquityAnalysis(periodTx);
   const note = document.getElementById('fundraisingNote');
   if (note) {
     note.textContent = `現金水位：${analysis.cashBalance.toLocaleString()}｜可撐月數：${analysis.cashRunwayMonths ? analysis.cashRunwayMonths.toFixed(1) + ' 個月' : '尚無支出紀錄'}｜建議：${analysis.fundraisingSuggestion}`;
@@ -574,6 +625,8 @@ function initializeEvents() {
     state.currentUser = null;
     document.getElementById('loginView').style.display = 'grid';
     document.getElementById('appView').classList.remove('active');
+    document.getElementById('reportPeriodStart')?.addEventListener('change', renderReports);
+    document.getElementById('reportPeriodEnd')?.addEventListener('change', renderReports);
 });
 }   // ← 新增這一行，補上 initializeEvents() 函式的結尾
 
