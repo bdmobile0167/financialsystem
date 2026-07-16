@@ -160,7 +160,7 @@ function renderReportLetterhead(elementId, reportTitle) {
   const today = new Date().toLocaleDateString('zh-TW');
   const company = state.companyInfo || {};
   el.innerHTML = `
-    <div class="report-company">${company.nameZh || company.name || '（尚未設定公司名稱）'}</div>
+    <div class="report-company">${company.companyNameZh || '（尚未設定公司名稱）'}</div>
     <div class="report-meta">統一編號：${company.taxId || '-'}</div>
     <div class="report-title">${reportTitle}</div>
     <div class="report-period">期間：${periodText}</div>
