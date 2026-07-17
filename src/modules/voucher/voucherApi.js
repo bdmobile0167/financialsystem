@@ -45,20 +45,28 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason
   if (error) throw error;
 }
 
-export async function createVoucher({ txDate, category, summary, departmentId, line, invoice, payment }) {
+export async function createVoucher({ txDate, category, summary, departmentId, line, invoice, payment, projectId }) {
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: voucher, error: voucherError } = await supabase
+  const voucherNo = resolveVoucherNumber(invoice.type, invoice.number, txDate);
+
+  const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
-      tx_date: txDate, category, summary,
-      department_id: departmentId || null,
-      applicant_id: user.id, total_amount: line.amount,
+      voucher_no: voucherNo,
+      tx_date: txDate,
+      category,
+      summary,
+      department_id: departmentId,
+      applicant_id: user.id,
+      total_amount: line.amount,
+      project_id: projectId,
       status: 'pending_review'
     })
     .select()
     .single();
-  if (voucherError) throw voucherError;
+
+  if (error) throw error;
 
   const { error: lineError } = await supabase.from('voucher_lines').insert({
     voucher_id: voucher.id, description: line.description, account_code: line.accountCode, amount: line.amount

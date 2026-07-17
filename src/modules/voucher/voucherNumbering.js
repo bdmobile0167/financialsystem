@@ -18,12 +18,18 @@ export function generateReceiptVoucherNumber(dateStr) {
 }
 
 // 依憑證類型決定最終編號：發票用使用者輸入的統一發票號碼；收據沒填就自動產生
-export function resolveVoucherNumber(voucherType, inputNumber, dateStr) {
-  if (voucherType === '發票') {
-    return (inputNumber || '').trim().toUpperCase();
+export function resolveVoucherNumber(voucherType, manualNumber, date) {
+  if (voucherType === '發票' && manualNumber) {
+    return manualNumber; // 使用手動輸入的發票號碼
   }
-  if (voucherType === '收據') {
-    return (inputNumber || '').trim() || generateReceiptVoucherNumber(dateStr);
-  }
-  return '';
+
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+
+  // 簡單序號（實際可改用 Supabase sequence 或查詢當日最大序號）
+  const seq = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+
+  return `VOU-${year}${month}${day}-${seq}`;
 }

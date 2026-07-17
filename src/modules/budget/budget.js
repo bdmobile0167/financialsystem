@@ -39,3 +39,14 @@ export function buildBudgetReport(transactions, period) {
     };
   });
 }
+
+export async function createProject(projectData) {
+  const code = `PROJ-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}-${Math.floor(Math.random()*999).toString().padStart(3,'0')}`;
+  
+  const { data, error } = await supabase
+    .from('projects')
+    .insert([{ ...projectData, project_code: code, remaining_budget: projectData.total_budget }])
+    .select().single();
+  if (error) throw error;
+  return data;
+}
