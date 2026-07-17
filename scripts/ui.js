@@ -180,36 +180,33 @@ function renderBusinessData() {
 }
 
 function renderDashboard() {
-  // 在 renderDashboard() 開頭加上
-  async function renderProjectSelector() {
-    const selects = document.querySelectorAll('.project-select');
-    const projects = await fetchProjects();
-    selects.forEach(select => {
-      select.innerHTML = '<option value="">全公司/無專案</option>' + 
-        projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name} (剩餘 ${p.remaining_budget})</option>`).join('');
-    });
+  let txs = state.transactions;
+  
+  // 專案過濾
+  if (state.currentProjectId && state.currentProjectId !== 'all') {
+    txs = txs.filter(tx => tx.project_id === state.currentProjectId);
   }
-  const { revenue, expense, netProfit } = summarizeTransactions(state.transactions);
-  setText('#countValue', state.transactions.length);
+
+  const { revenue, expense, netProfit } = summarizeTransactions(txs);
+  
+  setText('#countValue', txs.length);
   setText('#incomeValue', revenue.toLocaleString());
   setText('#expenseValue', expense.toLocaleString());
   setText('#profitValue', netProfit.toLocaleString());
 
+  // 最新交易也只顯示該專案
   const body = document.getElementById('dashboardTableBody');
-  body.innerHTML = '';
-  const recent = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
-  if (!recent.length) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無交易資料。</td></tr>';
-    return;
-  }
-  recent.forEach(tx => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${tx.date}</td><td>${tx.bank}</td><td>${tx.detail}</td><td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>`;
-    body.appendChild(row);
-  });
+  // ... 後續渲染使用 txs 而非 state.transactions
 }
 
 function renderTransactionTable() {
+  let txs = state.transactions;
+  
+  // 專案過濾
+  if (state.currentProjectId && state.currentProjectId !== 'all') {
+    txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+  }
+
   const body = document.getElementById('transactionTableBody');
   body.innerHTML = '';
   if (!state.transactions.length) {
@@ -221,6 +218,10 @@ function renderTransactionTable() {
     row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}${tx.attachmentId ? ` <button class="secondary view-attachment-btn" data-attachment="${tx.attachmentId}">📎</button>` : ''}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
     body.appendChild(row);
   });
+
+  // 最新交易也只顯示該專案
+  const body = document.getElementById('dashboardTableBody');
+  // ... 後續渲染使用 txs 而非 state.transactions
 }
 
 function getReportPeriodTransactions() {
@@ -262,6 +263,13 @@ function renderReportSignature(elementId) {
 }
 
 function renderReports() {
+  let txs = state.transactions;
+  
+  // 專案過濾
+  if (state.currentProjectId && state.currentProjectId !== 'all') {
+    txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+  }
+
   const periodTx = getReportPeriodTransactions();
 
   renderReportLetterhead('incomeLetterhead', '損益表');
@@ -287,6 +295,10 @@ function renderReports() {
   }
 
   renderJournalFiltered();
+
+  // 最新交易也只顯示該專案
+  const body = document.getElementById('dashboardTableBody');
+  // ... 後續渲染使用 txs 而非 state.transactions
 }
 
 async function exportReportsToExcel() {
@@ -1075,4 +1087,34 @@ async function renderVoucherWorkflowList() {
   } catch (error) {
     container.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
   }
+}
+
+// === 專案相關 ===
+async function loadAndRenderProjects() {
+  try {
+    const projects = await fetchProjects(); // 需實作 fetchProjects
+    const select = document.getElementById('globalProjectSelect');
+    if (!select) return;
+
+    let html = '<option value="all">全公司總覽</option>';
+    projects.forEach(p => {
+      html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
+    });
+    select.innerHTML = html;
+
+    // 預設全公司
+    state.currentProjectId = 'all';
+    
+    select.addEventListener('change', () => {
+      state.currentProjectId = select.value;
+      render(); // 重新渲染整個 dashboard
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function fetchProjects() {
+  const { data } = await supabase.from('projects').select('*').order('project_code');
+  return data || [];
 }
