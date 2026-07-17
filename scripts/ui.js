@@ -474,16 +474,6 @@ async function updateGoogleButtonState() {
   }
 }
 
-function getBankBalance(id, transactions = []) {
-  if (!id) return 0;
-  return transactions
-    .filter(tx => tx.bankAccountId === id)
-    .reduce((sum, tx) => {
-      const amt = Number(tx.amount || 0);
-      return tx.type === '收入' ? sum + amt : sum - amt;
-    }, 0);
-}
-
 async function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
   if (!body) return;
