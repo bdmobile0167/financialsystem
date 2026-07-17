@@ -653,6 +653,10 @@ function initializeEvents() {
         showMessage('交易管理僅限會計部門使用', true);
         return;
       }
+      if (btn.dataset.tab === 'transactions' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+        showMessage('交易管理僅限會計部門', true);
+        return;
+      }
     });
   });
 
@@ -815,10 +819,12 @@ function initializeEvents() {
     setTimeout(() => window.print(), 100);
   });
 
-  document.getElementById('printReportBtn').addEventListener('click', () => {
+  document.getElementById('printReportBtn')?.addEventListener('click', () => {
     state.activeTab = 'reports';
     renderTabs();
-    setTimeout(() => window.print(), 100);
+    setTimeout(() => {
+      window.print();
+    }, 300);
   });
 
   document.getElementById('saveSettingsBtn').addEventListener('click', () => {
@@ -981,6 +987,32 @@ function initializeEvents() {
     }
   });
   
+  document.getElementById('departmentForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!['admin'].includes(state.currentUser?.role)) return;
+
+    const name = document.getElementById('newDepartmentName').value.trim();
+    await supabase.from('departments').insert([{ name }]);
+    showMessage('部門已新增');
+    renderAdminDepartmentList();
+  });
+
+  document.getElementById('projectForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!['admin', 'accounting'].includes(state.currentUser?.role)) return;
+
+    const data = {
+      name: document.getElementById('projectName').value,
+      start_date: document.getElementById('projectStart').value,
+      end_date: document.getElementById('projectEnd').value,
+      total_budget: parseFloat(document.getElementById('projectTotalBudget').value),
+      department_id: document.getElementById('projectDepartment').value
+    };
+
+    await createProject(data);
+    showMessage('專案已建立');
+  });
+
   document.getElementById('exportBtn').addEventListener('click', () => {
     const data = JSON.stringify({
       transactions: state.transactions,
@@ -1164,12 +1196,3 @@ async function loadDepartments() {
   return data;
 }
 
-document.getElementById('departmentForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!['admin'].includes(state.currentUser?.role)) return;
-
-  const name = document.getElementById('newDepartmentName').value.trim();
-  await supabase.from('departments').insert([{ name }]);
-  showMessage('部門已新增');
-  renderAdminDepartmentList();
-});
