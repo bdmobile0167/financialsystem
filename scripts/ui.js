@@ -823,8 +823,13 @@ function initializeEvents() {
     state.activeTab = 'reports';
     renderTabs();
     setTimeout(() => {
+      const printContent = document.getElementById('reports').innerHTML;
+      const originalContent = document.body.innerHTML;
+      document.body.innerHTML = printContent;
       window.print();
-    }, 300);
+      document.body.innerHTML = originalContent;
+      location.reload(); // 恢復
+    }, 100);
   });
 
   document.getElementById('saveSettingsBtn').addEventListener('click', () => {
@@ -845,6 +850,7 @@ function initializeEvents() {
 
   document.getElementById('inviteUserForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const selectedPerms = Array.from(document.querySelectorAll('#permissionCheckboxes input:checked')).map(cb => cb.value);
     const resultBox = document.getElementById('inviteResultBox');
     try {
       const result = await inviteNewUser({
@@ -1012,6 +1018,11 @@ function initializeEvents() {
     await createProject(data);
     showMessage('專案已建立');
   });
+  
+  document.getElementById('addVoucherLineBtn')?.addEventListener('click', () => {
+    voucherLines.push({ description: '', accountCode: '', amount: 0 });
+    renderVoucherLines();
+  });
 
   document.getElementById('exportBtn').addEventListener('click', () => {
     const data = JSON.stringify({
@@ -1051,6 +1062,23 @@ function initializeEvents() {
     });
 });
 }   // ← 新增這一行，補上 initializeEvents() 函式的結尾
+
+let voucherLines = [];
+
+function renderVoucherLines() {
+  const tbody = document.querySelector('#voucherLinesTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = voucherLines.map((line, i) => `
+    <tr>
+      <td><input value="${line.description}" class="line-desc" data-index="${i}"></td>
+      <td><select class="line-account" data-index="${i}"></select></td>
+      <td><input type="number" value="${line.amount}" class="line-amount" data-index="${i}"></td>
+      <td><button class="danger" onclick="removeLine(${i})">刪除</button></td>
+    </tr>
+  `).join('');
+}
+
+window.removeLine = (i) => { voucherLines.splice(i,1); renderVoucherLines(); };
 
 async function initialize() {
     loadState(state);
@@ -1196,3 +1224,11 @@ async function loadDepartments() {
   return data;
 }
 
+const permissions = ['dashboard', 'voucher', 'transactions', 'reports', 'budget', 'bank_accounts'];
+
+function renderPermissionCheckboxes() {
+  const container = document.getElementById('permissionCheckboxes');
+  container.innerHTML = permissions.map(p => `
+    <label><input type="checkbox" value="${p}" checked> ${p}</label>
+  `).join('');
+}

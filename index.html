@@ -235,6 +235,11 @@
             <div class="panel">
               <h3>新增報支申請</h3>
               <form id="voucherCreateForm">
+                <button type="button" id="addVoucherLineBtn" class="secondary">+ 新增明細行</button>
+                <table id="voucherLinesTable">
+                  <thead><tr><th>摘要</th><th>科目</th><th>金額</th><th>操作</th></tr></thead>
+                  <tbody></tbody>
+                </table>
                 <label>日期</label>
                 <input type="date" id="vDate" required />
                 <label>專案 / 預算科目</label>
@@ -402,6 +407,10 @@
                   <option value="accounting">會計部門</option>
                   <option value="admin">管理員</option>
                 </select>
+                <label>可使用功能（多選）</label>
+                <div id="permissionCheckboxes">
+                  <!-- 動態產生 checkbox -->
+                </div>
                 <label>部門</label>
                 <select id="inviteDepartment"></select>
                 <label>初始密碼（留空使用系統預設）</label>
