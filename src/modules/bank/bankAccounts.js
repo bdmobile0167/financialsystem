@@ -6,13 +6,21 @@ export async function loadBankAccounts() {
   return data || [];
 }
 
-export async function addBankAccount({ bankName, accountNumber, nickname, openingBalance }) {
-  const { data, error } = await supabase.from('bank_accounts').insert({
-    bank_name: bankName,
-    account_number: accountNumber,
-    nickname: nickname || `${bankName}${accountNumber.slice(-4)}`,
-    opening_balance: Number(openingBalance || 0)
-  }).select().single();
+export async function addBankAccount(account) {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const { data, error } = await supabase
+    .from('bank_accounts')
+    .insert([{
+      bank_name: account.bank_name,
+      account_number: account.account_number,
+      nickname: account.nickname,
+      opening_balance: account.opening_balance,
+      created_by: user.id
+    }])
+    .select()
+    .single();
+
   if (error) throw error;
   return data;
 }
