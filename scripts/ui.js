@@ -486,12 +486,14 @@ function renderBankAccounts() {
   }
 
   try {
-    const accounts = loadBankAccounts(); // 後續會改成 Supabase
+    let accounts = loadBankAccounts();
+    if (!accounts || !Array.isArray(accounts)) accounts = [];
+
     body.innerHTML = accounts.map(a => `
       <tr>
-        <td>${a.bank_name || a.bankName}</td>
-        <td>${a.account_number || a.accountNumber}</td>
-        <td>${a.nickname}</td>
+        <td>${a.bank_name || a.bankName || '未命名'}</td>
+        <td>${a.account_number || a.accountNumber || '-'}</td>
+        <td>${a.nickname || '-'}</td>
         <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
         <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
       </tr>
@@ -501,7 +503,7 @@ function renderBankAccounts() {
     populateBankSelect(document.getElementById('vBankAccount'));
   } catch (e) {
     console.error(e);
-    body.innerHTML = '<tr><td colspan="5" class="muted">載入銀行帳戶失敗，請稍後重試</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="muted">載入銀行帳戶失敗</td></tr>';
   }
 }
 
@@ -836,6 +838,51 @@ async function renderVoucherWorkflowList() {
   } catch (error) {
     container.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
   }
+}
+
+// === 專案與部門管理 ===
+async function populateProjectDepartmentSelect() {
+  const select = document.getElementById('projectDepartment');
+  if (!select) return;
+  try {
+    const depts = await fetchDepartments();
+    select.innerHTML = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function renderProjectList() {
+  const container = document.getElementById('projectList');
+  if (!container) return;
+  try {
+    const projects = await fetchProjects();
+    container.innerHTML = projects.map(p => `
+      <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;">
+        <strong>${p.project_code || '無編號'} - ${p.name}</strong><br>
+        預算：${Number(p.total_budget || 0).toLocaleString()} | 剩餘：${Number(p.remaining_budget || 0).toLocaleString()}<br>
+        期間：${p.start_date || '-'} ~ ${p.end_date || '-'}
+        <button onclick="deleteProject('${p.id}')" class="danger" style="float:right;">刪除</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = '<p class="muted">載入專案失敗</p>';
+  }
+}
+
+window.deleteProject = async (id) => {
+  if (confirm('確定刪除此專案？')) {
+    await supabase.from('projects').delete().eq('id', id);
+    renderProjectList();
+  }
+};
+
+// 部門管理
+async function renderAdminDepartmentList() {
+  const container = document.getElementById('departmentList');
+  if (!container) return;
+  const depts = await loadDepartments();
+  container.innerHTML = depts.map(d => `<div>${d.name}</div>`).join('');
 }
 
 // === 專案相關 ===
