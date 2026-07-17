@@ -62,7 +62,13 @@ function getBankNickname(bankAccountId) {
 function populateBankSelect(selectEl) {
   if (!selectEl) return;
   const accounts = loadBankAccounts();
-  selectEl.innerHTML = accounts.map(a => `<option value="${a.id}">${a.nickname}</option>`).join('');
+  if (accounts.length === 0) {
+    selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
+    return;
+  }
+  selectEl.innerHTML = accounts.map(a => 
+    `<option value="${a.id}">${a.nickname || a.bank_name}</option>`
+  ).join('');
 }
 
 function setText(selector, value) {
@@ -407,23 +413,32 @@ function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
   if (!body) return;
 
-  // 只允許 accounting / admin 看到完整列表
-  const isFinance = ['accounting', 'admin'].includes(state.currentUser?.role);
+  const userRole = state.currentUser?.role;
+  const isFinance = ['accounting', 'admin'].includes(userRole);
+
   if (!isFinance) {
-    body.innerHTML = '<tr><td colspan="5" class="muted">僅財務部門可管理銀行帳戶</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="muted">僅會計部門與 Admin 可管理銀行帳戶</td></tr>';
     return;
   }
 
-  const accounts = loadBankAccounts();  // 或改用 fetchBankAccounts() 從 Supabase
-  body.innerHTML = accounts.map(a => `
-    <tr>
-      <td>${a.bankName}</td><td>${a.accountNumber}</td><td>${a.nickname}</td>
-      <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
-      <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
+  try {
+    const accounts = loadBankAccounts(); // 後續會改成 Supabase
+    body.innerHTML = accounts.map(a => `
+      <tr>
+        <td>${a.bank_name || a.bankName}</td>
+        <td>${a.account_number || a.accountNumber}</td>
+        <td>${a.nickname}</td>
+        <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
+        <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
 
-  populateBankSelect(document.getElementById('txBankAccount'));
-  populateBankSelect(document.getElementById('vBankAccount'));  // 新增這行確保報支表單也能看到
+    populateBankSelect(document.getElementById('txBankAccount'));
+    populateBankSelect(document.getElementById('vBankAccount'));
+  } catch (e) {
+    console.error(e);
+    body.innerHTML = '<tr><td colspan="5" class="muted">載入銀行帳戶失敗，請稍後重試</td></tr>';
+  }
 }
 
 function renderVoucherCenter() {
@@ -542,31 +557,6 @@ function initializeEvents() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
-  
-  document.getElementById('bankAccountForm')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
-      showMessage('僅會計部門與 Admin 可新增銀行帳戶', true);
-      return;
-    }
-    addBankAccount({
-      bankName: document.getElementById('bankName').value.trim(),
-      accountNumber: document.getElementById('bankAccountNumber').value.trim(),
-      nickname: document.getElementById('bankNickname').value.trim(),
-      openingBalance: document.getElementById('bankOpeningBalance').value
-    });
-    e.target.reset();
-    renderBankAccounts();
-    showMessage('銀行帳戶已新增。');
-  });
-
-  document.getElementById('bankAccountTableBody')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.delete-bank-btn');
-    if (!btn) return;
-    deleteBankAccount(btn.dataset.id);
-    renderBankAccounts();
-    showMessage('銀行帳戶已刪除。');
-  });
 
   document.getElementById('voucherSearchInput')?.addEventListener('input', renderVoucherCenter);
   document.getElementById('journalSearchInput')?.addEventListener('input', renderJournalFiltered);
@@ -660,6 +650,32 @@ function initializeEvents() {
     saveState(state);
     render();
     showMessage('公司資料已儲存。');
+  });
+
+  document.getElementById('bankAccountForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const userRole = state.currentUser?.role;
+    if (!['accounting', 'admin'].includes(userRole)) {
+      showMessage('僅會計部門與 Admin 可新增銀行帳戶', true);
+      return;
+    }
+
+    try {
+      const newAccount = {
+        bank_name: document.getElementById('bankName').value.trim(),
+        account_number: document.getElementById('bankAccountNumber').value.trim(),
+        nickname: document.getElementById('bankNickname').value.trim() || document.getElementById('bankName').value.trim(),
+        opening_balance: parseFloat(document.getElementById('bankOpeningBalance').value) || 0
+      };
+
+      await addBankAccount(newAccount);   // 確保這個函式是 async 且呼叫 Supabase
+      showMessage('銀行帳戶已新增。');
+      renderBankAccounts();
+      e.target.reset();
+    } catch (err) {
+      showMessage('新增失敗：' + err.message, true);
+    }
   });
 
   document.getElementById('transactionForm').addEventListener('submit', async (e) => {
