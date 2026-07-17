@@ -61,13 +61,16 @@ function getBankNickname(bankAccountId) {
 
 function populateBankSelect(selectEl) {
   if (!selectEl) return;
-  const accounts = loadBankAccounts();
+  let accounts = loadBankAccounts();
+  if (!accounts || !Array.isArray(accounts)) {
+    accounts = [];
+  }
   if (accounts.length === 0) {
     selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
     return;
   }
   selectEl.innerHTML = accounts.map(a => 
-    `<option value="${a.id}">${a.nickname || a.bank_name}</option>`
+    `<option value="${a.id}">${a.nickname || a.bank_name || '未命名'}</option>`
   ).join('');
 }
 
@@ -473,7 +476,7 @@ async function updateGoogleButtonState() {
   }
 }
 
-function renderBankAccounts() {
+async function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
   if (!body) return;
 
@@ -486,7 +489,7 @@ function renderBankAccounts() {
   }
 
   try {
-    let accounts = loadBankAccounts();
+    let accounts = await loadBankAccounts();  // ← 改成 await
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => `
@@ -503,7 +506,7 @@ function renderBankAccounts() {
     populateBankSelect(document.getElementById('vBankAccount'));
   } catch (e) {
     console.error(e);
-    body.innerHTML = '<tr><td colspan="5" class="muted">載入銀行帳戶失敗</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="muted">載入失敗，請檢查 Supabase</td></tr>';
   }
 }
 
