@@ -179,32 +179,52 @@ function renderBusinessData() {
   `;
 }
 
+// === Dashboard 專案過濾版 ===
 function renderDashboard() {
+  const userRole = state.currentUser?.role;
   let txs = state.transactions || [];
-  
-  // 專案過濾
-  if (state.currentProjectId && state.currentProjectId !== 'all') {
-    txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+
+  // 權限過濾
+  if (['accounting', 'admin'].includes(userRole)) {
+    // 可看全公司或指定專案
+    if (state.currentProjectId && state.currentProjectId !== 'all') {
+      txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+    }
+  } else {
+    // 一般員工/主管只能看自己專案
+    const userProjectId = state.currentUser?.project_id || state.currentProjectId;
+    if (userProjectId) {
+      txs = txs.filter(tx => tx.project_id === userProjectId);
+    } else {
+      txs = []; // 無專案則顯示空
+    }
   }
 
   const summary = summarizeTransactions(txs);
-  
-  setText('#countValue', txs.length);
-  setText('#incomeValue', summary.revenue.toLocaleString());
-  setText('#expenseValue', summary.expense.toLocaleString());
-  setText('#profitValue', summary.netProfit.toLocaleString());
+
+  // 顯示總計（只有財務角色顯示完整數字）
+  if (['accounting', 'admin'].includes(userRole)) {
+    setText('#countValue', txs.length);
+    setText('#incomeValue', summary.revenue.toLocaleString());
+    setText('#expenseValue', summary.expense.toLocaleString());
+    setText('#profitValue', summary.netProfit.toLocaleString());
+  } else {
+    setText('#countValue', txs.length);
+    setText('#incomeValue', '—');
+    setText('#expenseValue', '—');
+    setText('#profitValue', summary.netProfit.toLocaleString()); // 只顯示淨利
+  }
 
   const body = document.getElementById('dashboardTableBody');
   if (!body) return;
-  
   body.innerHTML = '';
+
   const recent = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
-  
   if (!recent.length) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無交易資料。</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無專案交易資料。</td></tr>';
     return;
   }
-  
+
   recent.forEach(tx => {
     const row = document.createElement('tr');
     row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}</td><td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>`;
