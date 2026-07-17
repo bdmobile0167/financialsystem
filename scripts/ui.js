@@ -180,27 +180,40 @@ function renderBusinessData() {
 }
 
 function renderDashboard() {
-  let txs = state.transactions;
+  let txs = state.transactions || [];
   
   // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
     txs = txs.filter(tx => tx.project_id === state.currentProjectId);
   }
 
-  const { revenue, expense, netProfit } = summarizeTransactions(txs);
+  const summary = summarizeTransactions(txs);
   
   setText('#countValue', txs.length);
-  setText('#incomeValue', revenue.toLocaleString());
-  setText('#expenseValue', expense.toLocaleString());
-  setText('#profitValue', netProfit.toLocaleString());
+  setText('#incomeValue', summary.revenue.toLocaleString());
+  setText('#expenseValue', summary.expense.toLocaleString());
+  setText('#profitValue', summary.netProfit.toLocaleString());
 
-  // 最新交易也只顯示該專案
   const body = document.getElementById('dashboardTableBody');
-  // ... 後續渲染使用 txs 而非 state.transactions
+  if (!body) return;
+  
+  body.innerHTML = '';
+  const recent = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+  
+  if (!recent.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無交易資料。</td></tr>';
+    return;
+  }
+  
+  recent.forEach(tx => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}</td><td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>`;
+    body.appendChild(row);
+  });
 }
 
 function renderTransactionTable() {
-  let txs = state.transactions;
+  let txs = state.transactions || [];
   
   // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
@@ -208,20 +221,19 @@ function renderTransactionTable() {
   }
 
   const body = document.getElementById('transactionTableBody');
+  if (!body) return;
+  
   body.innerHTML = '';
-  if (!state.transactions.length) {
+  if (!txs.length) {
     body.innerHTML = '<tr><td colspan="8" class="muted">目前尚無交易資料。</td></tr>';
     return;
   }
-  state.transactions.forEach((tx, index) => {
+  
+  txs.forEach((tx, index) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}${tx.attachmentId ? ` <button class="secondary view-attachment-btn" data-attachment="${tx.attachmentId}">📎</button>` : ''}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
+    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
     body.appendChild(row);
   });
-
-  // 最新交易也只顯示該專案
-  const body = document.getElementById('dashboardTableBody');
-  // ... 後續渲染使用 txs 而非 state.transactions
 }
 
 function getReportPeriodTransactions() {
@@ -263,11 +275,11 @@ function renderReportSignature(elementId) {
 }
 
 function renderReports() {
-  let txs = state.transactions;
+  let periodTx = getReportPeriodTransactions();
   
   // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
-    txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+    periodTx = periodTx.filter(tx => tx.project_id === state.currentProjectId);
   }
 
   const periodTx = getReportPeriodTransactions();
