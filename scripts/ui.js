@@ -282,8 +282,6 @@ function renderReports() {
     periodTx = periodTx.filter(tx => tx.project_id === state.currentProjectId);
   }
 
-  const periodTx = getReportPeriodTransactions();
-
   renderReportLetterhead('incomeLetterhead', '損益表');
   renderTable('incomeTable', buildIncomeStatement(periodTx));
   renderReportSignature('incomeSignature');
