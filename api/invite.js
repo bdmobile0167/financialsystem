@@ -33,14 +33,17 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const { email, fullName, role = 'employee', department = '' } = req.body || {};
+    const { email, fullName, role = 'employee', departmentId = null, password } = req.body || {};
     if (!email || !fullName) {
       res.status(400).json({ ok: false, message: '請提供 email 與姓名。' });
       return;
     }
 
+    const finalPassword = (password && password.trim()) ? password.trim() : DEFAULT_PASSWORD;
     const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email, password: DEFAULT_PASSWORD, email_confirm: true, user_metadata: { full_name: fullName }
+      email,
+      password: finalPassword,
+      email_confirm: true
     });
     if (createError) {
       res.status(400).json({ ok: false, message: `建立帳號失敗：${createError.message}` });
@@ -48,14 +51,20 @@ module.exports = async (req, res) => {
     }
 
     const { error: profileError } = await supabaseAdmin.from('profiles').insert({
-      id: createdUser.user.id, email, full_name: fullName, role, department, must_change_password: true
+      id: createdUser.user.id,
+      email,
+      full_name: fullName,
+      role,
+      department_id: departmentId,
+      active: true,
+      must_change_password: true
     });
     if (profileError) {
       res.status(400).json({ ok: false, message: `寫入使用者資料失敗：${profileError.message}` });
       return;
     }
 
-    res.status(200).json({ ok: true, message: `已建立帳號：${email}`, credentials: { email, tempPassword: DEFAULT_PASSWORD } });
+    res.status(200).json({ ok: true, message: `已建立帳號：${email}`, credentials: { email, tempPassword: finalPassword } });
   } catch (error) {
     res.status(500).json({ ok: false, message: `伺服器發生錯誤：${error.message}` });
   }

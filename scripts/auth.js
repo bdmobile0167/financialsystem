@@ -47,6 +47,10 @@ export async function getCurrentSessionUser() {
     .single();
 
   if (!profile) return null;
+  if (profile.active === false) {
+    await supabase.auth.signOut();
+    return { blocked: true };
+  }
 
   return {
     id: sessionData.session.user.id,
@@ -67,6 +71,10 @@ export async function signInWithSupabase(email, password) {
   const user = await getCurrentSessionUser();
   if (!user) {
     return { ok: false, message: '登入成功但找不到使用者資料，請聯絡管理員。' };
+    return { ok: false, message: '登入成功但找不到使用者資料，請聯絡管理員。' };
+  }
+  if (user.blocked) {
+    return { ok: false, message: '這個帳號已被停用，請聯絡管理員。' };
   }
   return { ok: true, user };
 }

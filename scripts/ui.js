@@ -8,6 +8,40 @@ import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } f
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
+import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
+
+const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
+
+async function populateInviteDepartmentSelect() {
+  const select = document.getElementById('inviteDepartment');
+  if (!select) return;
+  const departments = await fetchDepartments();
+  select.innerHTML = departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+}
+
+async function renderAdminUserTable() {
+  const body = document.getElementById('adminUserTableBody');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="6" class="muted">載入中…</td></tr>';
+  try {
+    const users = await fetchAllUsers();
+    body.innerHTML = users.map(u => `
+      <tr>
+        <td>${u.email}</td>
+        <td>${u.full_name || '-'}</td>
+        <td>
+          <select class="role-select" data-id="${u.id}">
+            ${Object.entries(ROLE_LABELS).map(([val, label]) => `<option value="${val}" ${u.role === val ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </td>
+        <td>${u.department?.name || '未設定'}</td>
+        <td>${u.active === false ? '<span class="badge wait">已停用</span>' : '<span class="badge">啟用中</span>'}</td>
+        <td><button class="secondary toggle-active-btn" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? '啟用' : '停用'}</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">尚無使用者資料。</td></tr>';
+  } catch (error) {
+    body.innerHTML = `<tr><td colspan="6" class="muted">載入失敗：${error.message}</td></tr>`;
+  }
+}
 
 const STATUS_LABELS = {
   pending_review: '待主管審核',
@@ -46,6 +80,11 @@ function showMessage(text, isError = false) {
 }
 
 function render() {
+  function updateAdminNavVisibility() {
+    const btn = document.getElementById('adminUsersNavBtn');
+    if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
+  }
+
   const passwordEmail = document.getElementById('passwordUserEmail');
   if (state.currentUser) {
     setText('#welcomeText', `歡迎，${state.currentUser.name}`);
@@ -56,6 +95,7 @@ function render() {
   document.getElementById('systemName').value = state.systemName;
   document.title = `${state.systemName} | Netlify Demo`;
 
+  updateAdminNavVisibility();
   renderDashboard();
   renderTransactionTable();
   renderReports();
@@ -539,6 +579,10 @@ function initializeEvents() {
         populateVoucherFormOptions();
         renderVoucherWorkflowList();
       }
+      if (btn.dataset.tab === 'adminUsers') {
+        populateInviteDepartmentSelect();
+        renderAdminUserTable();
+      }
     });
   });
 
@@ -697,74 +741,82 @@ function initializeEvents() {
     showMessage(`${email} 已核准。`);
   });
 
-  document.getElementById('exportBtn').addEventListener('click', () => {
-    const data = JSON.stringify({
-      transactions: state.transactions,
-      companyInfo: state.companyInfo,
-      businessItems: state.businessItems,
-      directorShareholders: state.directorShareholders,
-      structureSettings: state.structureSettings,
-      optionList: state.optionList,
-      standardizedSettings: state.standardizedSettings
-    }, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'finance_data_export.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    showMessage('已匯出交易與公司資料 JSON。');
+  document.getElementById('inviteUserForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resultBox = document.getElementById('inviteResultBox');
+    try {
+      const result = await inviteNewUser({
+        email: document.getElementById('inviteEmail').value.trim(),
+        fullName: document.getElementById('inviteFullName').value.trim(),
+        role: document.getElementById('inviteRole').value,
+        departmentId: document.getElementById('inviteDepartment').value,
+        password: document.getElementById('invitePassword').value.trim()
+      });
+      resultBox.style.display = 'block';
+      resultBox.className = 'message success';
+      resultBox.textContent = `帳號已建立：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（請自行告知使用者）`;
+      e.target.reset();
+      renderAdminUserTable();
+    } catch (error) {
+      resultBox.style.display = 'block';
+      resultBox.className = 'message error';
+      resultBox.textContent = `開通失敗：${error.message}`;
+    }
   });
 
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await signOutSupabase();
-    localStorage.removeItem('finance_netlify_user');
-    state.currentUser = null;
-    document.getElementById('loginView').style.display = 'grid';
-    document.getElementById('appView').classList.remove('active');
-    document.getElementById('reportPeriodStart')?.addEventListener('change', renderReports);
-    document.getElementById('reportPeriodEnd')?.addEventListener('change', renderReports);
-    document.getElementById('printReportBtn')?.addEventListener('click', () => {
-      state.activeTab = 'reports';
-      renderTabs();
-      window.print();
-    });
-    document.getElementById('exportExcelBtn')?.addEventListener('click', () => {
-      exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
-    });
-});
-}   // ← 新增這一行，補上 initializeEvents() 函式的結尾
+  document.getElementById('adminUserTableBody')?.addEventListener('change', async (e) => {
+    const select = e.target.closest('.role-select');
+    if (!select) return;
+    try {
+      await updateUserProfile(select.dataset.id, { role: select.value });
+      showMessage('角色已更新。');
+    } catch (error) {
+      showMessage(`更新失敗：${error.message}`, true);
+    }
+  });
 
-document.getElementById('voucherCreateForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  try {
-    await createVoucher({
-      txDate: document.getElementById('vDate').value,
-      category: document.getElementById('vCategory').value,
-      summary: document.getElementById('vSummary').value.trim(),
-      departmentId: document.getElementById('vDepartment').value,
-      line: {
-        description: document.getElementById('vSummary').value.trim(),
-        accountCode: document.getElementById('vAccountCode').value,
-        amount: Number(document.getElementById('vAmount').value)
-      },
-      invoice: {
-        type: document.getElementById('vInvoiceType').value,
-        number: document.getElementById('vInvoiceNumber').value.trim()
-      },
-      payment: {
-        type: document.getElementById('vPaymentType').value,
-        bankAccountId: document.getElementById('vBankAccount').value || null
-      }
-    });
-    e.target.reset();
-    showMessage('報支申請已送出，等待主管審核。');
-    renderVoucherWorkflowList();
-  } catch (error) {
-    showMessage(`送出失敗：${error.message}`, true);
-  }
-});
+  document.getElementById('adminUserTableBody')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.toggle-active-btn');
+    if (!btn) return;
+    const isActive = btn.dataset.active === 'true';
+    try {
+      await toggleUserActive(btn.dataset.id, !isActive);
+      showMessage(isActive ? '帳號已停用。' : '帳號已啟用。');
+      renderAdminUserTable();
+    } catch (error) {
+      showMessage(`操作失敗：${error.message}`, true);
+    }
+  });
+
+    document.getElementById('voucherCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await createVoucher({
+        txDate: document.getElementById('vDate').value,
+        category: document.getElementById('vCategory').value,
+        summary: document.getElementById('vSummary').value.trim(),
+        departmentId: document.getElementById('vDepartment').value,
+        line: {
+          description: document.getElementById('vSummary').value.trim(),
+          accountCode: document.getElementById('vAccountCode').value,
+          amount: Number(document.getElementById('vAmount').value)
+        },
+        invoice: {
+          type: document.getElementById('vInvoiceType').value,
+          number: document.getElementById('vInvoiceNumber').value.trim()
+        },
+        payment: {
+          type: document.getElementById('vPaymentType').value,
+          bankAccountId: document.getElementById('vBankAccount').value || null
+        }
+      });
+      e.target.reset();
+      showMessage('報支申請已送出，等待主管審核。');
+      renderVoucherWorkflowList();
+    } catch (error) {
+      showMessage(`送出失敗：${error.message}`, true);
+    }
+  });
 
   document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
     const approveBtn = e.target.closest('.approve-voucher-btn');
@@ -822,6 +874,45 @@ document.getElementById('voucherCreateForm')?.addEventListener('submit', async (
       }
     }
   });
+  
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const data = JSON.stringify({
+      transactions: state.transactions,
+      companyInfo: state.companyInfo,
+      businessItems: state.businessItems,
+      directorShareholders: state.directorShareholders,
+      structureSettings: state.structureSettings,
+      optionList: state.optionList,
+      standardizedSettings: state.standardizedSettings
+    }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'finance_data_export.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage('已匯出交易與公司資料 JSON。');
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await signOutSupabase();
+    localStorage.removeItem('finance_netlify_user');
+    state.currentUser = null;
+    document.getElementById('loginView').style.display = 'grid';
+    document.getElementById('appView').classList.remove('active');
+    document.getElementById('reportPeriodStart')?.addEventListener('change', renderReports);
+    document.getElementById('reportPeriodEnd')?.addEventListener('change', renderReports);
+    document.getElementById('printReportBtn')?.addEventListener('click', () => {
+      state.activeTab = 'reports';
+      renderTabs();
+      window.print();
+    });
+    document.getElementById('exportExcelBtn')?.addEventListener('click', () => {
+      exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
+    });
+});
+}   // ← 新增這一行，補上 initializeEvents() 函式的結尾
 
 async function initialize() {
     loadState(state);

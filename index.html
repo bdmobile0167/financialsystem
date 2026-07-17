@@ -69,6 +69,7 @@
           <div class="nav-group">
             <div class="nav-group-title">系統</div>
             <button class="tab-btn" data-tab="settings">設定</button>
+            <button class="tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
           </div>
         </nav>
         <div class="sidebar-footer">
@@ -381,6 +382,40 @@
               </thead>
               <tbody id="journalTableBody"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="adminUsers" class="tab-panel" style="display:none;">
+          <div class="grid grid-2">
+            <div class="panel">
+              <h3>開通新帳號</h3>
+              <form id="inviteUserForm">
+                <label>Email</label>
+                <input type="email" id="inviteEmail" required />
+                <label>姓名</label>
+                <input type="text" id="inviteFullName" required />
+                <label>角色</label>
+                <select id="inviteRole">
+                  <option value="employee">一般專員</option>
+                  <option value="manager">部門主管</option>
+                  <option value="accounting">會計部門</option>
+                  <option value="admin">管理員</option>
+                </select>
+                <label>部門</label>
+                <select id="inviteDepartment"></select>
+                <label>初始密碼（留空使用系統預設）</label>
+                <input type="text" id="invitePassword" placeholder="留空則自動使用 Bd@1234" />
+                <button type="submit" class="primary-btn" style="margin-top:10px;">開通帳號</button>
+              </form>
+              <div id="inviteResultBox" class="message" style="display:none; margin-top:10px;"></div>
+            </div>
+            <div class="panel">
+              <h3>所有使用者</h3>
+              <table>
+                <thead><tr><th>Email</th><th>姓名</th><th>角色</th><th>部門</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody id="adminUserTableBody"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
