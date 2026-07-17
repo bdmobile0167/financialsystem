@@ -96,9 +96,17 @@ export async function managerApprove(voucher) {
   await logWorkflow(voucher.id, 'approve', voucher.status, 'pending_accounting');
 }
 
+// 主管退件 → 直接退回申請人
 export async function managerReject(voucher, reason) {
-  const { error } = await supabase.from('vouchers').update({ status: 'manager_rejected', updated_at: new Date().toISOString() }).eq('id', voucher.id);
+  const { error } = await supabase
+    .from('vouchers')
+    .update({ 
+      status: 'manager_rejected', 
+      updated_at: new Date().toISOString() 
+    })
+    .eq('id', voucher.id);
   if (error) throw error;
+
   await logWorkflow(voucher.id, 'reject', voucher.status, 'manager_rejected', reason);
 }
 
@@ -108,9 +116,17 @@ export async function accountingApprove(voucher) {
   await logWorkflow(voucher.id, 'approve', voucher.status, 'approved');
 }
 
+// 會計退件 → 直接退回申請人（跳過主管）
 export async function accountingReject(voucher, reason) {
-  const { error } = await supabase.from('vouchers').update({ status: 'accounting_rejected', updated_at: new Date().toISOString() }).eq('id', voucher.id);
+  const { error } = await supabase
+    .from('vouchers')
+    .update({ 
+      status: 'accounting_rejected', 
+      updated_at: new Date().toISOString() 
+    })
+    .eq('id', voucher.id);
   if (error) throw error;
+
   await logWorkflow(voucher.id, 'reject', voucher.status, 'accounting_rejected', reason);
 }
 

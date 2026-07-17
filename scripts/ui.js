@@ -873,9 +873,11 @@ function initializeEvents() {
     }
   });
 
-    document.getElementById('voucherCreateForm')?.addEventListener('submit', async (e) => {
+  document.getElementById('voucherCreateForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
+      const projectId = document.getElementById('vProject')?.value; // 假設你有這個 select
+
       await createVoucher({
         txDate: document.getElementById('vDate').value,
         category: document.getElementById('vCategory').value,
@@ -893,26 +895,23 @@ function initializeEvents() {
         payment: {
           type: document.getElementById('vPaymentType').value,
           bankAccountId: document.getElementById('vBankAccount').value || null
-        }
+        },
+        projectId: projectId || null
       });
-      if (invoice.type === '發票' && !invoice.number) {
-        showMessage('發票必須填寫發票號碼', true);
-        return;
-      }
-      async function deductProjectBudget(projectId, amount) {
-        const { error } = await supabase.rpc('deduct_project_budget', { 
-          p_id: projectId, 
-          p_amount: amount 
-        });
-        if (error) throw error;
-      }
-      e.target.reset();
-      showMessage('報支申請已送出，等待主管審核。');
-      renderVoucherWorkflowList();
-    } catch (error) {
-      showMessage(`送出失敗：${error.message}`, true);
+    if (projectId) {
+      await supabase.rpc('deduct_project_budget', { 
+        p_id: projectId, 
+        p_amount: Number(document.getElementById('vAmount').value) 
+      });
     }
-  });
+
+    showMessage('報支申請已送出，並已扣除專案預算。');
+    e.target.reset();
+    renderVoucherWorkflowList();
+  } catch (error) {
+    showMessage(`送出失敗：${error.message}`, true);
+  }
+});
 
   document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
     const approveBtn = e.target.closest('.approve-voucher-btn');
@@ -1122,23 +1121,23 @@ async function renderVoucherWorkflowList() {
 // === 專案相關 ===
 async function loadAndRenderProjects() {
   try {
-    const projects = await fetchProjects(); // 需實作 fetchProjects
+    const projects = await fetchProjects();
     const select = document.getElementById('globalProjectSelect');
     if (!select) return;
 
-    let html = '<option value="all">全公司總覽</option>';
+    let html = '';
+    const userRole = state.currentUser?.role;
+
+    if (['accounting', 'admin'].includes(userRole)) {
+      html = '<option value="all">全公司總覽</option>';
+    }
+
     projects.forEach(p => {
       html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
     });
-    select.innerHTML = html;
 
-    // 預設全公司
+    select.innerHTML = html;
     state.currentProjectId = 'all';
-    
-    select.addEventListener('change', () => {
-      state.currentProjectId = select.value;
-      render(); // 重新渲染整個 dashboard
-    });
   } catch (e) {
     console.error(e);
   }
@@ -1148,3 +1147,18 @@ async function fetchProjects() {
   const { data } = await supabase.from('projects').select('*').order('project_code');
   return data || [];
 }
+
+async function loadDepartments() {
+  const { data } = await supabase.from('departments').select('*');
+  return data;
+}
+
+document.getElementById('departmentForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!['admin'].includes(state.currentUser?.role)) return;
+
+  const name = document.getElementById('newDepartmentName').value.trim();
+  await supabase.from('departments').insert([{ name }]);
+  showMessage('部門已新增');
+  renderAdminDepartmentList();
+});
