@@ -122,6 +122,7 @@ function render() {
   renderTabs();
   populateProjectDepartmentSelect();
   renderProjectList();
+  loadAndRenderProjects();
 }
 
 function renderCompanyData() {
