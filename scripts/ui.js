@@ -498,7 +498,10 @@ async function renderBankAccounts() {
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
           <td>${(balance || 0).toLocaleString()}</td>
-          <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
+          <td>
+            <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
+            <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>
+          </td>
         </tr>
       `;
     }).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
@@ -669,6 +672,24 @@ function initializeEvents() {
     });
   });
 
+  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.delete-bank-btn');
+    if (deleteBtn) {
+      if (confirm('確定刪除此銀行帳戶？')) {
+        await deleteBankAccount(deleteBtn.dataset.id);
+        renderBankAccounts();
+        showMessage('銀行帳戶已刪除。');
+      }
+      return;
+    }
+
+    const editBtn = e.target.closest('.edit-bank-btn');
+    if (editBtn) {
+      // 簡單 alert 示範，之後可擴充表單
+      alert('編輯功能開發中（可自行擴充表單）');
+    }
+  });
+
   safeListener('forcePasswordForm', 'submit', async (e) => { /* 原有 forcePasswordForm 邏輯 */ });
   safeListener('loginForm', 'submit', async (e) => { /* 原有 loginForm 邏輯 */ });
   safeListener('companyInfoForm', 'submit', (e) => { /* 原有 companyInfoForm 邏輯 */ });
@@ -695,6 +716,19 @@ function initializeEvents() {
     } catch (err) {
       showMessage('新增失敗：' + err.message, true);
     }
+  });
+
+  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.delete-bank-btn');
+    if (deleteBtn) {
+      if (confirm('確定刪除此銀行帳戶？')) {
+        await deleteBankAccount(deleteBtn.dataset.id);
+        renderBankAccounts();
+        showMessage('銀行帳戶已刪除。');
+      }
+      return;
+    }
+    // 編輯按鈕可後續擴充
   });
 
   // 其他重要 listener

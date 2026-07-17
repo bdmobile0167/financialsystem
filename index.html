@@ -295,6 +295,18 @@
         <section id="budget" class="tab-panel" style="display:none;">
           <div class="grid grid-2">
             <div class="panel">
+              <h3>專案管理</h3>
+              <form id="projectForm">
+                 <input type="text" id="projectName" placeholder="專案名稱" required />
+                 <input type="date" id="projectStart" />
+                 <input type="date" id="projectEnd" />
+                 <input type="number" id="projectTotalBudget" placeholder="總預算" required />
+                 <select id="projectDepartment"></select>
+                 <button type="submit">建立專案</button>
+              </form>
+              <div id="projectList"></div>
+            </div>
+            <div class="panel">
                 <label>月份</label>
                 <input type="month" id="budgetPeriod" required />
                 <label>會計科目</label>
@@ -431,18 +443,6 @@
                 <button type="submit">新增部門</button>
               </form>
               <div id="departmentList"></div>
-              <div class="panel">
-                <h3>專案管理</h3>
-                <form id="projectForm">
-                  <input type="text" id="projectName" placeholder="專案名稱" required />
-                  <input type="date" id="projectStart" />
-                  <input type="date" id="projectEnd" />
-                  <input type="number" id="projectTotalBudget" placeholder="總預算" required />
-                  <select id="projectDepartment"></select>
-                  <button type="submit">建立專案</button>
-                </form>
-                <div id="projectList"></div>
-              </div>
             </div>
           </div>
         </section>
