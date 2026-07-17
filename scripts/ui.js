@@ -39,10 +39,10 @@ async function renderAdminUserTable() {
           </select>
         </td>
         <td>
-          <!-- 變更為下拉選單，以修改使用者部門 -->
-          <select class="dept-select" onchange="updateUserProfile('${u.id}', 'department', this.value)">
+          <!-- 修正：將傳入欄位與預設選取判定，皆改為符合資料庫的 department_id -->
+          <select class="dept-select" onchange="updateUserProfile('${u.id}', 'department_id', this.value)">
             <option value="">未設定</option>
-            ${depts.map(d => `<option value="${d.id}" ${u.department === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+            ${depts.map(d => `<option value="${d.id}" ${u.department_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
           </select>
         </td>
         <td>${u.active === false ? '<span class="badge wait">已停用</span>' : '<span class="badge">啟用中</span>'}</td>
@@ -695,8 +695,50 @@ function initializeEvents() {
 
     const editBtn = e.target.closest('.edit-bank-btn');
     if (editBtn) {
-      // 簡單 alert 示範，之後可擴充表單
-      alert('編輯功能開發中（可自行擴充表單）');
+      const accountId = editBtn.dataset.id;
+      try {
+        // 1. 線上即時讀取該帳戶目前的最新舊資料
+        const { data: acc, error: fetchError } = await supabase
+          .from('bank_accounts')
+          .select('*')
+          .eq('id', accountId)
+          .single();
+
+        if (fetchError || !acc) throw new Error('無法讀取該帳戶資料');
+
+        // 2. 快顯輸入框讓管理員直接修改
+        const newBankName = prompt('請輸入新的銀行名稱:', acc.bank_name);
+        if (newBankName === null) return; // 使用者按取消就中斷操作
+        
+        const newAccNumber = prompt('請輸入新的帳戶號碼:', acc.account_number);
+        if (newAccNumber === null) return;
+
+        const newNickname = prompt('請輸入新的帳戶暱稱:', acc.nickname || '');
+        if (newNickname === null) return;
+
+        if (!newBankName.trim() || !newAccNumber.trim()) {
+          alert('銀行名稱與帳號不可為空白！');
+          return;
+        }
+
+        // 3. 更新回資料庫 public.bank_accounts
+        const { error: updateError } = await supabase
+          .from('bank_accounts')
+          .update({
+            bank_name: newBankName.trim(),
+            account_number: newAccNumber.trim(),
+            nickname: newNickname.trim() || null
+          })
+          .eq('id', accountId);
+
+        if (updateError) throw updateError;
+
+        // 4. 更新前端畫面
+        renderBankAccounts();
+        showMessage('銀行帳戶資料已更新成功。');
+      } catch (err) {
+        alert(`編輯失敗：${err.message}`);
+      }
     }
   });
 
@@ -752,47 +794,114 @@ function initializeEvents() {
   });
 
   safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
-  safeListener('voucherCreateForm', 'submit', async (e) => {
-    e.preventDefault();
-    try {
-      const projectId = document.getElementById('vProject')?.value;
+  // 確保只在表單存在時才綁定事件
+  const voucherForm = document.getElementById('voucherCreateForm');
+  if (voucherForm) {
+    voucherForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // 防止重複點擊
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
 
-      // 修正：拔除不存在的 DOM ID，改用預設值或從 HTML 確實存在的欄位取值
-      await createVoucher({
-        txDate: document.getElementById('vDate').value,
-        category: '營業', // 預設值
-        summary: document.getElementById('vSummary').value.trim(),
-        departmentId: document.getElementById('vProject').value || null, 
-        line: {
-          description: document.getElementById('vSummary').value.trim(),
-          accountCode: '6100', // 預設費用科目，或將 vAccountCode 加回 HTML
-          amount: Number(document.getElementById('vAmount').value)
-        },
-        invoice: {
-          type: document.getElementById('vInvoiceType').value,
-          number: document.getElementById('vInvoiceNumber').value.trim()
-        },
-        payment: {
-          type: '現金', // 預設值
-          bankAccountId: null
-        },
-        projectId: projectId || null
-      });
+      try {
+        // 1. 取得畫面上確實存在的欄位值
+        const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
+        const projectId = document.getElementById('vProject')?.value || null;
+        const summary = document.getElementById('vSummary')?.value?.trim() || '';
+        const amount = Number(document.getElementById('vAmount')?.value || 0);
+        const invoiceType = document.getElementById('vInvoiceType')?.value || '無';
+        const invoiceNumber = document.getElementById('vInvoiceNumber')?.value?.trim() || '';
 
-      if (projectId) {
-        await supabase.rpc('deduct_project_budget', { 
-          p_id: projectId, 
-          p_amount: Number(document.getElementById('vAmount').value) 
-        });
+        if (!summary || amount <= 0) {
+          throw new Error('請填寫完整摘要說明與正確金額！');
+        }
+
+        // 取得當前專案的部門 ID (如果選了專案)
+        let deptId = null;
+        if (projectId && projectId !== 'all') {
+          const { data: projData } = await supabase
+            .from('projects')
+            .select('department_id')
+            .eq('id', projectId)
+            .single();
+          if (projData) deptId = projData.department_id;
+        }
+
+        // 產生唯一報支單號 (VCH + 時間戳記)
+        const voucherNo = 'VCH-' + Date.now();
+
+        // 2. 寫入主表 public.vouchers
+        const { data: voucher, error: vError } = await supabase
+          .from('vouchers')
+          .insert([{
+            voucher_no: voucherNo,
+            department_id: deptId,
+            project_id: projectId === 'all' ? null : projectId,
+            applicant_id: state.currentUser?.id,
+            tx_date: txDate,
+            category: '營業', // 預設歸類為營業費用
+            summary: summary,
+            total_amount: amount,
+            status: 'pending_review'
+          }])
+          .select()
+          .single();
+
+        if (vError) throw vError;
+
+        // 3. 寫入明細表 public.voucher_lines
+        const { error: lineError } = await supabase
+          .from('voucher_lines')
+          .insert([{
+            voucher_id: voucher.id,
+            description: summary,
+            account_code: '6100', // 預設管理費用科目碼
+            amount: amount
+          }]);
+
+        if (lineError) throw lineError;
+
+        // 4. 寫入發票憑證 public.invoices
+        if (invoiceType !== '無') {
+          const { error: invError } = await supabase
+            .from('invoices')
+            .insert([{
+              voucher_id: voucher.id,
+              invoice_type: invoiceType,
+              invoice_number: invoiceNumber,
+              amount: amount,
+              tax_amount: 0
+            }]);
+          if (invError) throw invError;
+        }
+
+        // 5. 若有扣專案預算需求，觸發預算扣減 (RPC 或 直接 Update)
+        if (projectId && projectId !== 'all') {
+          // 先讀取剩餘預算
+          const { data: pData } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
+          if (pData) {
+            const newRemaining = Number(pData.remaining_budget) - amount;
+            await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', projectId);
+          }
+        }
+
+        alert('報支申請已成功送出！');
+        e.target.reset();
+        
+        // 重新渲染列表，避免全面重整導致死循環
+        if (typeof renderVoucherWorkflowList === 'function') {
+          renderVoucherWorkflowList();
+        }
+
+      } catch (error) {
+        console.error(error);
+        alert(`送出失敗：${error.message || error.details}`);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
-
-      showMessage('報支申請已送出，並已扣除專案預算。');
-      e.target.reset();
-      renderVoucherWorkflowList();
-    } catch (error) {
-      showMessage(`送出失敗：${error.message}`, true);
-    }
-  });
+    });
+  }
   // 新增的專案與部門
   safeListener('projectForm', 'submit', async (e) => {
     e.preventDefault();

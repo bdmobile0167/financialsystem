@@ -57,7 +57,7 @@ export async function getCurrentSessionUser() {
     username: profile.email,
     name: profile.full_name,
     role: profile.role,
-    department: profile.department_id,
+    department_id: profile.department_id, // 修正：將 key 名稱改為 department_id
     mustChangePassword: profile.must_change_password
   };
 }
