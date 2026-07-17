@@ -1023,23 +1023,44 @@ async function loadAndRenderProjects() {
     let html = '';
     const userRole = state.currentUser?.role;
 
+    // 1. 只有 accounting 和 admin 才能看到「全公司總覽」
     if (['accounting', 'admin'].includes(userRole)) {
       html = '<option value="all">全公司總覽</option>';
     }
 
+    // 2. 渲染過濾後的專案列表
     projects.forEach(p => {
       html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
     });
-    
-    select.addEventListener('change', () => {
-      state.currentProjectId = select.value;
-      render(); // 重新 render dashboard + 其他
-    });
-    
+
     select.innerHTML = html;
-    state.currentProjectId = 'all';
+
+    // 3. 安全地設定預設的 currentProjectId
+    if (['accounting', 'admin'].includes(userRole)) {
+      // 財務或管理員，預設載入「全公司」
+      state.currentProjectId = 'all';
+      select.value = 'all';
+    } else if (projects.length > 0) {
+      // 員工或經理，預設選取他們權限內的第一個專案
+      state.currentProjectId = projects[0].id;
+      select.value = projects[0].id;
+    } else {
+      // 如果該部門沒有任何專案
+      state.currentProjectId = null;
+      select.value = '';
+    }
+
+    // 4. 綁定事件監聽器（注意：先移除舊的監聽器避免重複綁定）
+    select.replaceWith(select.cloneNode(true)); 
+    const newSelect = document.getElementById('globalProjectSelect');
+    
+    newSelect.addEventListener('change', () => {
+      state.currentProjectId = newSelect.value;
+      render(); // 重新 render dashboard 與其他元件
+    });
+
   } catch (e) {
-    console.error(e);
+    console.error('載入專案失敗:', e);
   }
 }
 
