@@ -1,4 +1,5 @@
-﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+﻿import { supabase } from './supabaseClient.js';
+import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
@@ -54,22 +55,18 @@ const STATUS_LABELS = {
 
 const state = { ...defaultState };
 
-function getBankNickname(bankAccountId) {
-  const account = loadBankAccounts().find(a => a.id === bankAccountId);
+function getBankNickname(bankAccountId, accounts = []) {
+  const account = accounts.find(a => a.id === bankAccountId);
   return account ? account.nickname : '未設定';
 }
 
-function populateBankSelect(selectEl) {
+function populateBankSelect(selectEl, accounts = []) {
   if (!selectEl) return;
-  let accounts = loadBankAccounts();
-  if (!accounts || !Array.isArray(accounts)) {
-    accounts = [];
-  }
-  if (accounts.length === 0) {
+  if (!accounts.length) {
     selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
     return;
   }
-  selectEl.innerHTML = accounts.map(a => 
+  selectEl.innerHTML = accounts.map(a =>
     `<option value="${a.id}">${a.nickname || a.bank_name || '未命名'}</option>`
   ).join('');
 }
@@ -659,6 +656,7 @@ function initializeEvents() {
       if (btn.dataset.tab === 'adminUsers') {
         populateInviteDepartmentSelect();
         renderAdminUserTable();
+        renderAdminDepartmentList();
       }
       if (btn.dataset.tab === 'transactions' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('交易管理僅限會計部門使用', true);
@@ -709,8 +707,50 @@ function initializeEvents() {
   safeListener('voucherCreateForm', 'submit', async (e) => { /* 原有 voucherCreateForm */ });
 
   // 新增的專案與部門
-  safeListener('projectForm', 'submit', async (e) => { /* 專案 form 邏輯 */ });
-  safeListener('departmentForm', 'submit', async (e) => { /* 部門 form 邏輯 */ });
+  safeListener('projectForm', 'submit', async (e) => {
+    e.preventDefault();
+    if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+      showMessage('僅會計部門與 Admin 可建立專案', true);
+      return;
+    }
+    try {
+      const totalBudget = parseFloat(document.getElementById('projectTotalBudget').value) || 0;
+      const { error } = await supabase.from('projects').insert({
+        name: document.getElementById('projectName').value.trim(),
+        start_date: document.getElementById('projectStart').value || null,
+        end_date: document.getElementById('projectEnd').value || null,
+        department_id: document.getElementById('projectDepartment').value || null,
+        total_budget: totalBudget,
+        remaining_budget: totalBudget
+      });
+      if (error) throw error;
+      showMessage('專案已建立。');
+      e.target.reset();
+      renderProjectList();
+    } catch (err) {
+      showMessage('建立專案失敗：' + err.message, true);
+    }
+  });
+
+  safeListener('departmentForm', 'submit', async (e) => {
+    e.preventDefault();
+    if (state.currentUser?.role !== 'admin') {
+      showMessage('僅 Admin 可新增部門', true);
+      return;
+    }
+    try {
+      const name = document.getElementById('newDepartmentName').value.trim();
+      const { error } = await supabase.from('departments').insert({ name });
+      if (error) throw error;
+      showMessage('部門已新增。');
+      e.target.reset();
+      renderAdminDepartmentList();
+      populateInviteDepartmentSelect();
+      populateProjectDepartmentSelect();
+    } catch (err) {
+      showMessage('新增部門失敗：' + err.message, true);
+    }
+  });
   safeListener('addVoucherLineBtn', 'click', () => {
     voucherLines.push({ description: '', accountCode: '', amount: 0 });
     renderVoucherLines();
