@@ -232,13 +232,9 @@
               <form id="voucherCreateForm">
                 <label>日期</label>
                 <input type="date" id="vDate" required />
-                <label>部門</label>
-                <select id="vDepartment" required></select>
-                <label>現金流量分類</label>
-                <select id="vCategory">
-                  <option value="營業">營業活動</option>
-                  <option value="投資">投資活動</option>
-                  <option value="融資">融資活動</option>
+                <label>專案 / 預算科目</label>
+                <select id="vProject" required>
+                  <!-- 從 Supabase fetch projects -->
                 </select>
                 <label>摘要說明</label>
                 <input type="text" id="vSummary" required />

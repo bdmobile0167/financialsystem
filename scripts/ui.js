@@ -406,14 +406,24 @@ async function updateGoogleButtonState() {
 function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
   if (!body) return;
-  const accounts = loadBankAccounts();
+
+  // 只允許 accounting / admin 看到完整列表
+  const isFinance = ['accounting', 'admin'].includes(state.currentUser?.role);
+  if (!isFinance) {
+    body.innerHTML = '<tr><td colspan="5" class="muted">僅財務部門可管理銀行帳戶</td></tr>';
+    return;
+  }
+
+  const accounts = loadBankAccounts();  // 或改用 fetchBankAccounts() 從 Supabase
   body.innerHTML = accounts.map(a => `
     <tr>
       <td>${a.bankName}</td><td>${a.accountNumber}</td><td>${a.nickname}</td>
       <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
       <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
     </tr>`).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
+
   populateBankSelect(document.getElementById('txBankAccount'));
+  populateBankSelect(document.getElementById('vBankAccount'));  // 新增這行確保報支表單也能看到
 }
 
 function renderVoucherCenter() {
@@ -535,6 +545,10 @@ function initializeEvents() {
   
   document.getElementById('bankAccountForm')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+      showMessage('僅會計部門與 Admin 可新增銀行帳戶', true);
+      return;
+    }
     addBankAccount({
       bankName: document.getElementById('bankName').value.trim(),
       accountNumber: document.getElementById('bankAccountNumber').value.trim(),
@@ -582,6 +596,10 @@ function initializeEvents() {
       if (btn.dataset.tab === 'adminUsers') {
         populateInviteDepartmentSelect();
         renderAdminUserTable();
+      }
+      if (btn.dataset.tab === 'transactions' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+        showMessage('交易管理僅限會計部門使用', true);
+        return;
       }
     });
   });
@@ -810,6 +828,10 @@ function initializeEvents() {
           bankAccountId: document.getElementById('vBankAccount').value || null
         }
       });
+      if (invoice.type === '發票' && !invoice.number) {
+        showMessage('發票必須填寫發票號碼', true);
+        return;
+      }
       e.target.reset();
       showMessage('報支申請已送出，等待主管審核。');
       renderVoucherWorkflowList();
@@ -937,6 +959,12 @@ if (document.readyState === 'loading') {
 
 async function populateVoucherFormOptions() {
   try {
+    // 對 employee 自動設定部門
+    const deptSelect = document.getElementById('vDepartment');
+    if (state.currentUser?.role === 'employee' && deptSelect) {
+      deptSelect.value = state.currentUser.department_id || ''; // 假設 user 有 department_id
+      deptSelect.disabled = true;
+    }
     const [accounts, banks, departments] = await Promise.all([fetchAccounts(), fetchBankAccounts(), fetchDepartments()]);
     const accountSelect = document.getElementById('vAccountCode');
     if (accountSelect) accountSelect.innerHTML = accounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
