@@ -198,62 +198,126 @@ function renderBusinessData() {
 }
 
 // === Dashboard 專案過濾版 ===
-function renderDashboard() {
-  // 預設顯示最近 2 年
-  if (!state.reportStartDate) {
-    const twoYearsAgo = new Date();
-    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-    // 可套用在 filter
-  }
-  const userRole = state.currentUser?.role;
-  let txs = state.transactions || [];
+async function renderDashboard() {
+  const container = document.getElementById('dashboardContainer') || document.querySelector('.main-content');
+  if (!container) return;
 
-  // 權限過濾
-  if (['accounting', 'admin'].includes(userRole)) {
-    // 可看全公司或指定專案
-    if (state.currentProjectId && state.currentProjectId !== 'all') {
-      txs = txs.filter(tx => tx.project_id === state.currentProjectId);
+  const user = state.currentUser;
+  if (!user) return;
+
+  const isPrivileged = ['admin', 'CEO', 'accountant'].includes(user.role);
+  const selectedProj = state.selectedProjectId || 'all';
+
+  try {
+    // 1. 如果選取「全公司總覽」
+    if (selectedProj === 'all') {
+      let voucherQuery = supabase.from('vouchers').select('*, profiles(full_name), departments(name)');
+      
+      // 非高階管理人員，強制只能看自己部門的單據
+      if (!isPrivileged) {
+        voucherQuery = voucherQuery.eq('department_id', user.department_id);
+      }
+
+      const { data: vchs, error } = await voucherQuery;
+      if (error) throw error;
+
+      // 計算總花費 (過濾掉已銷案 status === 'voided' 的資料)
+      const validVouchers = vchs?.filter(v => v.status !== 'voided') || [];
+      const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount), 0);
+      const txCount = vchs?.length || 0;
+
+      container.innerHTML = `
+        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
+          <h2>財務管理系統</h2>
+          <p>歡迎，${user.name || '使用者'} (${user.role})</p>
+        </div>
+        
+        <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>總申請筆數</h4><h3>${txCount} 筆</h3>
+          </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>全公司實際支出 (核銷完成)</h4><h3 style="color:#d9534f;">$${totalExpense.toLocaleString()}</h3>
+          </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>本月狀態</h4><h3>正常營運</h3>
+          </div>
+        </div>
+
+        <h3>${isPrivileged ? '公司全體實際核銷明細流水賬' : '所屬部門核銷進度'}</h3>
+        <table class="table" style="width:100%; background:#fff; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+          <thead>
+            <tr style="background:#f8f9fa;">
+              <th>單號</th><th>申請人</th><th>部門</th><th>摘要說明</th><th>金額</th><th>狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${vchs?.map(v => `
+              <tr>
+                <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no}</a></td>
+                <td>${v.profiles?.full_name || '系統'}</td>
+                <td>${v.departments?.name || '跨部門/未分類'}</td>
+                <td>${v.summary}</td>
+                <td>$${Number(v.total_amount).toLocaleString()}</td>
+                <td><span class="badge ${v.status}">${v.status === 'voided' ? '已銷案' : '處理中'}</span></td>
+              </tr>
+            `).join('') || '<tr><td colspan="6" class="muted">目前無核銷明細資料</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    } 
+    // 2. 如果選取「特定單一專案」
+    else {
+      const { data: proj } = await supabase.from('projects').select('*').eq('id', selectedProj).single();
+      const { data: projVchs } = await supabase.from('vouchers').select('*, profiles(full_name)').eq('project_id', selectedProj);
+
+      if (!proj) return;
+
+      // 實際花費排除已銷案的單據
+      const validProjVchs = projVchs?.filter(v => v.status !== 'voided') || [];
+      const actualSpent = validProjVchs.reduce((sum, v) => sum + Number(v.total_amount), 0);
+      const remainingBudget = Number(proj.total_budget) - actualSpent;
+
+      container.innerHTML = `
+        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
+          <h2>專案控制面板：${proj.name}</h2>
+          <p>專案代碼：<strong>${proj.project_code}</strong></p>
+        </div>
+
+        <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>專案預算總額</h4><h3 style="color:#28a745;">$${Number(proj.total_budget).toLocaleString()}</h3>
+          </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>專案實際花費</h4><h3 style="color:#dc3545;">$${actualSpent.toLocaleString()}</h3>
+          </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4>專案剩餘預算</h4><h3 style="color:#007bff;">$${remainingBudget.toLocaleString()}</h3>
+          </div>
+        </div>
+
+        <h4>專案核銷清單 (共計 ${projVchs?.length || 0} 筆資料)</h4>
+        <table class="table" style="width:100%; background:#fff;">
+          <thead>
+            <tr style="background:#f8f9fa;"><th>報支單號</th><th>申請人</th><th>摘要</th><th>金額</th><th>狀態</th></tr>
+          </thead>
+          <tbody>
+            ${projVchs?.map(pv => `
+              <tr>
+                <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${pv.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${pv.voucher_no}</a></td>
+                <td>${pv.profiles?.full_name || '-'}</td>
+                <td>${pv.summary}</td>
+                <td>$${Number(pv.total_amount).toLocaleString()}</td>
+                <td><span class="badge">${pv.status === 'voided' ? '已銷案(不計預算)' : '生效中'}</span></td>
+              </tr>
+            `).join('') || '<tr><td colspan="5">該專案目前無單據紀錄</td></tr>'}
+          </tbody>
+        </table>
+      `;
     }
-  } else {
-    // 一般員工/主管只能看自己專案
-    const userProjectId = state.currentUser?.project_id || state.currentProjectId;
-    if (userProjectId) {
-      txs = txs.filter(tx => tx.project_id === userProjectId);
-    } else {
-      txs = []; // 無專案則顯示空
-    }
+  } catch (err) {
+    console.error('渲染 Dashboard 失敗:', err);
   }
-
-  const summary = summarizeTransactions(txs);
-
-  // 顯示總計（只有財務角色顯示完整數字）
-  if (['accounting', 'admin'].includes(userRole)) {
-    setText('#countValue', txs.length);
-    setText('#incomeValue', summary.revenue.toLocaleString());
-    setText('#expenseValue', summary.expense.toLocaleString());
-    setText('#profitValue', summary.netProfit.toLocaleString());
-  } else {
-    setText('#countValue', txs.length);
-    setText('#incomeValue', '—');
-    setText('#expenseValue', '—');
-    setText('#profitValue', summary.netProfit.toLocaleString()); // 只顯示淨利
-  }
-
-  const body = document.getElementById('dashboardTableBody');
-  if (!body) return;
-  body.innerHTML = '';
-
-  const recent = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
-  if (!recent.length) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">目前尚無專案交易資料。</td></tr>';
-    return;
-  }
-
-  recent.forEach(tx => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}</td><td>${tx.type}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>`;
-    body.appendChild(row);
-  });
 }
 
 function renderTransactionTable() {
@@ -641,6 +705,14 @@ function initializeEvents() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
+  const projectFilter = document.getElementById('projectFilter') || document.getElementById('topProjectSelect');
+  if (projectFilter) {
+    projectFilter.addEventListener('change', (e) => {
+      state.selectedProjectId = e.target.value; // 將選定值存入全域狀態
+      renderDashboard(); // 🔥 核心：只單獨重新渲染 Dashboard，畫面才不會跳轉或卡死
+    });
+  }
+
   // 安全的事件綁定
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
@@ -681,6 +753,49 @@ function initializeEvents() {
       }
     });
   });
+
+  const adminCreateUserForm = document.getElementById('adminCreateUserForm') || document.getElementById('signUpForm');
+  if (adminCreateUserForm) {
+    adminCreateUserForm.addEventListener('submit', async (e) => {
+      e.preventDefault(); // 🔥 關鍵：阻止網頁重整跳轉
+      
+      const email = document.getElementById('signupEmail')?.value.trim();
+      const fullName = document.getElementById('signupFullName')?.value.trim();
+      const role = document.getElementById('signupRole')?.value || 'employee';
+      const departmentId = document.getElementById('signupDepartment')?.value || null;
+      
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+
+      try {
+        // 取得當前的 Token 進行身份驗證
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+
+        // 🔥 呼叫你的 netlify/api/invite.js 後端服務器路由
+        const response = await fetch('/api/invite', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ email, fullName, role, departmentId })
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || '開通帳號失敗');
+
+        alert(`帳號開通成功！預設密碼為：${result.credentials.tempPassword}`);
+        adminCreateUserForm.reset();
+        
+        if (typeof renderAdminUserTable === 'function') renderAdminUserTable();
+      } catch (err) {
+        alert(`操作失敗：${err.message}`);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
 
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
@@ -1156,16 +1271,48 @@ window.deleteProject = async (id) => {
 
 // 部門管理
 async function renderAdminDepartmentList() {
-  const container = document.getElementById('departmentList');
+  const container = document.getElementById('departmentList') || document.getElementById('adminDeptTableBody');
   if (!container) return;
-  const depts = await fetchDepartments(); // 使用有 return 值的 fetchDepartments
-  container.innerHTML = depts.map(d => `
-    <div style="display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px;">
-        <span>${d.name}</span>
-        <button onclick="deleteDepartment('${d.id}')" class="danger">刪除</button>
-    </div>
-  `).join('');
+  
+  try {
+    const { data: depts, error } = await supabase.from('departments').select('*').order('created_at');
+    if (error) throw error;
+
+    container.innerHTML = depts.map(d => `
+      <tr>
+        <td><span id="dept-display-name-${d.id}" style="font-weight:bold;">${d.name}</span></td>
+        <td>
+          <button onclick="editDepartmentName('${d.id}')" class="secondary" style="padding:4px 10px; margin-right:6px;">修改名字</button>
+        </td>
+      </tr>
+    `).join('') || '<tr><td>暫無部門資料</td></tr>';
+  } catch (err) {
+    console.error(err);
+  }
 }
+
+// 🔥 將此編輯函式暴露至全域 window 物件
+window.editDepartmentName = async (id) => {
+  const currentNameEl = document.getElementById(`dept-display-name-${id}`);
+  const currentName = currentNameEl ? currentNameEl.innerText : '';
+  const newName = prompt('請輸入新的部門名稱：', currentName);
+  
+  if (newName === null) return; // 使用者點選取消
+  if (!newName.trim()) return alert('部門名稱不可為空白！');
+
+  try {
+    const { error } = await supabase
+      .from('departments')
+      .update({ name: newName.trim() })
+      .eq('id', id);
+
+    if (error) throw error;
+    alert('部門名稱已順利修改！');
+    renderAdminDepartmentList(); // 立即重新渲染畫面
+  } catch (err) {
+    alert(`修改失敗：${err.message}`);
+  }
+};
 
 window.deleteDepartment = async (id) => {
   if (confirm('確定刪除此部門？如果已有使用者或專案綁定，可能無法刪除。')) {
@@ -1251,3 +1398,197 @@ function renderPermissionCheckboxes() {
     <label><input type="checkbox" value="${p}" checked> ${p}</label>
   `).join('');
 }
+
+// 🔥 新增功能：點擊單號顯示詳細內容與提供修改/銷案操作
+window.viewVoucherDetail = async (voucherId) => {
+  try {
+    const { data: vch, error: vError } = await supabase
+      .from('vouchers').select('*, profiles(full_name)')
+      .eq('id', voucherId).single();
+    
+    const { data: lines } = await supabase
+      .from('voucher_lines').select('*')
+      .eq('voucher_id', voucherId);
+
+    const { data: invoices } = await supabase
+      .from('invoices').select('*')
+      .eq('voucher_id', voucherId);
+
+    if (vError || !vch) throw new Error('無法載入該單據明細');
+
+    // 建立一個簡便的覆蓋式浮動視窗 (Modal)
+    let modal = document.getElementById('voucherDetailModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'voucherDetailModal';
+      modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;";
+      document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+        <div style="display:flex; justify-content:between; align-items:center; margin-bottom:16px; border-bottom:2px solid #eee; padding-bottom:8px;">
+          <h3 style="margin:0;">報支單詳情 [${vch.voucher_no}]</h3>
+          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="cursor:pointer; background:none; border:none; font-size:20px;">×</button>
+        </div>
+        
+        <p><strong>申請日期：</strong> ${vch.tx_date}</p>
+        <p><strong>申請人：</strong> ${vch.profiles?.full_name || '未知'}</p>
+        <p><strong>主旨摘要：</strong> ${vch.summary}</p>
+        <p><strong>當前狀態：</strong> <span class="badge">${vch.status}</span></p>
+        
+        <h4>明細項目：</h4>
+        <table class="table" style="width:100%; margin-bottom:16px;">
+          <thead><tr><th>摘要項目</th><th>科目編號</th><th>金額</th></tr></thead>
+          <tbody>
+            ${lines?.map(l => `<tr><td>${l.description}</td><td>${l.account_code}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('')}
+          </tbody>
+        </table>
+
+        ${invoices?.length ? `<h4>憑證發票資訊：</h4><p>型態：${invoices[0].invoice_type} / 號碼：${invoices[0].invoice_number || '無'}</p>` : ''}
+        
+        <div style="border-top:1px solid #eee; padding-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+          ${vch.status !== 'voided' ? `
+            <button onclick="voidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" class="danger" style="background:#d9534f; color:#fff;">辦理銷案</button>
+          ` : '<span style="color:red; font-weight:bold;">此單據已銷案結案</span>'}
+          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" class="secondary">關閉視窗</button>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+// 🔥 新增功能：銷案操作邏輯 (返還預算、但不從流水賬中刪除，保留追蹤)
+window.voidVoucher = async (voucherId, projectId, amount) => {
+  if (!confirm('確認要將此報支單進行「銷案」嗎？系統將會保留此單歷史足跡，並返還已被扣減的專案預算額度。')) return;
+
+  try {
+    // 1. 更新單據狀態為已銷案 (voided)
+    const { error: vError } = await supabase
+      .from('vouchers')
+      .update({ status: 'voided' })
+      .eq('id', voucherId);
+    
+    if (vError) throw vError;
+
+    // 2. 如果之前有綁定專案，將被扣除的預算加回去
+    if (projectId && projectId !== 'null' && projectId !== 'undefined') {
+      const { data: proj } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
+      if (proj) {
+        const restoredBudget = Number(proj.remaining_budget) + Number(amount);
+        await supabase.from('projects').update({ remaining_budget: restoredBudget }).eq('id', projectId);
+      }
+    }
+
+    // 3. 寫入工作流歷程紀錄
+    await supabase.from('voucher_workflow_logs').insert([{
+      voucher_id: voucherId,
+      actor_id: state.currentUser?.id,
+      action: 'recall',
+      from_status: 'pending_review',
+      to_status: 'voided',
+      reject_reason: '使用者主動銷案辦理'
+    }]);
+
+    alert('此單據已成功辦理銷案，預算已即時返還。');
+    document.getElementById('voucherDetailModal').style.display = 'none';
+    
+    // 刷新看板與列表
+    renderDashboard();
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+
+  } catch (err) {
+    alert('銷案處理失敗：' + err.message);
+  }
+};
+
+// 🔥 功能 A：點擊單號跳出 Modal 詳細表單視窗
+window.viewVoucherDetail = async (voucherId) => {
+  try {
+    const { data: vch, error: vError } = await supabase
+      .from('vouchers').select('*, profiles(full_name)')
+      .eq('id', voucherId).single();
+    
+    if (vError || !vch) throw new Error('無法讀取報支明細資料');
+
+    const { data: lines } = await supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId);
+    const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId);
+
+    // 建立一個覆蓋式動態 Modal 視窗
+    let modal = document.getElementById('voucherDetailModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'voucherDetailModal';
+      modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:9999;";
+      document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:650px; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+        <div style="display:flex; justify-content:between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+          <h3 style="margin:0;">單據詳細內容 [${vch.voucher_no}]</h3>
+          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
+        </div>
+        <p><strong>申請日期：</strong>${vch.tx_date}</p>
+        <p><strong>申請人：</strong>${vch.profiles?.full_name || '未知'}</p>
+        <p><strong>主旨總結：</strong>${vch.summary}</p>
+        <p><strong>目前審核狀態：</strong><span style="color:orange; font-weight:bold;">${vch.status}</span></p>
+        
+        <h4 style="margin-top:20px; border-left:4px solid #007bff; padding-left:8px;">報支項目拆分清單</h4>
+        <table class="table" style="width:100%; margin-bottom:15px; border:1px solid #ddd;">
+          <tr style="background:#f9f9f9;"><th>摘要項目說明</th><th>核銷金額</th></tr>
+          ${lines?.map(l => `<tr><td>${l.description}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="2">無明細</td></tr>'}
+        </table>
+
+        ${invoices?.length ? `<p><strong>憑證關聯：</strong>${invoices[0].invoice_type} - 號碼：${invoices[0].invoice_number || '未填'}</p>` : ''}
+        
+        <div style="margin-top:20px; text-align:right; gap:10px; display:flex; justify-content:flex-end;">
+          ${vch.status !== 'voided' ? `
+            <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
+          ` : '<span style="color:#d9534f; font-weight:bold; align-self:center;">此單據已成功銷案</span>'}
+          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="padding:8px 16px; border-radius:4px; cursor:pointer;">關閉</button>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+// 🔥 功能 B：執行銷案 (保留歷史單據，但從專案累計花費中扣除/釋放預額)
+window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
+  if (!confirm('確認要將此張報支單辦理「銷案」嗎？系統將保留此單據明細與歷史紀錄，但專案實際花費不會再加進去此金額（釋放專案剩餘預算）。')) return;
+
+  try {
+    // 1. 將單據狀態改為已銷案 (voided)
+    const { error: updateError } = await supabase
+      .from('vouchers')
+      .update({ status: 'voided' })
+      .eq('id', voucherId);
+
+    if (updateError) throw updateError;
+
+    // 2. 寫入審批流歷程檔案日誌
+    await supabase.from('voucher_workflow_logs').insert([{
+      voucher_id: voucherId,
+      actor_id: state.currentUser?.id,
+      action: 'recall',
+      from_status: 'pending_review',
+      to_status: 'voided',
+      reject_reason: '使用者手動撤銷與辦理銷案'
+    }]);
+
+    alert('銷案手續已完成！');
+    document.getElementById('voucherDetailModal').style.display = 'none';
+    
+    // 重新更新 Dashboard 和工作流列表
+    renderDashboard();
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+  } catch (err) {
+    alert(`銷案操作失敗：${err.message}`);
+  }
+};
