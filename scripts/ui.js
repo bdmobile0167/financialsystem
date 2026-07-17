@@ -180,6 +180,15 @@ function renderBusinessData() {
 }
 
 function renderDashboard() {
+  // 在 renderDashboard() 開頭加上
+  async function renderProjectSelector() {
+    const selects = document.querySelectorAll('.project-select');
+    const projects = await fetchProjects();
+    selects.forEach(select => {
+      select.innerHTML = '<option value="">全公司/無專案</option>' + 
+        projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name} (剩餘 ${p.remaining_budget})</option>`).join('');
+    });
+  }
   const { revenue, expense, netProfit } = summarizeTransactions(state.transactions);
   setText('#countValue', state.transactions.length);
   setText('#incomeValue', revenue.toLocaleString());
@@ -847,6 +856,13 @@ function initializeEvents() {
       if (invoice.type === '發票' && !invoice.number) {
         showMessage('發票必須填寫發票號碼', true);
         return;
+      }
+      async function deductProjectBudget(projectId, amount) {
+        const { error } = await supabase.rpc('deduct_project_budget', { 
+          p_id: projectId, 
+          p_amount: amount 
+        });
+        if (error) throw error;
       }
       e.target.reset();
       showMessage('報支申請已送出，等待主管審核。');
