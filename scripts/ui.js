@@ -62,11 +62,12 @@ function getBankNickname(bankAccountId, accounts = []) {
 
 function populateBankSelect(selectEl, accounts = []) {
   if (!selectEl) return;
-  if (!accounts.length) {
+  if (!accounts || !Array.isArray(accounts)) accounts = [];
+  if (accounts.length === 0) {
     selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
     return;
   }
-  selectEl.innerHTML = accounts.map(a =>
+  selectEl.innerHTML = accounts.map(a => 
     `<option value="${a.id}">${a.nickname || a.bank_name || '未命名'}</option>`
   ).join('');
 }
@@ -473,6 +474,16 @@ async function updateGoogleButtonState() {
   }
 }
 
+function getBankBalance(id, transactions = []) {
+  if (!id) return 0;
+  return transactions
+    .filter(tx => tx.bankAccountId === id)
+    .reduce((sum, tx) => {
+      const amt = Number(tx.amount || 0);
+      return tx.type === '收入' ? sum + amt : sum - amt;
+    }, 0);
+}
+
 async function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
   if (!body) return;
@@ -486,21 +497,24 @@ async function renderBankAccounts() {
   }
 
   try {
-    let accounts = await loadBankAccounts();  // ← 改成 await
+    let accounts = await loadBankAccounts();
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
-    body.innerHTML = accounts.map(a => `
-      <tr>
-        <td>${a.bank_name || a.bankName || '未命名'}</td>
-        <td>${a.account_number || a.accountNumber || '-'}</td>
-        <td>${a.nickname || '-'}</td>
-        <td>${getBankBalance(a.id, state.transactions).toLocaleString()}</td>
-        <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
+    body.innerHTML = accounts.map(a => {
+      const balance = getBankBalance(a.id, state.transactions);
+      return `
+        <tr>
+          <td>${a.bank_name || a.bankName || '未命名'}</td>
+          <td>${a.account_number || a.accountNumber || '-'}</td>
+          <td>${a.nickname || '-'}</td>
+          <td>${balance.toLocaleString()}</td>
+          <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
 
-    populateBankSelect(document.getElementById('txBankAccount'));
-    populateBankSelect(document.getElementById('vBankAccount'));
+    populateBankSelect(document.getElementById('txBankAccount'), accounts);
+    populateBankSelect(document.getElementById('vBankAccount'), accounts);
   } catch (e) {
     console.error(e);
     body.innerHTML = '<tr><td colspan="5" class="muted">載入失敗，請檢查 Supabase</td></tr>';
