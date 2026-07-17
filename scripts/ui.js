@@ -1,4 +1,4 @@
-﻿﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
@@ -7,6 +7,16 @@ import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSup
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } from '../src/modules/bank/bankAccounts.js';
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/modules/budget/budget.js';
+import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
+
+const STATUS_LABELS = {
+  pending_review: '待主管審核',
+  manager_rejected: '主管退回',
+  pending_accounting: '待會計核准',
+  accounting_rejected: '會計退回',
+  approved: '已核准入帳',
+  cancelled: '已撤銷'
+};
 
 const state = { ...defaultState };
 
@@ -525,6 +535,10 @@ function initializeEvents() {
       state.activeTab = btn.dataset.tab;
       renderTabs();
       closeSidebar();
+      if (btn.dataset.tab === 'voucherWorkflow') {
+        populateVoucherFormOptions();
+        renderVoucherWorkflowList();
+      }
     });
   });
 
@@ -716,12 +730,98 @@ function initializeEvents() {
       renderTabs();
       window.print();
     });
-
     document.getElementById('exportExcelBtn')?.addEventListener('click', () => {
       exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
     });
 });
 }   // ← 新增這一行，補上 initializeEvents() 函式的結尾
+
+document.getElementById('voucherCreateForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await createVoucher({
+      txDate: document.getElementById('vDate').value,
+      category: document.getElementById('vCategory').value,
+      summary: document.getElementById('vSummary').value.trim(),
+      departmentId: document.getElementById('vDepartment').value,
+      line: {
+        description: document.getElementById('vSummary').value.trim(),
+        accountCode: document.getElementById('vAccountCode').value,
+        amount: Number(document.getElementById('vAmount').value)
+      },
+      invoice: {
+        type: document.getElementById('vInvoiceType').value,
+        number: document.getElementById('vInvoiceNumber').value.trim()
+      },
+      payment: {
+        type: document.getElementById('vPaymentType').value,
+        bankAccountId: document.getElementById('vBankAccount').value || null
+      }
+    });
+    e.target.reset();
+    showMessage('報支申請已送出，等待主管審核。');
+    renderVoucherWorkflowList();
+  } catch (error) {
+    showMessage(`送出失敗：${error.message}`, true);
+  }
+});
+
+  document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
+    const approveBtn = e.target.closest('.approve-voucher-btn');
+    const rejectBtn = e.target.closest('.reject-voucher-btn');
+    const historyBtn = e.target.closest('.view-history-btn');
+
+    if (approveBtn || rejectBtn) {
+      const btn = approveBtn || rejectBtn;
+      const id = btn.dataset.id;
+      const stage = btn.dataset.stage;
+      const vouchers = await fetchMyVouchers();
+      const voucher = vouchers.find(v => v.id === id);
+      if (!voucher) return;
+
+      try {
+        if (approveBtn) {
+          stage === 'manager' ? await managerApprove(voucher) : await accountingApprove(voucher);
+          showMessage('已核准。');
+        } else {
+          const reason = prompt('請輸入退件原因（必填）：');
+          if (!reason || !reason.trim()) {
+            showMessage('已取消，退件必須填寫原因。', true);
+            return;
+          }
+          stage === 'manager' ? await managerReject(voucher, reason.trim()) : await accountingReject(voucher, reason.trim());
+          showMessage('已退件。');
+        }
+        renderVoucherWorkflowList();
+      } catch (error) {
+        showMessage(`操作失敗：${error.message}`, true);
+      }
+      return;
+    }
+
+    if (historyBtn) {
+      const id = historyBtn.dataset.id;
+      const historyEl = document.getElementById(`history-${id}`);
+      if (!historyEl) return;
+      if (historyEl.style.display === 'none') {
+        historyEl.style.display = 'block';
+        historyEl.innerHTML = '<p class="muted">載入中…</p>';
+        try {
+          const logs = await fetchWorkflowLogs(id);
+          historyEl.innerHTML = logs.length ? logs.map(l => `
+            <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">
+              ${new Date(l.created_at).toLocaleString('zh-TW')}｜${l.actor?.full_name || l.actor?.email || '未知'}｜${l.action}
+              ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
+              ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
+            </div>`).join('') : '<p class="muted">尚無紀錄。</p>';
+        } catch (error) {
+          historyEl.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
+        }
+      } else {
+        historyEl.style.display = 'none';
+      }
+    }
+  });
 
 async function initialize() {
     loadState(state);
@@ -742,4 +842,68 @@ if (document.readyState === 'loading') {
   window.addEventListener('DOMContentLoaded', initialize);
 } else {
   initialize();
+}
+
+async function populateVoucherFormOptions() {
+  try {
+    const [accounts, banks, departments] = await Promise.all([fetchAccounts(), fetchBankAccounts(), fetchDepartments()]);
+    const accountSelect = document.getElementById('vAccountCode');
+    if (accountSelect) accountSelect.innerHTML = accounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
+    const bankSelect = document.getElementById('vBankAccount');
+    if (bankSelect) bankSelect.innerHTML = '<option value="">（現金支付免選）</option>' + banks.map(b => `<option value="${b.id}">${b.nickname}</option>`).join('');
+    const deptSelect = document.getElementById('vDepartment');
+    if (deptSelect) {
+      deptSelect.innerHTML = departments.length
+        ? departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
+        : '<option value="">尚未建立部門，請先請 Admin 到 Supabase 建立</option>';
+    }
+  } catch (error) {
+    showMessage(`載入表單選項失敗：${error.message}`, true);
+  }
+}
+
+function renderVoucherCard(v) {
+  const role = state.currentUser?.role;
+  const isMine = v.applicant_id === state.currentUser?.id;
+  let actions = '';
+
+  if (isMine && ['pending_review', 'manager_rejected', 'accounting_rejected'].includes(v.status)) {
+    actions += `<span class="muted" style="font-size:12px;">可修改後重送（下一階段補上編輯介面）</span>`;
+  }
+  if (role === 'manager' && v.status === 'pending_review') {
+    actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="manager">核准</button>
+                <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
+  }
+  if (['accounting', 'admin'].includes(role) && v.status === 'pending_accounting') {
+    actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="accounting">核准入帳</button>
+                <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="accounting">退件</button>`;
+  }
+
+  return `
+    <div class="voucher-card">
+      <div class="voucher-card-header">
+        <strong>${v.voucher_no || '（產生中）'}</strong>
+        <span class="badge">${STATUS_LABELS[v.status] || v.status}</span>
+      </div>
+      <div class="muted">${v.tx_date}｜${v.summary || ''}｜金額 ${Number(v.total_amount).toLocaleString()}</div>
+      <div class="button-row" style="margin-top:8px;">
+        ${actions}
+        <button class="secondary view-history-btn" data-id="${v.id}">查看審批歷程</button>
+      </div>
+      <div class="voucher-history" id="history-${v.id}" style="display:none; margin-top:8px;"></div>
+    </div>`;
+}
+
+async function renderVoucherWorkflowList() {
+  const container = document.getElementById('voucherWorkflowList');
+  if (!container) return;
+  container.innerHTML = '<p class="muted">載入中…</p>';
+  try {
+    const vouchers = await fetchMyVouchers();
+    container.innerHTML = vouchers.length
+      ? vouchers.map(v => renderVoucherCard(v)).join('')
+      : '<p class="muted">目前沒有任何報支申請。</p>';
+  } catch (error) {
+    container.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
+  }
 }
