@@ -16,7 +16,7 @@ export async function addBankAccount(account) {
       account_number: account.account_number,
       nickname: account.nickname,
       opening_balance: account.opening_balance,
-      created_by: user.id
+      created_by: user?.id
     }])
     .select()
     .single();

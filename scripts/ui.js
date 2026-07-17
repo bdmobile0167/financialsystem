@@ -497,7 +497,7 @@ async function renderBankAccounts() {
           <td>${a.bank_name || a.bankName || '未命名'}</td>
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
-          <td>${balance.toLocaleString()}</td>
+          <td>${(balance || 0).toLocaleString()}</td>
           <td><button class="secondary delete-bank-btn" data-id="${a.id}">刪除</button></td>
         </tr>
       `;
