@@ -119,6 +119,8 @@ function render() {
   renderBudget();
   renderEquityTab();
   renderTabs();
+  populateProjectDepartmentSelect();
+  renderProjectList();
 }
 
 function renderCompanyData() {
@@ -1043,6 +1045,62 @@ function initializeEvents() {
     URL.revokeObjectURL(url);
     showMessage('已匯出交易與公司資料 JSON。');
   });
+
+// 載入部門到專案表單
+async function populateProjectDepartmentSelect() {
+  const select = document.getElementById('projectDepartment');
+  if (!select) return;
+  const depts = await fetchDepartments();
+  select.innerHTML = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+}
+
+// 建立專案
+document.getElementById('projectForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!['admin', 'accounting'].includes(state.currentUser?.role)) {
+    showMessage('僅 Admin 與 會計 可建立專案', true);
+    return;
+  }
+
+  const data = {
+    name: document.getElementById('projectName').value.trim(),
+    start_date: document.getElementById('projectStart').value,
+    end_date: document.getElementById('projectEnd').value,
+    total_budget: parseFloat(document.getElementById('projectTotalBudget').value),
+    department_id: document.getElementById('projectDepartment').value
+  };
+
+  try {
+    await createProject(data);
+    showMessage('專案建立成功');
+    e.target.reset();
+    renderProjectList();
+  } catch (err) {
+    showMessage('建立失敗：' + err.message, true);
+  }
+});
+
+  // 渲染專案列表
+  async function renderProjectList() {
+    const container = document.getElementById('projectList');
+    if (!container) return;
+    const projects = await fetchProjects();
+    container.innerHTML = projects.map(p => `
+      <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;">
+        <strong>${p.project_code} - ${p.name}</strong><br>
+        預算：${p.total_budget?.toLocaleString()} | 剩餘：${p.remaining_budget?.toLocaleString()}<br>
+        期間：${p.start_date} ~ ${p.end_date}
+        <button onclick="deleteProject('${p.id}')" class="danger" style="float:right;">刪除</button>
+      </div>
+    `).join('');
+  }
+
+  window.deleteProject = async (id) => {
+    if (confirm('確定刪除此專案？')) {
+      await supabase.from('projects').delete().eq('id', id);
+      renderProjectList();
+    }
+  };
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await signOutSupabase();
