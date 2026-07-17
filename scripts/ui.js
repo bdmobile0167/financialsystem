@@ -870,6 +870,13 @@ async function populateVoucherFormOptions() {
           : '<option value="">尚未建立部門</option>';
       }
     }
+
+    const projectSelect = document.getElementById('vProject');
+    if (projectSelect) {
+      const projects = await fetchProjects();
+      projectSelect.innerHTML = '<option value="">無專案</option>' + 
+        projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name}</option>`).join('');
+    }
   } catch (error) {
     console.error(error);
     showMessage(`載入表單選項失敗：${error.message}`, true);
@@ -984,7 +991,12 @@ async function loadAndRenderProjects() {
     projects.forEach(p => {
       html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
     });
-
+    
+    select.addEventListener('change', () => {
+      state.currentProjectId = select.value;
+      render(); // 重新 render dashboard + 其他
+    });
+    
     select.innerHTML = html;
     state.currentProjectId = 'all';
   } catch (e) {
