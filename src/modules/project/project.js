@@ -1,9 +1,16 @@
 // src/modules/project/project.js
 import { supabase } from '../../scripts/supabaseClient.js';
 
-export async function fetchProjects() {
-  const { data } = await supabase.from('projects').select('*');
-  return data;
+async function fetchProjects() {
+  const userRole = state.currentUser?.role;
+  let query = supabase.from('projects').select('*').order('project_code');
+
+  if (userRole === 'employee' || userRole === 'manager') {
+    query = query.eq('department_id', state.currentUser.department_id);
+  }
+
+  const { data } = await query;
+  return data || [];
 }
 
 export async function createProject({ projectCode, name, totalBudget }) {

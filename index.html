@@ -248,8 +248,6 @@
                 </select>
                 <label>摘要說明</label>
                 <input type="text" id="vSummary" required />
-                <label>會計科目</label>
-                <select id="vAccountCode"></select>
                 <label>金額</label>
                 <input type="number" id="vAmount" min="0" required />
                 <label>憑證類型</label>
@@ -260,13 +258,6 @@
                 </select>
                 <label>發票號碼（收據/無憑證可留空）</label>
                 <input type="text" id="vInvoiceNumber" />
-                <label>支付方式</label>
-                <select id="vPaymentType">
-                  <option value="bank_transfer">銀行轉帳</option>
-                  <option value="cash">現金支付</option>
-                </select>
-                <label>付款銀行帳戶（現金支付可不選）</label>
-                <select id="vBankAccount"></select>
                 <button type="submit" class="primary-btn" style="margin-top:12px;">送出申請</button>
               </form>
             </div>

@@ -743,7 +743,46 @@ function initializeEvents() {
   });
 
   safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
-  safeListener('voucherCreateForm', 'submit', async (e) => { /* 原有 voucherCreateForm */ });
+  safeListener('voucherCreateForm', 'submit', async (e) => {
+    e.preventDefault();
+    try {
+      const projectId = document.getElementById('vProject')?.value;
+
+      await createVoucher({
+        txDate: document.getElementById('vDate').value,
+        category: document.getElementById('vCategory').value,
+        summary: document.getElementById('vSummary').value.trim(),
+        departmentId: document.getElementById('vDepartment').value,
+        line: {
+          description: document.getElementById('vSummary').value.trim(),
+          accountCode: document.getElementById('vAccountCode').value,
+          amount: Number(document.getElementById('vAmount').value)
+        },
+        invoice: {
+          type: document.getElementById('vInvoiceType').value,
+          number: document.getElementById('vInvoiceNumber').value.trim()
+        },
+        payment: {
+          type: document.getElementById('vPaymentType').value,
+          bankAccountId: document.getElementById('vBankAccount').value || null
+        },
+        projectId: projectId || null
+      });
+
+      if (projectId) {
+        await supabase.rpc('deduct_project_budget', { 
+          p_id: projectId, 
+          p_amount: Number(document.getElementById('vAmount').value) 
+        });
+      }
+
+      showMessage('報支申請已送出，並已扣除專案預算。');
+      e.target.reset();
+      renderVoucherWorkflowList();
+    } catch (error) {
+      showMessage(`送出失敗：${error.message}`, true);
+    }
+  });
 
   // 新增的專案與部門
   safeListener('projectForm', 'submit', async (e) => {
@@ -1005,7 +1044,14 @@ async function loadAndRenderProjects() {
 }
 
 async function fetchProjects() {
-  const { data } = await supabase.from('projects').select('*').order('project_code');
+  const userRole = state.currentUser?.role;
+  let query = supabase.from('projects').select('*').order('project_code');
+
+  if (userRole === 'employee' || userRole === 'manager') {
+    query = query.eq('department_id', state.currentUser.department_id);
+  }
+
+  const { data } = await query;
   return data || [];
 }
 
