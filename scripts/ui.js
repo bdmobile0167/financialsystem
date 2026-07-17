@@ -975,24 +975,42 @@ if (document.readyState === 'loading') {
 
 async function populateVoucherFormOptions() {
   try {
-    // 對 employee 自動設定部門
-    const deptSelect = document.getElementById('vDepartment');
-    if (state.currentUser?.role === 'employee' && deptSelect) {
-      deptSelect.value = state.currentUser.department_id || ''; // 假設 user 有 department_id
-      deptSelect.disabled = true;
-    }
-    const [accounts, banks, departments] = await Promise.all([fetchAccounts(), fetchBankAccounts(), fetchDepartments()]);
+    const [accounts, banks, departments] = await Promise.all([
+      fetchAccounts(), 
+      fetchBankAccounts(), 
+      fetchDepartments()
+    ]);
+
+    // 會計科目
     const accountSelect = document.getElementById('vAccountCode');
-    if (accountSelect) accountSelect.innerHTML = accounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
+    if (accountSelect) {
+      accountSelect.innerHTML = accounts.map(a => 
+        `<option value="${a.code}">${a.code} ${a.name}</option>`
+      ).join('');
+    }
+
+    // 銀行帳戶
     const bankSelect = document.getElementById('vBankAccount');
-    if (bankSelect) bankSelect.innerHTML = '<option value="">（現金支付免選）</option>' + banks.map(b => `<option value="${b.id}">${b.nickname}</option>`).join('');
+    if (bankSelect) {
+      bankSelect.innerHTML = '<option value="">（現金支付免選）</option>' + 
+        banks.map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('');
+    }
+
+    // 部門 - 避免重複宣告
     const deptSelect = document.getElementById('vDepartment');
     if (deptSelect) {
-      deptSelect.innerHTML = departments.length
-        ? departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
-        : '<option value="">尚未建立部門，請先請 Admin 到 Supabase 建立</option>';
+      if (state.currentUser?.role === 'employee') {
+        // 員工只能看到自己的部門
+        deptSelect.innerHTML = `<option value="${state.currentUser.department_id || ''}">${state.currentUser.department_name || '我的部門'}</option>`;
+        deptSelect.disabled = true;
+      } else {
+        deptSelect.innerHTML = departments.length
+          ? departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
+          : '<option value="">尚未建立部門</option>';
+      }
     }
   } catch (error) {
+    console.error(error);
     showMessage(`載入表單選項失敗：${error.message}`, true);
   }
 }
