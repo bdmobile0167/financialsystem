@@ -474,6 +474,15 @@ async function updateGoogleButtonState() {
   }
 }
 
+function getBankBalance(id, transactions = []) {
+  if (!id) return 0;
+  return transactions
+    .filter(tx => tx.bankAccountId === id)
+    .reduce((sum, tx) => {
+      const amt = Number(tx.amount || 0);
+      return tx.type === '收入' ? sum + amt : sum - amt;
+    }, 0);
+}
 
 async function renderBankAccounts() {
   const body = document.getElementById('bankAccountTableBody');
@@ -492,7 +501,7 @@ async function renderBankAccounts() {
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => {
-      const balance = getBankBalance(a.id, state.transactions);
+      const balance = getBankBalance(a.id, state.transactions || []);
       return `
         <tr>
           <td>${a.bank_name || a.bankName || '未命名'}</td>
@@ -697,16 +706,6 @@ function initializeEvents() {
       showMessage('新增失敗：' + err.message, true);
     }
   });
-
-  function getBankBalance(id, transactions = []) {
-    if (!id) return 0;
-    return transactions
-      .filter(tx => tx.bankAccountId === id)
-      .reduce((sum, tx) => {
-        const amt = Number(tx.amount || 0);
-        return tx.type === '收入' ? sum + amt : sum - amt;
-      }, 0);
-  }
 
   // 其他重要 listener
   safeListener('transactionForm', 'submit', async (e) => { /* 原有 transactionForm */ });
