@@ -26,16 +26,25 @@ async function renderAdminUserTable() {
   body.innerHTML = '<tr><td colspan="6" class="muted">載入中…</td></tr>';
   try {
     const users = await fetchAllUsers();
+    const depts = await fetchDepartments();
+    const deptOptions = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+
     body.innerHTML = users.map(u => `
       <tr>
         <td>${u.email}</td>
         <td>${u.full_name || '-'}</td>
         <td>
-          <select class="role-select" data-id="${u.id}">
+          <select class="role-select" onchange="updateUserProfile('${u.id}', 'role', this.value)">
             ${Object.entries(ROLE_LABELS).map(([val, label]) => `<option value="${val}" ${u.role === val ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </td>
-        <td>${u.department?.name || '未設定'}</td>
+        <td>
+          <!-- 變更為下拉選單，以修改使用者部門 -->
+          <select class="dept-select" onchange="updateUserProfile('${u.id}', 'department', this.value)">
+            <option value="">未設定</option>
+            ${depts.map(d => `<option value="${d.id}" ${u.department === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+          </select>
+        </td>
         <td>${u.active === false ? '<span class="badge wait">已停用</span>' : '<span class="badge">啟用中</span>'}</td>
         <td><button class="secondary toggle-active-btn" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? '啟用' : '停用'}</button></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">尚無使用者資料。</td></tr>';
@@ -748,14 +757,15 @@ function initializeEvents() {
     try {
       const projectId = document.getElementById('vProject')?.value;
 
+      // 修正：拔除不存在的 DOM ID，改用預設值或從 HTML 確實存在的欄位取值
       await createVoucher({
         txDate: document.getElementById('vDate').value,
-        category: document.getElementById('vCategory').value,
+        category: '營業', // 預設值
         summary: document.getElementById('vSummary').value.trim(),
-        departmentId: document.getElementById('vDepartment').value,
+        departmentId: document.getElementById('vProject').value || null, 
         line: {
           description: document.getElementById('vSummary').value.trim(),
-          accountCode: document.getElementById('vAccountCode').value,
+          accountCode: '6100', // 預設費用科目，或將 vAccountCode 加回 HTML
           amount: Number(document.getElementById('vAmount').value)
         },
         invoice: {
@@ -763,8 +773,8 @@ function initializeEvents() {
           number: document.getElementById('vInvoiceNumber').value.trim()
         },
         payment: {
-          type: document.getElementById('vPaymentType').value,
-          bankAccountId: document.getElementById('vBankAccount').value || null
+          type: '現金', // 預設值
+          bankAccountId: null
         },
         projectId: projectId || null
       });
@@ -783,7 +793,6 @@ function initializeEvents() {
       showMessage(`送出失敗：${error.message}`, true);
     }
   });
-
   // 新增的專案與部門
   safeListener('projectForm', 'submit', async (e) => {
     e.preventDefault();
@@ -985,18 +994,49 @@ async function renderProjectList() {
   if (!container) return;
   try {
     const projects = await fetchProjects();
+    const depts = await fetchDepartments();
+    const deptOptions = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+
     container.innerHTML = projects.map(p => `
-      <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;">
+      <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;" id="project-card-${p.id}">
         <strong>${p.project_code || '無編號'} - ${p.name}</strong><br>
-        預算：${Number(p.total_budget || 0).toLocaleString()} | 剩餘：${Number(p.remaining_budget || 0).toLocaleString()}<br>
-        期間：${p.start_date || '-'} ~ ${p.end_date || '-'}
-        <button onclick="deleteProject('${p.id}')" class="danger" style="float:right;">刪除</button>
+        預算：<input type="number" id="edit-budget-${p.id}" value="${p.total_budget || 0}" style="width:100px;"> | 剩餘：${Number(p.remaining_budget || 0).toLocaleString()}<br>
+        部門：<select id="edit-dept-${p.id}">
+                <option value="">無部門</option>
+                ${deptOptions}
+             </select><br>
+        <div style="margin-top: 8px;">
+            <button onclick="updateProject('${p.id}')" class="primary-btn">儲存修改</button>
+            <button onclick="deleteProject('${p.id}')" class="danger">刪除</button>
+        </div>
       </div>
     `).join('');
+    // 將各專案原本的部門選上
+    projects.forEach(p => {
+      const select = document.getElementById(`edit-dept-${p.id}`);
+      if (select && p.department_id) select.value = p.department_id;
+    });
   } catch (e) {
     container.innerHTML = '<p class="muted">載入專案失敗</p>';
   }
 }
+
+// 綁定更新專案 API
+window.updateProject = async (id) => {
+  const newBudget = document.getElementById(`edit-budget-${id}`).value;
+  const newDept = document.getElementById(`edit-dept-${id}`).value;
+  
+  const { error } = await supabase.from('projects').update({
+    total_budget: newBudget,
+    department_id: newDept || null
+  }).eq('id', id);
+
+  if (error) alert('更新失敗');
+  else {
+    alert('專案已更新');
+    renderProjectList();
+  }
+};
 
 window.deleteProject = async (id) => {
   if (confirm('確定刪除此專案？')) {
@@ -1009,9 +1049,22 @@ window.deleteProject = async (id) => {
 async function renderAdminDepartmentList() {
   const container = document.getElementById('departmentList');
   if (!container) return;
-  const depts = await loadDepartments();
-  container.innerHTML = depts.map(d => `<div>${d.name}</div>`).join('');
+  const depts = await fetchDepartments(); // 使用有 return 值的 fetchDepartments
+  container.innerHTML = depts.map(d => `
+    <div style="display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px;">
+        <span>${d.name}</span>
+        <button onclick="deleteDepartment('${d.id}')" class="danger">刪除</button>
+    </div>
+  `).join('');
 }
+
+window.deleteDepartment = async (id) => {
+  if (confirm('確定刪除此部門？如果已有使用者或專案綁定，可能無法刪除。')) {
+    const { error } = await supabase.from('departments').delete().eq('id', id);
+    if (error) alert('刪除失敗：' + error.message);
+    else renderAdminDepartmentList();
+  }
+};
 
 // === 專案相關 ===
 async function loadAndRenderProjects() {

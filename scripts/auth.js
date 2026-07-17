@@ -57,7 +57,7 @@ export async function getCurrentSessionUser() {
     username: profile.email,
     name: profile.full_name,
     role: profile.role,
-    department: profile.department,
+    department: profile.department_id,
     mustChangePassword: profile.must_change_password
   };
 }
