@@ -90,7 +90,12 @@ function render() {
     const btn = document.getElementById('adminUsersNavBtn');
     if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
   }
-
+  // 只給 Admin 顯示的區塊
+  const adminOnlyElements = ['departmentForm', 'inviteUserForm', /* 其他 Admin 專屬 ID */];
+  adminOnlyElements.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
+  });
   const passwordEmail = document.getElementById('passwordUserEmail');
   if (state.currentUser) {
     setText('#welcomeText', `歡迎，${state.currentUser.name}`);
@@ -181,6 +186,12 @@ function renderBusinessData() {
 
 // === Dashboard 專案過濾版 ===
 function renderDashboard() {
+  // 預設顯示最近 2 年
+  if (!state.reportStartDate) {
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    // 可套用在 filter
+  }
   const userRole = state.currentUser?.role;
   let txs = state.transactions || [];
 
