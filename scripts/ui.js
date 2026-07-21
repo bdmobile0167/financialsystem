@@ -1,6 +1,6 @@
 ﻿import { supabase } from './supabaseClient.js';
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
-import { defaultState, loadState, saveState, SAMPLE_DATA, USER_KEY } from './state.js';
+import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
 import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
