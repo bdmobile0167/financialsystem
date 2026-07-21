@@ -744,7 +744,35 @@ function initializeEventsInternal() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
+// Tab 切換（最重要的部分）
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
 
+      // 權限檢查
+      if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+        showMessage('僅會計部門與 Admin 可使用', true);
+        return;
+      }
+
+      state.activeTab = tab;
+      renderTabs();
+      closeSidebar();
+
+      if (tab === 'voucherWorkflow') {
+        populateVoucherFormOptions();
+        renderVoucherWorkflowList();
+      }
+      if (tab === 'adminUsers') {
+        populateInviteDepartmentSelect();
+        renderAdminUserTable();
+        renderAdminDepartmentList();
+      }
+      if (tab === 'budget') {
+        renderBudget();
+      }
+    });
+  });
   // 安全的事件綁定
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
