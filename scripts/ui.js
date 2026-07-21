@@ -1709,6 +1709,20 @@ function updateMenuVisibility() {
 
 // 記得在登入成功後，或者畫面載入時呼叫 updateMenuVisibility()
 
+window.updateUserProfile = async (id, field, value) => {
+  try {
+    const payload = {};
+    if (field === 'role') payload.role = value;
+    else if (field === 'department_id') payload.departmentId = value || null;
+    else if (field === 'full_name') payload.fullName = value;
+    await updateUserProfile(id, payload); // calls the imported function
+    showMessage('使用者資料已更新。');
+    renderAdminUserTable();
+  } catch (err) {
+    alert('更新失敗：' + err.message);
+  }
+};
+
 window.editBankAccount = async (id) => {
   try {
     const { data: account, error } = await supabase

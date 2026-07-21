@@ -27,11 +27,20 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const { data: callerProfile } = await supabaseAdmin.from('profiles').select('role').eq('id', callerData.user.id).single();
-    if (callerProfile?.role !== 'admin') {
-      res.status(403).json({ ok: false, message: '只有管理員可以新增使用者。' });
-      return;
-    }
+  const { data: callerProfile, error: profileError } = await supabaseAdmin
+    .from('profiles').select('role').eq('id', callerData.user.id).single();
+
+  if (profileError || !callerProfile) {
+    res.status(500).json({
+      ok: false,
+      message: `無法讀取你的角色資料（${profileError?.message || '查無資料'}）。通常代表 SUPABASE_SERVICE_ROLE_KEY 設定錯誤。`
+    });
+    return;
+  }
+  if (callerProfile.role !== 'admin') {
+    res.status(403).json({ ok: false, message: '只有管理員可以新增使用者。' });
+    return;
+  }
 
     const { email, fullName, role = 'employee', departmentId = null, password } = req.body || {};
     if (!email || !fullName) {
