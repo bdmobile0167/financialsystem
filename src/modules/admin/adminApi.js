@@ -18,17 +18,19 @@ export async function toggleUserActive(id, active) {
   if (error) throw error;
 }
 
-export async function inviteNewUser({ email, fullName, role, departmentId, password }) {
+export async function inviteNewUser(payload) {
   const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-  const response = await fetch('/api/invite', {
+
+  const res = await fetch('/api/invite', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ email, fullName, role, departmentId, password })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionData.session.access_token}`
+    },
+    body: JSON.stringify(payload)
   });
-  const result = await response.json();
-  if (!response.ok || !result.ok) throw new Error(result.message || '開通失敗');
-  return result;
+
+  return res.json();
 }
 
 // 在 adminApi.js 中

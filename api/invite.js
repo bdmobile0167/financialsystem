@@ -8,7 +8,6 @@ module.exports = async (req, res) => {
     res.status(405).json({ ok: false, message: '只允許 POST 請求。' });
     return;
   }
-
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     res.status(500).json({ ok: false, message: 'Supabase 環境變數未設定。' });
     return;
@@ -27,20 +26,20 @@ module.exports = async (req, res) => {
       return;
     }
 
-  const { data: callerProfile, error: profileError } = await supabaseAdmin
-    .from('profiles').select('role').eq('id', callerData.user.id).single();
+    const { data: callerProfile, error: roleQueryError } = await supabaseAdmin
+      .from('profiles').select('role').eq('id', callerData.user.id).single();
 
-  if (profileError || !callerProfile) {
-    res.status(500).json({
-      ok: false,
-      message: `無法讀取你的角色資料（${profileError?.message || '查無資料'}）。通常代表 SUPABASE_SERVICE_ROLE_KEY 設定錯誤。`
-    });
-    return;
-  }
-  if (callerProfile.role !== 'admin') {
-    res.status(403).json({ ok: false, message: '只有管理員可以新增使用者。' });
-    return;
-  }
+    if (roleQueryError || !callerProfile) {
+      res.status(500).json({
+        ok: false,
+        message: `無法讀取你的角色資料（${roleQueryError?.message || '查無資料'}）。通常代表 SUPABASE_SERVICE_ROLE_KEY 設定錯誤。`
+      });
+      return;
+    }
+    if (callerProfile.role !== 'admin') {
+      res.status(403).json({ ok: false, message: '只有管理員可以新增使用者。' });
+      return;
+    }
 
     const { email, fullName, role = 'employee', departmentId = null, password } = req.body || {};
     if (!email || !fullName) {
@@ -50,26 +49,19 @@ module.exports = async (req, res) => {
 
     const finalPassword = (password && password.trim()) ? password.trim() : DEFAULT_PASSWORD;
     const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: finalPassword,
-      email_confirm: true
+      email, password: finalPassword, email_confirm: true
     });
     if (createError) {
       res.status(400).json({ ok: false, message: `建立帳號失敗：${createError.message}` });
       return;
     }
 
-    const { error: profileError } = await supabaseAdmin.from('profiles').insert({
-      id: createdUser.user.id,
-      email,
-      full_name: fullName,
-      role,
-      department_id: departmentId,
-      active: true,
-      must_change_password: true
+    const { error: insertProfileError } = await supabaseAdmin.from('profiles').insert({
+      id: createdUser.user.id, email, full_name: fullName, role,
+      department_id: departmentId, active: true, must_change_password: true
     });
-    if (profileError) {
-      res.status(400).json({ ok: false, message: `寫入使用者資料失敗：${profileError.message}` });
+    if (insertProfileError) {
+      res.status(400).json({ ok: false, message: `寫入使用者資料失敗：${insertProfileError.message}` });
       return;
     }
 
