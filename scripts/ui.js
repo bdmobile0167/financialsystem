@@ -232,7 +232,7 @@ async function renderDashboard() {
   if (!user) return;
 
   const isPrivileged = ['admin', 'CEO', 'accountant'].includes(user.role);
-  const selectedProj = state.selectedProjectId || 'all';
+  const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
 
   try {
     // 1. 如果選取「全公司總覽」
@@ -247,7 +247,6 @@ async function renderDashboard() {
       const { data: vchs, error } = await voucherQuery;
       if (error) throw error;
 
-      // 計算總花費 (過濾掉已銷案 status === 'voided' 的資料)
       const validVouchers = vchs?.filter(v => v.status !== 'voided') || [];
       const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount), 0);
       const txCount = vchs?.length || 0;
@@ -299,7 +298,6 @@ async function renderDashboard() {
 
       if (!proj) return;
 
-      // 實際花費排除已銷案的單據
       const validProjVchs = projVchs?.filter(v => v.status !== 'voided') || [];
       const actualSpent = validProjVchs.reduce((sum, v) => sum + Number(v.total_amount), 0);
       const remainingBudget = Number(proj.total_budget) - actualSpent;
@@ -364,7 +362,11 @@ function renderTransactionTable() {
   
   txs.forEach((tx, index) => {
     const row = document.createElement('tr');
-    // 欄位順序調整：日期 -> 憑證 -> 銀行 -> 摘要/客戶 -> 類別 -> 科目 -> 金額 -> 操作
+    // 讓憑證欄位支援點擊（若有對應的 voucher_id 或 voucher 編號可帶入）
+    const voucherDisplay = tx.voucher_id || tx.voucher ? 
+      `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id || tx.voucher}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || '檢視憑證'}</a>` : 
+      '<span class="badge wait">待補</span>';
+      
     row.innerHTML = `
       <td>${tx.date}</td>
       <td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>
