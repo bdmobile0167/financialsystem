@@ -349,7 +349,6 @@ async function renderDashboard() {
 function renderTransactionTable() {
   let txs = state.transactions || [];
   
-  // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
     txs = txs.filter(tx => tx.project_id === state.currentProjectId);
   }
@@ -365,7 +364,17 @@ function renderTransactionTable() {
   
   txs.forEach((tx, index) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${tx.date}</td><td>${getBankNickname(tx.bankAccountId)}</td><td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td><td>${tx.type}</td><td>${tx.category || '營業'}</td><td>${Number(tx.amount).toLocaleString()}</td><td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td><td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>`;
+    // 欄位順序調整：日期 -> 憑證 -> 銀行 -> 摘要/客戶 -> 類別 -> 科目 -> 金額 -> 操作
+    row.innerHTML = `
+      <td>${tx.date}</td>
+      <td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>
+      <td>${getBankNickname(tx.bankAccountId) || tx.bank || '未設定'}</td>
+      <td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td>
+      <td>${tx.type}</td>
+      <td>${tx.category || '營業'}</td>
+      <td>${Number(tx.amount).toLocaleString()}</td>
+      <td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>
+    `;
     body.appendChild(row);
   });
 }
@@ -1732,16 +1741,67 @@ window.editBankAccount = async (id) => {
       
     if (error) throw error;
 
-    // 假設你有一個編輯的 Modal 或表單，請確保欄位都有賦值
-    document.getElementById('edit_bank_id').value = account.id;
-    document.getElementById('edit_bank_name').value = account.bank_name || '';
-    document.getElementById('edit_account_name').value = account.account_name || '';
-    document.getElementById('edit_account_number').value = account.account_number || '';
-    document.getElementById('edit_currency').value = account.currency || 'TWD';
-    document.getElementById('edit_branch').value = account.branch || '';
-    
-    // 顯示 Modal
-    document.getElementById('editBankModal').style.display = 'block';
+    // 建立一次性編輯表單 Modal，避免一個一個跳出
+    let modal = document.getElementById('batchEditBankModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'batchEditBankModal';
+      modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;";
+      document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background:#fff; padding:24px; border-radius:8px; width:400px; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
+        <h3 style="margin-top:0;">編輯銀行帳戶</h3>
+        <form id="batchBankForm">
+          <input type="hidden" id="edit_bank_id" value="${account.id}">
+          <div style="margin-bottom:12px;">
+            <label>銀行名稱：</label><br>
+            <input type="text" id="edit_bank_name" value="${account.bank_name || ''}" style="width:100%; padding:6px;" required>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label>帳戶號碼：</label><br>
+            <input type="text" id="edit_account_number" value="${account.account_number || ''}" style="width:100%; padding:6px;" required>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label>帳戶暱稱：</label><br>
+            <input type="text" id="edit_bank_nickname" value="${account.nickname || ''}" style="width:100%; padding:6px;">
+          </div>
+          <div style="margin-bottom:20px;">
+            <label>期初餘額：</label><br>
+            <input type="number" id="edit_opening_balance" value="${account.opening_balance || 0}" style="width:100%; padding:6px;">
+          </div>
+          <div style="text-align:right;">
+            <button type="button" onclick="document.getElementById('batchEditBankModal').style.display='none'" class="secondary" style="margin-right:8px;">取消</button>
+            <button type="submit" class="primary-btn">一次儲存全部修改</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.getElementById('batchBankForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const updatedData = {
+        bank_name: document.getElementById('edit_bank_name').value.trim(),
+        account_number: document.getElementById('edit_account_number').value.trim(),
+        nickname: document.getElementById('edit_bank_nickname').value.trim(),
+        opening_balance: parseFloat(document.getElementById('edit_opening_balance').value) || 0
+      };
+
+      const { error: updateErr } = await supabase
+        .from('bank_accounts')
+        .update(updatedData)
+        .eq('id', id);
+
+      if (updateErr) {
+        alert('更新失敗：' + updateErr.message);
+      } else {
+        alert('銀行帳戶已成功更新！');
+        modal.style.display = 'none';
+        renderBankAccounts();
+      }
+    };
   } catch (err) {
     alert(`讀取帳號資料失敗: ${err.message}`);
   }
