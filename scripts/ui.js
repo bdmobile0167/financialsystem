@@ -710,6 +710,17 @@ function showForcePasswordView() {
 }
 
 function initializeEvents() {
+  // 安全等待 DOM 完全載入
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeEventsInternal();
+    });
+    return;
+  }
+  initializeEventsInternal();
+}
+
+function initializeEventsInternal() {
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1010,6 +1021,7 @@ function initializeEvents() {
   });
 
   safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
+  setupTransactionForm();
   // 確保只在表單存在時才綁定事件
 // 全域函式：點擊按鈕動態往 Table 追加一列
 window.addExcelRow = () => {
