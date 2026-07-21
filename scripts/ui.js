@@ -596,13 +596,16 @@ async function renderBankAccounts() {
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => {
-      const balance = getBankBalance(a.id, state.transactions || []);
+      const openingBalance = Number(a.opening_balance || 0); // 取得該帳戶期初餘額
+      const transactionNet = getBankBalance(a.id, state.transactions || []); // 計算交易加減項
+      const totalBalance = openingBalance + transactionNet; // 總餘額
+
       return `
         <tr>
           <td>${a.bank_name || a.bankName || '未命名'}</td>
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
-          <td>${(balance || 0).toLocaleString()}</td>
+          <td>${totalBalance.toLocaleString()}</td>
           <td>
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
             <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>
@@ -820,42 +823,8 @@ function initializeEventsInternal() {
       }
     });
   }
-// 銀行帳戶
-  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
-    const deleteBtn = e.target.closest('.delete-bank-btn');
-    if (deleteBtn) {
-      if (confirm('確定刪除？')) {
-        await deleteBankAccount(deleteBtn.dataset.id);
-        renderBankAccounts();
-        showMessage('已刪除');
-      }
-      return;
-    }
-    const editBtn = e.target.closest('.edit-bank-btn');
-    if (editBtn) {
-      const id = editBtn.dataset.id;
-      const account = (await loadBankAccounts()).find(a => a.id === id);
-      if (account) {
-        const newName = prompt('銀行名稱', account.bank_name);
-        const newNumber = prompt('帳號', account.account_number);
-        const newNickname = prompt('暱稱', account.nickname);
-        const newBalance = prompt('期初餘額', account.opening_balance);
-        if (newName !== null) {
-          await supabase.from('bank_accounts').update({
-            bank_name: newName,
-            account_number: newNumber,
-            nickname: newNickname,
-            opening_balance: parseFloat(newBalance) || 0
-          }).eq('id', id);
-          renderBankAccounts();
-          showMessage('已更新');
-        }
-      }
-    }
-  });
-  
-  
-// 🔥 新增判斷式：確保 addTransactionForm 存在時才綁定事件
+
+  // 🔥 新增判斷式：確保 addTransactionForm 存在時才綁定事件
   const addTransactionForm = document.getElementById('addTransactionForm');
   if (addTransactionForm) {
     addTransactionForm.addEventListener('submit', async (e) => {
@@ -900,66 +869,6 @@ function initializeEventsInternal() {
       }
     });
   }
-
-  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
-    const deleteBtn = e.target.closest('.delete-bank-btn');
-    if (deleteBtn) {
-      if (confirm('確定刪除此銀行帳戶？')) {
-        await deleteBankAccount(deleteBtn.dataset.id);
-        renderBankAccounts();
-        showMessage('銀行帳戶已刪除。');
-      }
-      return;
-    }
-
-    const editBtn = e.target.closest('.edit-bank-btn');
-    if (editBtn) {
-      const accountId = editBtn.dataset.id;
-      try {
-        // 1. 線上即時讀取該帳戶目前的最新舊資料
-        const { data: acc, error: fetchError } = await supabase
-          .from('bank_accounts')
-          .select('*')
-          .eq('id', accountId)
-          .single();
-
-        if (fetchError || !acc) throw new Error('無法讀取該帳戶資料');
-
-        // 2. 快顯輸入框讓管理員直接修改
-        const newBankName = prompt('請輸入新的銀行名稱:', acc.bank_name);
-        if (newBankName === null) return; // 使用者按取消就中斷操作
-        
-        const newAccNumber = prompt('請輸入新的帳戶號碼:', acc.account_number);
-        if (newAccNumber === null) return;
-
-        const newNickname = prompt('請輸入新的帳戶暱稱:', acc.nickname || '');
-        if (newNickname === null) return;
-
-        if (!newBankName.trim() || !newAccNumber.trim()) {
-          alert('銀行名稱與帳號不可為空白！');
-          return;
-        }
-
-        // 3. 更新回資料庫 public.bank_accounts
-        const { error: updateError } = await supabase
-          .from('bank_accounts')
-          .update({
-            bank_name: newBankName.trim(),
-            account_number: newAccNumber.trim(),
-            nickname: newNickname.trim() || null
-          })
-          .eq('id', accountId);
-
-        if (updateError) throw updateError;
-
-        // 4. 更新前端畫面
-        renderBankAccounts();
-        showMessage('銀行帳戶資料已更新成功。');
-      } catch (err) {
-        alert(`編輯失敗：${err.message}`);
-      }
-    }
-  });
 
   safeListener('forcePasswordForm', 'submit', async (e) => {
     e.preventDefault();
@@ -1058,6 +967,7 @@ function initializeEventsInternal() {
   }
 
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+    // 1. 處理刪除按鈕
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
       if (confirm('確定刪除此銀行帳戶？')) {
@@ -1067,7 +977,16 @@ function initializeEventsInternal() {
       }
       return;
     }
-    // 編輯按鈕可後續擴充
+
+    // 2. 處理編輯按鈕（補上這段讓編輯功能正常運作）
+    const editBtn = e.target.closest('.edit-bank-btn');
+    if (editBtn) {
+      const accountId = editBtn.dataset.id;
+      if (typeof window.editBankAccount === 'function') {
+        window.editBankAccount(accountId);
+      }
+      return;
+    }
   });
 
   // 其他重要 listener
@@ -1754,16 +1673,15 @@ window.editBankAccount = async (id) => {
       
     if (error) throw error;
 
-    // 直接填入畫面上的表單欄位
+    // 將資料填入下方的表單欄位中
     document.getElementById('bankName').value = account.bank_name || '';
     document.getElementById('bankAccountNumber').value = account.account_number || '';
     document.getElementById('bankNickname').value = account.nickname || '';
-    document.getElementById('bankOpeningBalance').value = account.opening_balance || 0;
-
+    document.getElementById('bankOpeningBalance').value = account.opening_balance || 0; // 確保期初餘額正確帶入
     // 記錄目前正在編輯的 ID
     state.editingBankId = id;
 
-    // 修改按鈕文字與樣式提示
+    // 變更按鈕文字提示修改中
     const submitBtn = document.getElementById('bankAccountForm').querySelector('button[type="submit"]');
     if (submitBtn) {
       submitBtn.textContent = '儲存修改';
@@ -1785,7 +1703,6 @@ window.editBankAccount = async (id) => {
 
     // 自動滑動到表單區塊
     document.getElementById('bankAccountForm').scrollIntoView({ behavior: 'smooth' });
-
   } catch (err) {
     alert(`讀取帳號資料失敗: ${err.message}`);
   }
