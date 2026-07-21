@@ -747,26 +747,7 @@ function initializeEventsInternal() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
-  
-  safeListener('loginForm', 'submit', async (e) => {
-    e.preventDefault();
-    
-    // 假設你原本的登入欄位取得方式：
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
 
-    // 1. 呼叫 Supabase 登入函式
-    const result = await signInWithSupabase(email, password);
-
-    if (result.ok) {
-      // 👉 關鍵：將目前登入的 User 資料寫入全域 state，並呼叫切換畫面函式
-      state.currentUser = result.user; 
-      showApp(); // 讓介面隱藏登入頁、顯示系統主畫面並執行 render()
-    } else {
-      // 顯示錯誤訊息
-      showMessage(result.message, true);
-    }
-  });
   // Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -976,9 +957,58 @@ function initializeEventsInternal() {
     }
   });
 
-  safeListener('forcePasswordForm', 'submit', async (e) => { /* 原有 forcePasswordForm 邏輯 */ });
-  safeListener('loginForm', 'submit', async (e) => { /* 原有 loginForm 邏輯 */ });
-  safeListener('companyInfoForm', 'submit', (e) => { /* 原有 companyInfoForm 邏輯 */ });
+  safeListener('forcePasswordForm', 'submit', async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById('forceNewPassword').value;
+    const confirmPassword = document.getElementById('forceConfirmPassword').value;
+    const messageEl = document.getElementById('forcePasswordMessage');
+
+    if (newPassword !== confirmPassword) {
+      messageEl.className = 'message error';
+      messageEl.textContent = '兩次輸入的密碼不一致。';
+      return;
+    }
+    const result = await changeMyPassword(newPassword);
+    if (!result.ok) {
+      messageEl.className = 'message error';
+      messageEl.textContent = result.message;
+      return;
+    }
+    state.currentUser.mustChangePassword = false;
+    document.getElementById('forcePasswordView').style.display = 'none';
+    showApp();});
+  safeListener('loginForm', 'submit', async (e) => { 
+    e.preventDefault();
+    const email = document.getElementById('username').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+    const result = await signInWithSupabase(email, password);
+    if (!result.ok) {
+      showMessage(result.message, true);
+      return;
+    }
+    state.currentUser = result.user;
+    if (result.user.mustChangePassword) {
+      showForcePasswordView();
+      return;
+    }
+    showApp();});
+  safeListener('companyInfoForm', 'submit', (e) => {e.preventDefault();
+    state.companyInfo = {
+      ...state.companyInfo,
+      companyNameZh: document.getElementById('companyNameZh').value.trim(),
+      companyNameEn: document.getElementById('companyNameEn').value.trim(),
+      taxId: document.getElementById('companyTaxId').value.trim(),
+      phone: document.getElementById('companyPhone').value.trim(),
+      address: document.getElementById('companyAddress').value.trim(),
+      representativeName: document.getElementById('companyRepresentative').value.trim(),
+      boardCount: Number(document.getElementById('companyBoardCount').value || 0),
+      totalCapital: Number(document.getElementById('companyTotalCapital').value || 0),
+      plannedOpenDate: document.getElementById('companyOpenDate').value
+    };
+    saveState(state);
+    render();
+    showMessage('公司資料已儲存。');
+  });
 
   // 銀行帳戶
   safeListener('bankAccountForm', 'submit', async (e) => {
@@ -1018,7 +1048,42 @@ function initializeEventsInternal() {
   });
 
   // 其他重要 listener
-  safeListener('transactionForm', 'submit', async (e) => { /* 原有 transactionForm */ });
+  safeListener('transactionForm', 'submit', async (e) => { e.preventDefault();
+
+    let attachmentId = '';
+    const file = document.getElementById('txAttachment').files[0];
+    if (file) {
+      try {
+        attachmentId = await saveAttachment(file);
+      } catch (error) {
+        showMessage(error.message, true);
+        return;
+      }
+    }
+    const voucherType = document.getElementById('txVoucherType').value;
+    const rawVoucher = document.getElementById('txVoucher').value.trim();
+    const date = document.getElementById('txDate').value;
+
+    const item = {
+      date,
+      bankAccountId: document.getElementById('txBankAccount').value,
+      customer: document.getElementById('txCustomer').value.trim(),
+      detail: document.getElementById('txDetail').value.trim(),
+      type: document.getElementById('txType').value,
+      category: document.getElementById('txCategory').value,
+      amount: Number(document.getElementById('txAmount').value),
+      voucherType,
+      voucher: resolveVoucherNumber(voucherType, rawVoucher, date),
+      remark: document.getElementById('txRemark').value.trim(),
+      attachmentId,
+      source: 'input'
+    };
+    state.transactions.unshift(item);
+    saveState(state);
+    render();
+    e.target.reset();
+    showMessage('交易已新增並已儲存。');
+  });
   safeListener('printReportBtn', 'click', () => {
     state.activeTab = 'reports';
     renderTabs();
@@ -1027,7 +1092,27 @@ function initializeEventsInternal() {
     }, 100);
   });
 
-  safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
+  safeListener('inviteUserForm', 'submit', async (e) => { e.preventDefault();
+    const resultBox = document.getElementById('inviteResultBox');
+    try {
+      const result = await inviteNewUser({
+        email: document.getElementById('inviteEmail').value.trim(),
+        fullName: document.getElementById('inviteFullName').value.trim(),
+        role: document.getElementById('inviteRole').value,
+        departmentId: document.getElementById('inviteDepartment').value,
+        password: document.getElementById('invitePassword').value.trim()
+      });
+      resultBox.style.display = 'block';
+      resultBox.className = 'message success';
+      resultBox.textContent = `帳號已建立：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（請自行告知使用者）`;
+      e.target.reset();
+      renderAdminUserTable();
+    } catch (error) {
+      resultBox.style.display = 'block';
+      resultBox.className = 'message error';
+      resultBox.textContent = `開通失敗：${error.message}`;
+    }
+  });
   // 全域函式：點擊按鈕動態往 Table 追加一列
   window.addExcelRow = () => {
   const tbody = document.getElementById('excelLinesBody');
