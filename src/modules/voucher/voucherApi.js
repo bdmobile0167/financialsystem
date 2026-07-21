@@ -1,4 +1,5 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
+import { saveAttachment } from './attachments.js'; // 引入剛改好的 saveAttachment
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
@@ -45,11 +46,12 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason
   if (error) throw error;
 }
 
-export async function createVoucher({ txDate, category, summary, departmentId, line, invoice, payment, projectId }) {
+export async function createVoucher({ txDate, category, summary, departmentId, line, invoice, payment, projectId, file }) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const voucherNo = resolveVoucherNumber(invoice.type, invoice.number, txDate);
 
+  // 1. 建立報支單主表
   const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
@@ -68,23 +70,31 @@ export async function createVoucher({ txDate, category, summary, departmentId, l
 
   if (error) throw error;
 
+  // 2. 寫入明細
   const { error: lineError } = await supabase.from('voucher_lines').insert({
     voucher_id: voucher.id, description: line.description, account_code: line.accountCode, amount: line.amount
   });
   if (lineError) throw lineError;
 
+  // 3. 寫入發票資訊
   const { error: invoiceError } = await supabase.from('invoices').insert({
     voucher_id: voucher.id, invoice_type: invoice.type, invoice_number: invoice.number || null,
     amount: line.amount, tax_amount: 0
   });
   if (invoiceError) throw invoiceError;
 
+  // 4. 寫入付款資訊
   const { error: paymentError } = await supabase.from('voucher_payments').insert({
     voucher_id: voucher.id, payment_type: payment.type,
     bank_account_id: payment.type === 'bank_transfer' ? payment.bankAccountId : null,
     amount: line.amount, paid_at: txDate
   });
   if (paymentError) throw paymentError;
+
+  // 5. 【新增】若有上傳附件檔案，同步上傳並綁定 voucher.id
+  if (file) {
+    await saveAttachment(voucher.id, file);
+  }
 
   await logWorkflow(voucher.id, 'submit', null, 'pending_review');
   return voucher;

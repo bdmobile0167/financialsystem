@@ -1102,13 +1102,19 @@ function initializeEventsInternal() {
   tbody.appendChild(tr);
 };
 
-// 表單提交封包邏輯
+  // 表單提交封包邏輯
   const excelVoucherForm = document.getElementById('voucherCreateForm');
   if (excelVoucherForm) {
     excelVoucherForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
       try {
+        // -----------------------------------------------------------------
+        // 📍 【位置一】：在最上方取得 HTML 裡面的檔案上傳元件
+        // -----------------------------------------------------------------
+        const fileInput = document.getElementById('voucherFileInput'); 
+        const selectedFile = fileInput?.files[0] || null;
+
         const txDate = document.getElementById('vDate').value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject').value || null;
         const generalSummary = document.getElementById('vSummary').value.trim() || "批量多行核銷單據";
@@ -1175,7 +1181,20 @@ function initializeEventsInternal() {
           await supabase.from('invoices').insert(finalInvoices);
         }
 
+        // -----------------------------------------------------------------
+        // 📍 【位置二】：寫在第 3 步後面！若有選擇檔案，自動上傳 Supabase Storage 並寫入資料庫
+        // -----------------------------------------------------------------
+        if (selectedFile) {
+          // saveAttachment 已在 ui.js 第 6 行 import
+          await saveAttachment(voucherMain.id, selectedFile);
+        }
+
         alert(`多筆項目已順利加總，並成功合併發送為一筆總清單單據！總計金額：$${calculatedTotal.toLocaleString()}`);
+        
+        // -----------------------------------------------------------------
+        // 📍 【位置三】：清空檔案選擇器
+        // -----------------------------------------------------------------
+        if (fileInput) fileInput.value = '';
         excelVoucherForm.reset();
         
         // 更新系統 Dashboard
