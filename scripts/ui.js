@@ -587,31 +587,9 @@ async function updateGoogleButtonState() {
 }
 
 async function renderBankAccounts() {
-  // 銀行帳戶列表操作 (編輯 / 刪除)
-  const bankTableBody = document.getElementById('bankAccountTableBody');
-  if (bankTableBody) {
-    // 移除舊的重複監聽，確保只有一個乾淨的事件繫結
-    bankTableBody.replaceWith(bankTableBody.cloneNode(true));
-    const newBankTableBody = document.getElementById('bankAccountTableBody');
-
-    newBankTableBody.addEventListener('click', async (e) => {
-      const deleteBtn = e.target.closest('.delete-bank-btn');
-      if (deleteBtn) {
-        if (confirm('確定刪除此銀行帳戶？')) {
-          await deleteBankAccount(deleteBtn.dataset.id);
-          renderBankAccounts();
-          showMessage('銀行帳戶已刪除。');
-        }
-        return;
-      }
-
-      const editBtn = e.target.closest('.edit-bank-btn');
-      if (editBtn) {
-        // 呼叫下方定義好的頁面內表單編輯函式，不再使用 prompt
-        window.editBankAccount(editBtn.dataset.id);
-      }
-    });
-  }
+  // 🔥 修正：正確宣告 body 變數來對應表格容器
+  const body = document.getElementById('bankAccountTableBody');
+  if (!body) return;
 
   try {
     let accounts = await loadBankAccounts();
