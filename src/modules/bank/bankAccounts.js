@@ -30,44 +30,53 @@ export async function deleteBankAccount(id) {
   if (error) throw error;
 }
 
-export function getBankBalance(id, transactions = []) { /* 保持原有邏輯 */ }
+export function getBankBalance(id, transactions = []) {
+  if (!id) return 0;
+  return transactions
+    .filter(tx => tx.bankAccountId === id)
+    .reduce((sum, tx) => {
+      const amt = Number(tx.amount || 0);
+      return tx.type === '收入' ? sum + amt : sum - amt;
+    }, 0);
+}
 
-document.getElementById('addTransactionForm').addEventListener('submit', async (e) => {
-  e.preventDefault(); // 阻止表單預設重整行為
+// 交易新增（移到 ui.js 初始化時呼叫，避免 DOM 未 ready）
+export function setupTransactionForm() {
+  const form = document.getElementById('addTransactionForm');
+  if (!form) return;
 
-  const bankAccountId = document.getElementById('trans_bank_account_id').value;
-  const transType = document.getElementById('trans_type').value; // 'income' 或 'expense'
-  const amount = parseFloat(document.getElementById('trans_amount').value);
-  const transDate = document.getElementById('trans_date').value;
-  const description = document.getElementById('trans_description').value;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-  // 簡單防呆
-  if (!bankAccountId || !transType || !amount || !transDate) {
-    return alert('請填寫所有必填欄位！');
-  }
+    const bankAccountId = document.getElementById('trans_bank_account_id').value;
+    const transType = document.getElementById('trans_type').value;
+    const amount = parseFloat(document.getElementById('trans_amount').value);
+    const transDate = document.getElementById('trans_date').value;
+    const description = document.getElementById('trans_description').value;
 
-  try {
-    const { data, error } = await supabase
-      .from('bank_transactions') // 確保這是你的交易資料表名稱
-      .insert([{
-        bank_account_id: bankAccountId,
-        type: transType,
-        amount: amount,
-        transaction_date: transDate,
-        description: description,
-        created_by: state.currentUser?.id // 記錄是誰新增的 (如果有此欄位)
-      }]);
+    if (!bankAccountId || !transType || !amount || !transDate) {
+      return alert('請填寫所有必填欄位！');
+    }
 
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase
+        .from('bank_transactions')
+        .insert([{
+          bank_account_id: bankAccountId,
+          type: transType,
+          amount: amount,
+          transaction_date: transDate,
+          description: description,
+          created_by: state?.currentUser?.id
+        }]);
 
-    alert('交易新增成功！');
-    document.getElementById('addTransactionModal').style.display = 'none';
-    e.target.reset(); // 清空表單
-    
-    // 重新載入交易明細
-    loadTransactions(bankAccountId); 
-  } catch (err) {
-    alert(`新增交易失敗: ${err.message}`);
-    console.error(err);
-  }
-});
+      if (error) throw error;
+
+      alert('交易新增成功！');
+      e.target.reset();
+    } catch (err) {
+      alert(`新增交易失敗: ${err.message}`);
+      console.error(err);
+    }
+  });
+}
