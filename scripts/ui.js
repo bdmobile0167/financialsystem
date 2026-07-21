@@ -587,15 +587,30 @@ async function updateGoogleButtonState() {
 }
 
 async function renderBankAccounts() {
-  const body = document.getElementById('bankAccountTableBody');
-  if (!body) return;
+  // 銀行帳戶列表操作 (編輯 / 刪除)
+  const bankTableBody = document.getElementById('bankAccountTableBody');
+  if (bankTableBody) {
+    // 移除舊的重複監聽，確保只有一個乾淨的事件繫結
+    bankTableBody.replaceWith(bankTableBody.cloneNode(true));
+    const newBankTableBody = document.getElementById('bankAccountTableBody');
 
-  const userRole = state.currentUser?.role;
-  const isFinance = ['accounting', 'admin'].includes(userRole);
+    newBankTableBody.addEventListener('click', async (e) => {
+      const deleteBtn = e.target.closest('.delete-bank-btn');
+      if (deleteBtn) {
+        if (confirm('確定刪除此銀行帳戶？')) {
+          await deleteBankAccount(deleteBtn.dataset.id);
+          renderBankAccounts();
+          showMessage('銀行帳戶已刪除。');
+        }
+        return;
+      }
 
-  if (!isFinance) {
-    body.innerHTML = '<tr><td colspan="5" class="muted">僅會計部門與 Admin 可管理銀行帳戶</td></tr>';
-    return;
+      const editBtn = e.target.closest('.edit-bank-btn');
+      if (editBtn) {
+        // 呼叫下方定義好的頁面內表單編輯函式，不再使用 prompt
+        window.editBankAccount(editBtn.dataset.id);
+      }
+    });
   }
 
   try {
@@ -1021,7 +1036,6 @@ function initializeEventsInternal() {
     showMessage('公司資料已儲存。');
   });
 
-  // 銀行帳戶
   const bankForm = document.getElementById('bankAccountForm');
   if (bankForm) {
     bankForm.onsubmit = async (e) => {
@@ -1035,7 +1049,7 @@ function initializeEventsInternal() {
       };
 
       if (state.editingBankId) {
-        // 模式 A：執行更新 (Update)
+        // 執行更新 (Update)
         const { error } = await supabase
           .from('bank_accounts')
           .update(bankData)
@@ -1045,11 +1059,11 @@ function initializeEventsInternal() {
           alert('更新失敗：' + error.message);
         } else {
           alert('銀行帳戶已成功更新！');
-          window.resetBankForm(); // 清除編輯狀態並重設表單
-          renderBankAccounts();   // 重新整理列表
+          window.resetBankForm(); // 恢復新增狀態
+          renderBankAccounts();   // 重新整理列表與餘額
         }
       } else {
-        // 模式 B：執行新增 (Insert)
+        // 執行新增 (Insert)
         const { error } = await supabase
           .from('bank_accounts')
           .insert([bankData]);
@@ -1059,7 +1073,7 @@ function initializeEventsInternal() {
         } else {
           alert('銀行帳戶已成功新增！');
           bankForm.reset();
-          renderBankAccounts();   // 重新整理列表
+          renderBankAccounts();
         }
       }
     };
@@ -1752,7 +1766,6 @@ function updateMenuVisibility() {
 
 // 記得在登入成功後，或者畫面載入時呼叫 updateMenuVisibility()
 
-// 點擊「編輯」時觸發：將資料填入下方的表單，並轉換為編輯模式
 window.editBankAccount = async (id) => {
   try {
     const { data: account, error } = await supabase
@@ -1763,7 +1776,7 @@ window.editBankAccount = async (id) => {
       
     if (error) throw error;
 
-    // 將資料填入原本新增用的表單欄位
+    // 直接填入畫面上的表單欄位
     document.getElementById('bankName').value = account.bank_name || '';
     document.getElementById('bankAccountNumber').value = account.account_number || '';
     document.getElementById('bankNickname').value = account.nickname || '';
@@ -1772,20 +1785,16 @@ window.editBankAccount = async (id) => {
     // 記錄目前正在編輯的 ID
     state.editingBankId = id;
 
-    // 修改表單標題與按鈕文字
-    const formContainer = document.getElementById('bankAccountForm').closest('div');
-    const titleEl = formContainer.querySelector('h3');
-    if (titleEl) titleEl.textContent = '編輯銀行帳戶';
-
+    // 修改按鈕文字與樣式提示
     const submitBtn = document.getElementById('bankAccountForm').querySelector('button[type="submit"]');
     if (submitBtn) {
       submitBtn.textContent = '儲存修改';
-      submitBtn.style.background = '#ffc107'; // 編輯狀態用醒目顏色（例如黃色/橘色）
+      submitBtn.style.background = '#ffc107'; 
     }
 
-    // 若取消按鈕不存在，動態加上去
+    // 加上取消按鈕（若還沒有的話）
     let cancelBtn = document.getElementById('cancelEditBankBtn');
-    if (!cancelBtn) {
+    if (!cancelBtn && submitBtn) {
       cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
       cancelBtn.id = 'cancelEditBankBtn';
@@ -1796,7 +1805,7 @@ window.editBankAccount = async (id) => {
       submitBtn.parentNode.appendChild(cancelBtn);
     }
 
-    // 自動滑動到表單位置讓使用者看到
+    // 自動滑動到表單區塊
     document.getElementById('bankAccountForm').scrollIntoView({ behavior: 'smooth' });
 
   } catch (err) {
@@ -1804,25 +1813,18 @@ window.editBankAccount = async (id) => {
   }
 };
 
-// 取消編輯，將表單恢復成「新增帳戶」狀態
 window.resetBankForm = () => {
   state.editingBankId = null;
   const form = document.getElementById('bankAccountForm');
   if (!form) return;
   form.reset();
 
-  // 恢復標題與按鈕
-  const formContainer = form.closest('div');
-  const titleEl = formContainer.querySelector('h3');
-  if (titleEl) titleEl.textContent = '新增銀行帳戶';
-
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) {
     submitBtn.textContent = '新增帳戶';
-    submitBtn.style.background = ''; // 恢復預設樣式
+    submitBtn.style.background = '';
   }
 
-  // 移除取消按鈕
   const cancelBtn = document.getElementById('cancelEditBankBtn');
   if (cancelBtn) cancelBtn.remove();
 };
