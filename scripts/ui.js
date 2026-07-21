@@ -745,7 +745,7 @@ function initializeEventsInternal() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
-  // 安全的事件綁定（所有 listener 都用 ?. 防 null）
+// 安全的事件綁定
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, handler);
@@ -765,7 +765,7 @@ function initializeEventsInternal() {
   });
   safeListener('budgetViewPeriod', 'change', renderBudget);
 
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.activeTab = btn.dataset.tab;
       renderTabs();
@@ -781,6 +781,10 @@ function initializeEventsInternal() {
       }
       if (btn.dataset.tab === 'transactions' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('交易管理僅限會計部門使用', true);
+        return;
+      }
+      if (btn.dataset.tab === 'bankAccounts' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+        showMessage('銀行帳戶管理僅限會計部門使用', true);
         return;
       }
     });
@@ -829,7 +833,7 @@ function initializeEventsInternal() {
     });
   }
 
-  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
       if (confirm('確定刪除此銀行帳戶？')) {
@@ -839,7 +843,6 @@ function initializeEventsInternal() {
       }
       return;
     }
-
     const editBtn = e.target.closest('.edit-bank-btn');
     if (editBtn) {
       const id = editBtn.dataset.id;
@@ -862,6 +865,8 @@ function initializeEventsInternal() {
       }
     }
   });
+  
+  setupTransactionForm();
   
 // 🔥 新增判斷式：確保 addTransactionForm 存在時才綁定事件
   const addTransactionForm = document.getElementById('addTransactionForm');
@@ -1175,9 +1180,6 @@ function initializeEventsInternal() {
     voucherLines.push({ description: '', accountCode: '', amount: 0 });
     renderVoucherLines();
   });
-  
-  setupTransactionForm();
-  // 確保只在表單存在時才綁定事件
 }
 
 let voucherLines = [];
