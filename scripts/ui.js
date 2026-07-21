@@ -861,10 +861,17 @@ function initializeEventsInternal() {
         document.getElementById('addTransactionModal').style.display = 'none';
         e.target.reset(); // 清空表單
         
-        // 重新載入交易明細 (加上 typeof 檢查避免報錯)
-        if (typeof loadTransactions === 'function') {
-          loadTransactions(bankAccountId); 
-        }
+        // 寫入 Supabase 成功後，同步更新本地狀態並重新渲染
+        state.transactions.unshift({
+          date: transDate,
+          bankAccountId: bankAccountId,
+          detail: description,
+          type: transType,
+          amount: amount,
+          source: 'supabase'
+        });
+        saveState(state);
+        render();
       } catch (err) {
         alert(`新增交易失敗: ${err.message}`);
         console.error(err);
