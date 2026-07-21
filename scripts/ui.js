@@ -225,7 +225,7 @@ function renderBusinessData() {
 
 // === Dashboard 專案過濾版 ===
 async function renderDashboard() {
-  const container = document.getElementById('dashboardContainer') || document.querySelector('.main-content');
+  const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
   if (!container) return;
 
   const user = state.currentUser;
@@ -373,8 +373,9 @@ function renderTransactionTable() {
 function getReportPeriodTransactions() {
   const start = document.getElementById('reportPeriodStart')?.value;
   const end = document.getElementById('reportPeriodEnd')?.value;
-  if (!start && !end) return state.transactions;
-  return state.transactions.filter(tx => {
+  const txs = state.transactions || []; // 加上預設空陣列
+  if (!start && !end) return txs;
+  return txs.filter(tx => {
     if (start && tx.date < start) return false;
     if (end && tx.date > end) return false;
     return true;
@@ -618,7 +619,8 @@ function renderVoucherCenter() {
   const body = document.getElementById('voucherCenterTableBody');
   if (!body) return;
   const keyword = (document.getElementById('voucherSearchInput')?.value || '').trim().toLowerCase();
-  const filtered = state.transactions.filter(tx => {
+  const txs = state.transactions || []; // 加上預設空陣列
+  const filtered = txs.filter(tx => {
     if (!keyword) return true;
     return [tx.detail, tx.customer, tx.voucher, getBankNickname(tx.bankAccountId)]
       .some(field => (field || '').toLowerCase().includes(keyword));
@@ -635,7 +637,8 @@ function renderBudget() {
   const body = document.getElementById('budgetTableBody');
   if (!body) return;
   const period = document.getElementById('budgetViewPeriod')?.value || new Date().toISOString().slice(0, 7);
-  const rows = buildBudgetReport(state.transactions, period);
+  // 加上 || [] 確保傳入的是陣列
+  const rows = buildBudgetReport(state.transactions || [], period);
   body.innerHTML = rows.map(r => `
     <tr>
       <td>${r.accountCode} ${r.accountName}</td>
@@ -744,12 +747,11 @@ function initializeEventsInternal() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
-// Tab 切換（最重要的部分）
+// Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
 
-      // 權限檢查
       if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
@@ -770,6 +772,9 @@ function initializeEventsInternal() {
       }
       if (tab === 'budget') {
         renderBudget();
+      }
+      if (tab === 'reports') {
+        renderReports();
       }
     });
   });
@@ -793,32 +798,6 @@ function initializeEventsInternal() {
   });
   safeListener('budgetViewPeriod', 'change', renderBudget);
 
-  // Tab 切換
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-
-      // 權限檢查
-      if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
-        showMessage('僅會計部門與 Admin 可使用', true);
-        return;
-      }
-
-      state.activeTab = tab;
-      renderTabs();
-      closeSidebar();
-
-      if (tab === 'voucherWorkflow') {
-        populateVoucherFormOptions();
-        renderVoucherWorkflowList();
-      }
-      if (tab === 'adminUsers') {
-        populateInviteDepartmentSelect();
-        renderAdminUserTable();
-        renderAdminDepartmentList();
-      }
-    });
-  });
 // 銀行帳戶
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
