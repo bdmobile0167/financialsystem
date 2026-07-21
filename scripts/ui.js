@@ -804,8 +804,10 @@ function initializeEventsInternal() {
       if (confirm('確定要登出嗎？')) {
         try {
           await signOutSupabase();
-          showApp(); // 回到登入畫面
-          showMessage('已登出');
+          
+          // 👉 修正：登出後直接重整頁面，釋放所有 JavaScript 記憶體變數
+          window.location.reload();
+          
         } catch (err) {
           console.error(err);
           showMessage('登出失敗', true);
