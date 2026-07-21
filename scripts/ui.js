@@ -745,15 +745,7 @@ function initializeEventsInternal() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
-  const projectFilter = document.getElementById('projectFilter') || document.getElementById('topProjectSelect');
-  if (projectFilter) {
-    projectFilter.addEventListener('change', (e) => {
-      state.selectedProjectId = e.target.value; // 將選定值存入全域狀態
-      renderDashboard(); // 🔥 核心：只單獨重新渲染 Dashboard，畫面才不會跳轉或卡死
-    });
-  }
-
-  // 安全的事件綁定
+  // 安全的事件綁定（所有 listener 都用 ?. 防 null）
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, handler);
@@ -840,10 +832,10 @@ function initializeEventsInternal() {
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
-      if (confirm('確定刪除？')) {
+      if (confirm('確定刪除此銀行帳戶？')) {
         await deleteBankAccount(deleteBtn.dataset.id);
         renderBankAccounts();
-        showMessage('已刪除');
+        showMessage('銀行帳戶已刪除。');
       }
       return;
     }
@@ -853,14 +845,16 @@ function initializeEventsInternal() {
       const id = editBtn.dataset.id;
       const account = (await loadBankAccounts()).find(a => a.id === id);
       if (account) {
-        const newName = prompt('新銀行名稱', account.bank_name);
-        const newNumber = prompt('新帳號', account.account_number);
-        const newNickname = prompt('新暱稱', account.nickname);
-        if (newName) {
+        const newName = prompt('銀行名稱', account.bank_name);
+        const newNumber = prompt('帳號', account.account_number);
+        const newNickname = prompt('暱稱', account.nickname);
+        const newBalance = prompt('期初餘額', account.opening_balance);
+        if (newName !== null) {
           await supabase.from('bank_accounts').update({
             bank_name: newName,
             account_number: newNumber,
-            nickname: newNickname
+            nickname: newNickname,
+            opening_balance: parseFloat(newBalance) || 0
           }).eq('id', id);
           renderBankAccounts();
           showMessage('已更新');
@@ -1021,10 +1015,8 @@ function initializeEventsInternal() {
   });
 
   safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
-  setupTransactionForm();
-  // 確保只在表單存在時才綁定事件
-// 全域函式：點擊按鈕動態往 Table 追加一列
-window.addExcelRow = () => {
+  // 全域函式：點擊按鈕動態往 Table 追加一列
+  window.addExcelRow = () => {
   const tbody = document.getElementById('excelLinesBody');
   if (!tbody) return;
   const tr = document.createElement('tr');
@@ -1176,8 +1168,10 @@ window.addExcelRow = () => {
   safeListener('addVoucherLineBtn', 'click', () => {
     voucherLines.push({ description: '', accountCode: '', amount: 0 });
     renderVoucherLines();
-    setupTransactionForm();
   });
+  
+  setupTransactionForm();
+  // 確保只在表單存在時才綁定事件
 }
 
 let voucherLines = [];
