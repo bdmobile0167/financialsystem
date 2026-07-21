@@ -11,6 +11,33 @@ import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/mo
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 
+const projectSelect = document.getElementById('global-project-select'); // 替換為你的 select ID
+
+if (projectSelect) {
+  projectSelect.addEventListener('change', async (e) => {
+    const selectedProjectId = e.target.value;
+    
+    // 更新全域狀態
+    state.currentProjectId = selectedProjectId;
+    
+    // 將選擇的專案 ID 存入 localStorage，讓重整網頁後依然記住選擇
+    localStorage.setItem('selectedProjectId', selectedProjectId);
+    
+    console.log('專案已切換至：', selectedProjectId);
+    
+    // ⚠️ 關鍵：呼叫更新畫面的函數，讓報表或單據重新載入
+    if (typeof renderDashboard === 'function') renderDashboard();
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+  });
+
+  // 網頁載入時，嘗試恢復上次選取的專案
+  const savedProjectId = localStorage.getItem('selectedProjectId');
+  if (savedProjectId) {
+    projectSelect.value = savedProjectId;
+    state.currentProjectId = savedProjectId;
+  }
+}
+
 const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
 
 async function populateInviteDepartmentSelect() {
@@ -797,6 +824,46 @@ function initializeEvents() {
     });
   }
 
+  document.getElementById('addTransactionForm').addEventListener('submit', async (e) => {
+    e.preventDefault(); // 阻止表單預設重整行為
+
+    const bankAccountId = document.getElementById('trans_bank_account_id').value;
+    const transType = document.getElementById('trans_type').value; // 'income' 或 'expense'
+    const amount = parseFloat(document.getElementById('trans_amount').value);
+    const transDate = document.getElementById('trans_date').value;
+    const description = document.getElementById('trans_description').value;
+
+    // 簡單防呆
+    if (!bankAccountId || !transType || !amount || !transDate) {
+      return alert('請填寫所有必填欄位！');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('bank_transactions') // 確保這是你的交易資料表名稱
+        .insert([{
+          bank_account_id: bankAccountId,
+          type: transType,
+          amount: amount,
+          transaction_date: transDate,
+          description: description,
+          created_by: state.currentUser?.id // 記錄是誰新增的 (如果有此欄位)
+        }]);
+
+      if (error) throw error;
+
+      alert('交易新增成功！');
+      document.getElementById('addTransactionModal').style.display = 'none';
+      e.target.reset(); // 清空表單
+      
+      // 重新載入交易明細
+      loadTransactions(bankAccountId); 
+    } catch (err) {
+      alert(`新增交易失敗: ${err.message}`);
+      console.error(err);
+    }
+  });
+
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
@@ -1491,5 +1558,79 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
   } catch (err) {
     alert(`銷案操作失敗：${err.message}`);
+  }
+};
+
+function updateMenuVisibility() {
+  const user = state.currentUser; 
+  if (!user) return;
+
+  // 判斷是否為 Admin 或 財務部
+  const isFinanceOrAdmin = user.role === 'admin' || user.department === '財務部';
+
+  // 取得銀行與交易管理的選單 DOM 元素 (請替換成你實際的 ID)
+  const bankMenu = document.getElementById('nav-bank-management');
+  const transactionMenu = document.getElementById('nav-transaction-management');
+
+  if (bankMenu) {
+    bankMenu.style.display = isFinanceOrAdmin ? 'block' : 'none';
+  }
+  
+  if (transactionMenu) {
+    transactionMenu.style.display = isFinanceOrAdmin ? 'block' : 'none';
+  }
+}
+
+// 記得在登入成功後，或者畫面載入時呼叫 updateMenuVisibility()
+
+// 打開編輯 Modal 並帶入舊資料
+window.editBankAccount = async (id) => {
+  try {
+    const { data: account, error } = await supabase
+      .from('bank_accounts')
+      .select('*')
+      .eq('id', id)
+      .single();
+      
+    if (error) throw error;
+
+    // 假設你有一個編輯的 Modal 或表單，請確保欄位都有賦值
+    document.getElementById('edit_bank_id').value = account.id;
+    document.getElementById('edit_bank_name').value = account.bank_name || '';
+    document.getElementById('edit_account_name').value = account.account_name || '';
+    document.getElementById('edit_account_number').value = account.account_number || '';
+    document.getElementById('edit_currency').value = account.currency || 'TWD';
+    document.getElementById('edit_branch').value = account.branch || '';
+    
+    // 顯示 Modal
+    document.getElementById('editBankModal').style.display = 'block';
+  } catch (err) {
+    alert(`讀取帳號資料失敗: ${err.message}`);
+  }
+};
+
+// 儲存編輯內容
+window.saveBankEdit = async () => {
+  const id = document.getElementById('edit_bank_id').value;
+  const updateData = {
+    bank_name: document.getElementById('edit_bank_name').value,
+    account_name: document.getElementById('edit_account_name').value,
+    account_number: document.getElementById('edit_account_number').value,
+    currency: document.getElementById('edit_currency').value,
+    branch: document.getElementById('edit_branch').value
+  };
+
+  try {
+    const { error } = await supabase
+      .from('bank_accounts')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
+    alert('銀行帳號更新成功！');
+    document.getElementById('editBankModal').style.display = 'none';
+    renderBankAccounts(); // 重新載入列表
+  } catch (err) {
+    alert(`更新失敗: ${err.message}`);
   }
 };
