@@ -747,7 +747,27 @@ function initializeEventsInternal() {
   });
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
-// Tab 切換（關鍵）
+  
+  safeListener('loginForm', 'submit', async (e) => {
+    e.preventDefault();
+    
+    // 假設你原本的登入欄位取得方式：
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    // 1. 呼叫 Supabase 登入函式
+    const result = await signInWithSupabase(email, password);
+
+    if (result.ok) {
+      // 👉 關鍵：將目前登入的 User 資料寫入全域 state，並呼叫切換畫面函式
+      state.currentUser = result.user; 
+      showApp(); // 讓介面隱藏登入頁、顯示系統主畫面並執行 render()
+    } else {
+      // 顯示錯誤訊息
+      showMessage(result.message, true);
+    }
+  });
+  // Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
