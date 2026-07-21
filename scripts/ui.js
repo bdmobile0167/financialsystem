@@ -237,7 +237,7 @@ async function renderDashboard() {
   try {
     // 1. 如果選取「全公司總覽」
     if (selectedProj === 'all') {
-      let voucherQuery = supabase.from('vouchers').select('*, profiles(full_name), departments(name)');
+      let voucherQuery = supabase.from('vouchers').select('*, profiles!applicant_id(full_name), departments(name)');
       
       // 非高階管理人員，強制只能看自己部門的單據
       if (!isPrivileged) {
@@ -295,7 +295,7 @@ async function renderDashboard() {
     // 2. 如果選取「特定單一專案」
     else {
       const { data: proj } = await supabase.from('projects').select('*').eq('id', selectedProj).single();
-      const { data: projVchs } = await supabase.from('vouchers').select('*, profiles(full_name)').eq('project_id', selectedProj);
+      const { data: projVchs } = await supabase.from('vouchers').select('*, profiles!applicant_id(full_name)').eq('project_id', selectedProj);
 
       if (!proj) return;
 
@@ -1515,7 +1515,7 @@ function renderPermissionCheckboxes() {
 window.viewVoucherDetail = async (voucherId) => {
   try {
     const { data: vch, error: vError } = await supabase
-      .from('vouchers').select('*, profiles(full_name)')
+      .from('vouchers').select('*, profiles!applicant_id(full_name)')
       .eq('id', voucherId).single();
     
     if (vError || !vch) throw new Error('無法讀取報支明細資料');
