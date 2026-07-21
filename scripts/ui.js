@@ -611,7 +611,7 @@ async function renderBankAccounts() {
     populateBankSelect(document.getElementById('vBankAccount'), accounts);
   } catch (e) {
     console.error(e);
-    body.innerHTML = '<tr><td colspan="5" class="muted">載入失敗，請檢查 Supabase</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="muted">載入失敗</td></tr>';
   }
 }
 
@@ -645,6 +645,9 @@ function renderBudget() {
       <td style="color:${r.variance > 0 && r.accountCode === '6100' ? 'var(--danger)' : 'inherit'}">${r.variance.toLocaleString()}</td>
       <td>${r.variancePercent.toFixed(1)}%</td>
     </tr>`).join('') || '<tr><td colspan="5" class="muted">這個月尚未設定預算目標。</td></tr>';
+
+  // ←←← 新增這一行
+  renderProjectList();
 }
 
 function renderEquityTab() {
@@ -824,6 +827,38 @@ function initializeEvents() {
     });
   }
 
+  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.delete-bank-btn');
+    if (deleteBtn) {
+      if (confirm('確定刪除？')) {
+        await deleteBankAccount(deleteBtn.dataset.id);
+        renderBankAccounts();
+        showMessage('已刪除');
+      }
+      return;
+    }
+
+    const editBtn = e.target.closest('.edit-bank-btn');
+    if (editBtn) {
+      const id = editBtn.dataset.id;
+      const account = (await loadBankAccounts()).find(a => a.id === id);
+      if (account) {
+        const newName = prompt('新銀行名稱', account.bank_name);
+        const newNumber = prompt('新帳號', account.account_number);
+        const newNickname = prompt('新暱稱', account.nickname);
+        if (newName) {
+          await supabase.from('bank_accounts').update({
+            bank_name: newName,
+            account_number: newNumber,
+            nickname: newNickname
+          }).eq('id', id);
+          renderBankAccounts();
+          showMessage('已更新');
+        }
+      }
+    }
+  });
+  
   document.getElementById('addTransactionForm').addEventListener('submit', async (e) => {
     e.preventDefault(); // 阻止表單預設重整行為
 
