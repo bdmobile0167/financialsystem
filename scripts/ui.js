@@ -745,7 +745,7 @@ function initializeEventsInternal() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
-// 安全的事件綁定
+  // 安全的事件綁定
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, handler);
@@ -765,81 +765,40 @@ function initializeEventsInternal() {
   });
   safeListener('budgetViewPeriod', 'change', renderBudget);
 
-document.querySelectorAll('.tab-btn').forEach(btn => {
+  // Tab 切換
+  document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.activeTab = btn.dataset.tab;
+      const tab = btn.dataset.tab;
+
+      // 權限檢查
+      if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+        showMessage('僅會計部門與 Admin 可使用', true);
+        return;
+      }
+
+      state.activeTab = tab;
       renderTabs();
       closeSidebar();
-      if (btn.dataset.tab === 'voucherWorkflow') {
+
+      if (tab === 'voucherWorkflow') {
         populateVoucherFormOptions();
         renderVoucherWorkflowList();
       }
-      if (btn.dataset.tab === 'adminUsers') {
+      if (tab === 'adminUsers') {
         populateInviteDepartmentSelect();
         renderAdminUserTable();
         renderAdminDepartmentList();
       }
-      if (btn.dataset.tab === 'transactions' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
-        showMessage('交易管理僅限會計部門使用', true);
-        return;
-      }
-      if (btn.dataset.tab === 'bankAccounts' && !['accounting', 'admin'].includes(state.currentUser?.role)) {
-        showMessage('銀行帳戶管理僅限會計部門使用', true);
-        return;
-      }
     });
   });
-
-  const adminCreateUserForm = document.getElementById('adminCreateUserForm') || document.getElementById('signUpForm');
-  if (adminCreateUserForm) {
-    adminCreateUserForm.addEventListener('submit', async (e) => {
-      e.preventDefault(); // 🔥 關鍵：阻止網頁重整跳轉
-      
-      const email = document.getElementById('signupEmail')?.value.trim();
-      const fullName = document.getElementById('signupFullName')?.value.trim();
-      const role = document.getElementById('signupRole')?.value || 'employee';
-      const departmentId = document.getElementById('signupDepartment')?.value || null;
-      
-      const submitBtn = e.target.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.disabled = true;
-
-      try {
-        // 取得當前的 Token 進行身份驗證
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData?.session?.access_token;
-
-        // 🔥 呼叫你的 netlify/api/invite.js 後端服務器路由
-        const response = await fetch('/api/invite', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ email, fullName, role, departmentId })
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.message || '開通帳號失敗');
-
-        alert(`帳號開通成功！預設密碼為：${result.credentials.tempPassword}`);
-        adminCreateUserForm.reset();
-        
-        if (typeof renderAdminUserTable === 'function') renderAdminUserTable();
-      } catch (err) {
-        alert(`操作失敗：${err.message}`);
-      } finally {
-        if (submitBtn) submitBtn.disabled = false;
-      }
-    });
-  }
-
-document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
+// 銀行帳戶
+  document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
-      if (confirm('確定刪除此銀行帳戶？')) {
+      if (confirm('確定刪除？')) {
         await deleteBankAccount(deleteBtn.dataset.id);
         renderBankAccounts();
-        showMessage('銀行帳戶已刪除。');
+        showMessage('已刪除');
       }
       return;
     }
@@ -866,7 +825,6 @@ document.getElementById('bankAccountTableBody')?.addEventListener('click', async
     }
   });
   
-  setupTransactionForm();
   
 // 🔥 新增判斷式：確保 addTransactionForm 存在時才綁定事件
   const addTransactionForm = document.getElementById('addTransactionForm');
@@ -1180,6 +1138,8 @@ document.getElementById('bankAccountTableBody')?.addEventListener('click', async
     voucherLines.push({ description: '', accountCode: '', amount: 0 });
     renderVoucherLines();
   });
+  // 交易表單
+  setupTransactionForm();
 }
 
 let voucherLines = [];
