@@ -57,3 +57,22 @@ window.calculateRowTotal = (element) => {
   // 自動幫忙計算總金額，使用者亦可手動覆寫調整誤差
   amountInput.value = price * qty;
 };
+
+function loadState() {
+  const saved = localStorage.getItem('my_app_state');
+  let state = saved ? JSON.parse(saved) : { transactions: [] };
+
+  // --- 新增：自動過濾掉舊的 14 筆預設資料（假設它們有固定的 ID 範圍，例如 tx-1 ~ tx-14 或特定的預設特徵） ---
+  if (state.transactions && state.transactions.length > 0) {
+    // 假設這 14 筆舊資料的 ID 是用 'tx-1' 到 'tx-14'，或者您可以根據它們共同的特徵（例如某個特定的日期或明細名稱）來過濾
+    const defaultIds = ['tx-1', 'tx-2', 'tx-3', 'tx-4', 'tx-5', 'tx-6', 'tx-7', 'tx-8', 'tx-9', 'tx-10', 'tx-11', 'tx-12', 'tx-13', 'tx-14'];
+    
+    // 只保留「不是」這 14 筆預設 ID 的新資料
+    state.transactions = state.transactions.filter(tx => !defaultIds.includes(tx.id));
+    
+    // 處理完後存回 localStorage，確保以後不會重複觸發
+    localStorage.setItem('my_app_state', JSON.stringify(state));
+  }
+
+  return state;
+}

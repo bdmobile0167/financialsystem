@@ -362,20 +362,22 @@ function renderTransactionTable() {
   
   txs.forEach((tx, index) => {
     const row = document.createElement('tr');
-    // 讓憑證欄位支援點擊（若有對應的 voucher_id 或 voucher 編號可帶入）
-    const voucherDisplay = tx.voucher_id || tx.voucher ? 
-      `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id || tx.voucher}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || '檢視憑證'}</a>` : 
-      '<span class="badge wait">待補</span>';
+    
+    // 憑證顯示：若有 voucher_id 則可點擊彈出，否則顯示文字或待補
+    const voucherDisplay = tx.voucher_id ? 
+      `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || '檢視憑證'}</a>` : 
+      (tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">無憑證</span>');
 
+    // 嚴格對應 HTML Header: 憑證 | 日期 | 銀行 | 明細 | 類型 | 分類 | 金額 | 操作
     row.innerHTML = `
+      <td>${voucherDisplay}</td>
       <td>${tx.date}</td>
-      <td>${tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">待補</span>'}</td>
       <td>${getBankNickname(tx.bankAccountId) || tx.bank || '未設定'}</td>
       <td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td>
       <td>${tx.type}</td>
       <td>${tx.category || '營業'}</td>
-      <td>${Number(tx.amount).toLocaleString()}</td>
-      <td><button class="secondary delete-btn" data-index="${index}">刪除</button></td>
+      <td>$${Number(tx.amount).toLocaleString()}</td>
+      <td><button class="secondary delete-transaction-btn" data-index="${index}">刪除</button></td>
     `;
     body.appendChild(row);
   });
@@ -866,6 +868,24 @@ function initializeEventsInternal() {
       } catch (err) {
         alert(`新增交易失敗: ${err.message}`);
         console.error(err);
+      }
+    });
+  }
+
+  const transactionTableBody = document.getElementById('transactionTableBody');
+  if (transactionTableBody) {
+    transactionTableBody.addEventListener('click', (e) => {
+      const deleteBtn = e.target.closest('.delete-transaction-btn');
+      if (deleteBtn) {
+        const index = parseInt(deleteBtn.dataset.index, 10);
+        if (!isNaN(index)) {
+          if (confirm('確定要刪除這筆交易紀錄嗎？')) {
+            state.transactions.splice(index, 1); // 從陣列中移除
+            saveState(state);                    // 儲存至 localStorage
+            render();                            // 重新渲染畫面
+            showMessage('交易已成功刪除。');
+          }
+        }
       }
     });
   }

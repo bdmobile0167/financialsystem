@@ -3,8 +3,6 @@ import { COMPANY_INFO, BUSINESS_ITEMS, DIRECTOR_SHAREHOLDER_LIST, STRUCTURE_SETT
 export const STORAGE_KEY = 'finance_netlify_app_v1';
 export const USER_KEY = 'finance_netlify_user';
 
-export const SAMPLE_DATA = [];
-
 export const defaultState = {
   transactions: [],
   currentUser: null,
