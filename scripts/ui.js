@@ -910,110 +910,108 @@ function initializeEvents() {
 
   safeListener('inviteUserForm', 'submit', async (e) => { /* 原有 inviteUserForm */ });
   // 確保只在表單存在時才綁定事件
-  const voucherForm = document.getElementById('voucherCreateForm');
-  if (voucherForm) {
-    voucherForm.addEventListener('submit', async (e) => {
+// 全域函式：點擊按鈕動態往 Table 追加一列
+window.addExcelRow = () => {
+  const tbody = document.getElementById('excelLinesBody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-desc" placeholder="請輸入細項摘要" style="width:96%; padding:4px;"></td>
+    <td style="padding:4px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0"></td>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <select class="grid-inv-type" style="width:100%; padding:4px;">
+        <option value="無">無</option>
+        <option value="發票">發票</option>
+        <option value="收據">收據</option>
+      </select>
+    </td>
+    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;"></td>
+  `;
+  tbody.appendChild(tr);
+};
+
+// 表單提交封包邏輯
+  const excelVoucherForm = document.getElementById('voucherCreateForm');
+  if (excelVoucherForm) {
+    excelVoucherForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
-      // 防止重複點擊
-      const submitBtn = e.target.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.disabled = true;
 
       try {
-        // 1. 取得畫面上確實存在的欄位值
-        const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
-        const projectId = document.getElementById('vProject')?.value || null;
-        const summary = document.getElementById('vSummary')?.value?.trim() || '';
-        const amount = Number(document.getElementById('vAmount')?.value || 0);
-        const invoiceType = document.getElementById('vInvoiceType')?.value || '無';
-        const invoiceNumber = document.getElementById('vInvoiceNumber')?.value?.trim() || '';
+        const txDate = document.getElementById('vDate').value || new Date().toISOString().split('T')[0];
+        const projectId = document.getElementById('vProject').value || null;
+        const generalSummary = document.getElementById('vSummary').value.trim() || "批量多行核銷單據";
 
-        if (!summary || amount <= 0) {
-          throw new Error('請填寫完整摘要說明與正確金額！');
+        const rows = document.querySelectorAll('#excelLinesBody tr');
+        let detailLines = [];
+        let invoiceLines = [];
+        let calculatedTotal = 0;
+
+        // 遍歷 Excel 表格的每一列，收集資料
+        rows.forEach(row => {
+          const desc = row.querySelector('.grid-desc').value.trim();
+          const amt = Number(row.querySelector('.grid-amount').value || 0);
+          const invType = row.querySelector('.grid-inv-type').value;
+          const invNum = row.querySelector('.grid-inv-num').value.trim();
+
+          if (desc && amt > 0) {
+            calculatedTotal += amt;
+            detailLines.push({
+              description: desc,
+              account_code: '6100', // 預設管理費用科目
+              amount: amt
+            });
+
+            if (invType !== '無') {
+              invoiceLines.push({
+                invoice_type: invType,
+                invoice_number: invNum,
+                amount: amt,
+                tax_amount: 0
+              });
+            }
+          }
+        });
+
+        if (detailLines.length === 0) {
+          throw new Error('請至少在 Excel 表格中完整填寫一列有效的摘要與金額項目！');
         }
 
-        // 取得當前專案的部門 ID (如果選了專案)
-        let deptId = null;
-        if (projectId && projectId !== 'all') {
-          const { data: projData } = await supabase
-            .from('projects')
-            .select('department_id')
-            .eq('id', projectId)
-            .single();
-          if (projData) deptId = projData.department_id;
-        }
-
-        // 產生唯一報支單號 (VCH + 時間戳記)
-        const voucherNo = 'VCH-' + Date.now();
-
-        // 2. 寫入主表 public.vouchers
-        const { data: voucher, error: vError } = await supabase
+        // 1. 寫入主表 public.vouchers (合併為一筆總清單)
+        const { data: voucherMain, error: vError } = await supabase
           .from('vouchers')
           .insert([{
-            voucher_no: voucherNo,
-            department_id: deptId,
+            voucher_no: 'VCH-' + Date.now(),
             project_id: projectId === 'all' ? null : projectId,
             applicant_id: state.currentUser?.id,
             tx_date: txDate,
-            category: '營業', // 預設歸類為營業費用
-            summary: summary,
-            total_amount: amount,
+            category: '營業',
+            summary: generalSummary,
+            total_amount: calculatedTotal,
             status: 'pending_review'
-          }])
-          .select()
-          .single();
+          }]).select().single();
 
         if (vError) throw vError;
 
-        // 3. 寫入明細表 public.voucher_lines
-        const { error: lineError } = await supabase
-          .from('voucher_lines')
-          .insert([{
-            voucher_id: voucher.id,
-            description: summary,
-            account_code: '6100', // 預設管理費用科目碼
-            amount: amount
-          }]);
+        // 2. 批量寫入子表明細明細行 public.voucher_lines
+        const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
+        const { error: lError } = await supabase.from('voucher_lines').insert(finalLines);
+        if (lError) throw lError;
 
-        if (lineError) throw lineError;
-
-        // 4. 寫入發票憑證 public.invoices
-        if (invoiceType !== '無') {
-          const { error: invError } = await supabase
-            .from('invoices')
-            .insert([{
-              voucher_id: voucher.id,
-              invoice_type: invoiceType,
-              invoice_number: invoiceNumber,
-              amount: amount,
-              tax_amount: 0
-            }]);
-          if (invError) throw invError;
+        // 3. 批量寫入憑證發票子表 public.invoices
+        if (invoiceLines.length > 0) {
+          const finalInvoices = invoiceLines.map(i => ({ ...i, voucher_id: voucherMain.id }));
+          await supabase.from('invoices').insert(finalInvoices);
         }
 
-        // 5. 若有扣專案預算需求，觸發預算扣減 (RPC 或 直接 Update)
-        if (projectId && projectId !== 'all') {
-          // 先讀取剩餘預算
-          const { data: pData } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
-          if (pData) {
-            const newRemaining = Number(pData.remaining_budget) - amount;
-            await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', projectId);
-          }
-        }
-
-        alert('報支申請已成功送出！');
-        e.target.reset();
+        alert(`多筆項目已順利加總，並成功合併發送為一筆總清單單據！總計金額：$${calculatedTotal.toLocaleString()}`);
+        excelVoucherForm.reset();
         
-        // 重新渲染列表，避免全面重整導致死循環
-        if (typeof renderVoucherWorkflowList === 'function') {
-          renderVoucherWorkflowList();
-        }
+        // 更新系統 Dashboard
+        renderDashboard();
+        if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
 
-      } catch (error) {
-        console.error(error);
-        alert(`送出失敗：${error.message || error.details}`);
-      } finally {
-        if (submitBtn) submitBtn.disabled = false;
+      } catch (err) {
+        alert('送出報支單失敗：' + err.message);
       }
     });
   }
@@ -1399,113 +1397,7 @@ function renderPermissionCheckboxes() {
   `).join('');
 }
 
-// 🔥 新增功能：點擊單號顯示詳細內容與提供修改/銷案操作
-window.viewVoucherDetail = async (voucherId) => {
-  try {
-    const { data: vch, error: vError } = await supabase
-      .from('vouchers').select('*, profiles(full_name)')
-      .eq('id', voucherId).single();
-    
-    const { data: lines } = await supabase
-      .from('voucher_lines').select('*')
-      .eq('voucher_id', voucherId);
-
-    const { data: invoices } = await supabase
-      .from('invoices').select('*')
-      .eq('voucher_id', voucherId);
-
-    if (vError || !vch) throw new Error('無法載入該單據明細');
-
-    // 建立一個簡便的覆蓋式浮動視窗 (Modal)
-    let modal = document.getElementById('voucherDetailModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'voucherDetailModal';
-      modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;";
-      document.body.appendChild(modal);
-    }
-
-    modal.style.display = 'flex';
-    modal.innerHTML = `
-      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
-        <div style="display:flex; justify-content:between; align-items:center; margin-bottom:16px; border-bottom:2px solid #eee; padding-bottom:8px;">
-          <h3 style="margin:0;">報支單詳情 [${vch.voucher_no}]</h3>
-          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="cursor:pointer; background:none; border:none; font-size:20px;">×</button>
-        </div>
-        
-        <p><strong>申請日期：</strong> ${vch.tx_date}</p>
-        <p><strong>申請人：</strong> ${vch.profiles?.full_name || '未知'}</p>
-        <p><strong>主旨摘要：</strong> ${vch.summary}</p>
-        <p><strong>當前狀態：</strong> <span class="badge">${vch.status}</span></p>
-        
-        <h4>明細項目：</h4>
-        <table class="table" style="width:100%; margin-bottom:16px;">
-          <thead><tr><th>摘要項目</th><th>科目編號</th><th>金額</th></tr></thead>
-          <tbody>
-            ${lines?.map(l => `<tr><td>${l.description}</td><td>${l.account_code}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('')}
-          </tbody>
-        </table>
-
-        ${invoices?.length ? `<h4>憑證發票資訊：</h4><p>型態：${invoices[0].invoice_type} / 號碼：${invoices[0].invoice_number || '無'}</p>` : ''}
-        
-        <div style="border-top:1px solid #eee; padding-top:16px; display:flex; justify-content:flex-end; gap:8px;">
-          ${vch.status !== 'voided' ? `
-            <button onclick="voidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" class="danger" style="background:#d9534f; color:#fff;">辦理銷案</button>
-          ` : '<span style="color:red; font-weight:bold;">此單據已銷案結案</span>'}
-          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" class="secondary">關閉視窗</button>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
-// 🔥 新增功能：銷案操作邏輯 (返還預算、但不從流水賬中刪除，保留追蹤)
-window.voidVoucher = async (voucherId, projectId, amount) => {
-  if (!confirm('確認要將此報支單進行「銷案」嗎？系統將會保留此單歷史足跡，並返還已被扣減的專案預算額度。')) return;
-
-  try {
-    // 1. 更新單據狀態為已銷案 (voided)
-    const { error: vError } = await supabase
-      .from('vouchers')
-      .update({ status: 'voided' })
-      .eq('id', voucherId);
-    
-    if (vError) throw vError;
-
-    // 2. 如果之前有綁定專案，將被扣除的預算加回去
-    if (projectId && projectId !== 'null' && projectId !== 'undefined') {
-      const { data: proj } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
-      if (proj) {
-        const restoredBudget = Number(proj.remaining_budget) + Number(amount);
-        await supabase.from('projects').update({ remaining_budget: restoredBudget }).eq('id', projectId);
-      }
-    }
-
-    // 3. 寫入工作流歷程紀錄
-    await supabase.from('voucher_workflow_logs').insert([{
-      voucher_id: voucherId,
-      actor_id: state.currentUser?.id,
-      action: 'recall',
-      from_status: 'pending_review',
-      to_status: 'voided',
-      reject_reason: '使用者主動銷案辦理'
-    }]);
-
-    alert('此單據已成功辦理銷案，預算已即時返還。');
-    document.getElementById('voucherDetailModal').style.display = 'none';
-    
-    // 刷新看板與列表
-    renderDashboard();
-    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
-
-  } catch (err) {
-    alert('銷案處理失敗：' + err.message);
-  }
-};
-
-// 🔥 功能 A：點擊單號跳出 Modal 詳細表單視窗
+// 🔥 統一合併版：點擊單號跳出 Modal 詳細表單視窗
 window.viewVoucherDetail = async (voucherId) => {
   try {
     const { data: vch, error: vError } = await supabase
@@ -1529,7 +1421,7 @@ window.viewVoucherDetail = async (voucherId) => {
     modal.style.display = 'flex';
     modal.innerHTML = `
       <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:650px; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
-        <div style="display:flex; justify-content:between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
           <h3 style="margin:0;">單據詳細內容 [${vch.voucher_no}]</h3>
           <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
         </div>
@@ -1540,8 +1432,8 @@ window.viewVoucherDetail = async (voucherId) => {
         
         <h4 style="margin-top:20px; border-left:4px solid #007bff; padding-left:8px;">報支項目拆分清單</h4>
         <table class="table" style="width:100%; margin-bottom:15px; border:1px solid #ddd;">
-          <tr style="background:#f9f9f9;"><th>摘要項目說明</th><th>核銷金額</th></tr>
-          ${lines?.map(l => `<tr><td>${l.description}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="2">無明細</td></tr>'}
+          <tr style="background:#f9f9f9;"><th>摘要項目說明</th><th>科目編號</th><th>核銷金額</th></tr>
+          ${lines?.map(l => `<tr><td>${l.description}</td><td>${l.account_code || '-'}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="3">無明細</td></tr>'}
         </table>
 
         ${invoices?.length ? `<p><strong>憑證關聯：</strong>${invoices[0].invoice_type} - 號碼：${invoices[0].invoice_number || '未填'}</p>` : ''}
@@ -1550,7 +1442,7 @@ window.viewVoucherDetail = async (voucherId) => {
           ${vch.status !== 'voided' ? `
             <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
           ` : '<span style="color:#d9534f; font-weight:bold; align-self:center;">此單據已成功銷案</span>'}
-          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="padding:8px 16px; border-radius:4px; cursor:pointer;">關閉</button>
+          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">關閉</button>
         </div>
       </div>
     `;
@@ -1559,9 +1451,9 @@ window.viewVoucherDetail = async (voucherId) => {
   }
 };
 
-// 🔥 功能 B：執行銷案 (保留歷史單據，但從專案累計花費中扣除/釋放預額)
+// 🔥 統一合併版：執行銷案 (包含返還專案預算邏輯)
 window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
-  if (!confirm('確認要將此張報支單辦理「銷案」嗎？系統將保留此單據明細與歷史紀錄，但專案實際花費不會再加進去此金額（釋放專案剩餘預算）。')) return;
+  if (!confirm('確認要將此張報支單辦理「銷案」嗎？系統將保留此單據明細與歷史紀錄，並釋放（返還）已被扣減的專案預算額度。')) return;
 
   try {
     // 1. 將單據狀態改為已銷案 (voided)
@@ -1572,7 +1464,16 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
 
     if (updateError) throw updateError;
 
-    // 2. 寫入審批流歷程檔案日誌
+    // 2. 核心修正：如果之前有綁定專案，將被扣除的預算加回去
+    if (projectId && projectId !== 'null' && projectId !== 'undefined') {
+      const { data: proj } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
+      if (proj) {
+        const restoredBudget = Number(proj.remaining_budget) + Number(totalAmount);
+        await supabase.from('projects').update({ remaining_budget: restoredBudget }).eq('id', projectId);
+      }
+    }
+
+    // 3. 寫入審批流歷程檔案日誌
     await supabase.from('voucher_workflow_logs').insert([{
       voucher_id: voucherId,
       actor_id: state.currentUser?.id,
@@ -1582,7 +1483,7 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
       reject_reason: '使用者手動撤銷與辦理銷案'
     }]);
 
-    alert('銷案手續已完成！');
+    alert('銷案手續已完成，預算已即時返還！');
     document.getElementById('voucherDetailModal').style.display = 'none';
     
     // 重新更新 Dashboard 和工作流列表
