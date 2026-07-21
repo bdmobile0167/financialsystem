@@ -5,32 +5,31 @@ import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
 import { saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
-import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } from '../src/modules/bank/bankAccounts.js';
+import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 
-const projectSelect = document.getElementById('global-project-select'); // 替換為你的 select ID
+// === 專案選擇器（最上方專案切換）===
+const projectSelect = document.getElementById('globalProjectSelect');
 
 if (projectSelect) {
   projectSelect.addEventListener('change', async (e) => {
     const selectedProjectId = e.target.value;
     
-    // 更新全域狀態
     state.currentProjectId = selectedProjectId;
-    
-    // 將選擇的專案 ID 存入 localStorage，讓重整網頁後依然記住選擇
     localStorage.setItem('selectedProjectId', selectedProjectId);
     
     console.log('專案已切換至：', selectedProjectId);
     
-    // ⚠️ 關鍵：呼叫更新畫面的函數，讓報表或單據重新載入
-    if (typeof renderDashboard === 'function') renderDashboard();
-    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+    renderDashboard();           // 更新 Dashboard
+    renderTransactionTable();    // 更新交易列表
+    renderReports();             // 更新報表
+    renderVoucherWorkflowList(); // 更新報支列表
   });
 
-  // 網頁載入時，嘗試恢復上次選取的專案
+  // 恢復上次選擇
   const savedProjectId = localStorage.getItem('selectedProjectId');
   if (savedProjectId) {
     projectSelect.value = savedProjectId;
@@ -1165,6 +1164,7 @@ window.addExcelRow = () => {
   safeListener('addVoucherLineBtn', 'click', () => {
     voucherLines.push({ description: '', accountCode: '', amount: 0 });
     renderVoucherLines();
+    setupTransactionForm();
   });
 }
 
