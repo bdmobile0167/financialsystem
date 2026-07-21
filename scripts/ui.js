@@ -797,7 +797,22 @@ function initializeEventsInternal() {
     showMessage('預算目標已儲存。');
   });
   safeListener('budgetViewPeriod', 'change', renderBudget);
-
+  // 在 initializeEventsInternal() 裡面加入/替換
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      if (confirm('確定要登出嗎？')) {
+        try {
+          await signOutSupabase();
+          showApp(); // 回到登入畫面
+          showMessage('已登出');
+        } catch (err) {
+          console.error(err);
+          showMessage('登出失敗', true);
+        }
+      }
+    });
+  }
 // 銀行帳戶
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.delete-bank-btn');
