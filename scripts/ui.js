@@ -288,14 +288,21 @@ async function renderDashboard() {
   try {
     // ====================== 取得報支單（重要：部門權限過濾） ======================
     let voucherQuery = supabase.from('vouchers')
-      .select('*, profiles!applicant_id(full_name), departments(name)');
+      .select('*, profiles!applicant_id(full_name), departments(name)')
+      .order('created_at', { ascending: false });
 
-    // 非管理員/會計 → 只能看自己部門的資料
-    if (!isPrivileged && user.department_id) {
+    // 權限控制
+    if (isPrivileged) {
+      // admin 和 accounting 看全部
+    } else if (user.role === 'manager' && user.department_id) {
+      // manager 只能看自己部門
+      voucherQuery = voucherQuery.eq('department_id', user.department_id);
+    } else if (user.role === 'employee' && user.department_id) {
+      // employee 只能看自己部門
       voucherQuery = voucherQuery.eq('department_id', user.department_id);
     }
 
-    const { data: vchs, error: vError } = await voucherQuery.order('created_at', { ascending: false });
+    const { data: vchs, error: vError } = await voucherQuery;
     if (vError) throw vError;
 
     let dashboardHTML = '';
