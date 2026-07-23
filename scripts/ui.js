@@ -1313,23 +1313,31 @@ function initializeEventsInternal() {
   });
   // 全域函式：點擊按鈕動態往 Table 追加一列
   window.addExcelRow = () => {
-  const tbody = document.getElementById('excelLinesBody');
-  if (!tbody) return;
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-desc" placeholder="請輸入細項摘要" style="width:96%; padding:4px;"></td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0"></td>
-    <td style="padding:4px; border:1px solid #ddd;">
-      <select class="grid-inv-type" style="width:100%; padding:4px;">
-        <option value="無">無</option>
-        <option value="發票">發票</option>
-        <option value="收據">收據</option>
-      </select>
-    </td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;"></td>
-  `;
-  tbody.appendChild(tr);
-};
+    const tbody = document.getElementById('excelLinesBody');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
+      <td>
+        <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)">
+          <option value="無">無</option>
+          <option value="發票">發票</option>
+          <option value="收據">收據</option>
+        </select>
+      </td>
+      <td><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+      <td><input type="text" class="grid-desc" placeholder="例如：住宿費" style="width:96%; padding:4px;"></td>
+      <td><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
+      <td>
+        <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;">
+      </td>
+      <td style="text-align:center;">
+        <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  };
 
   // 表單提交封包邏輯
   const excelVoucherForm = document.getElementById('voucherCreateForm');
@@ -2315,4 +2323,23 @@ window.accountingApproveAndClose = async (voucherId) => {
   document.querySelector('.modal-backdrop').remove();
   renderVoucherWorkflowList();
   renderDashboard();
+};
+
+window.closeVoucher = async (voucherId) => {
+  if (!confirm('確定要執行付款銷案嗎？')) return;
+
+  try {
+    const { error } = await supabase
+      .from('vouchers')
+      .update({ status: 'closed', closed_at: new Date().toISOString() })
+      .eq('id', voucherId);
+
+    if (error) throw error;
+
+    alert('銷案成功！');
+    renderVoucherWorkflowList();
+    renderDashboard();
+  } catch (err) {
+    alert('銷案失敗：' + err.message);
+  }
 };
