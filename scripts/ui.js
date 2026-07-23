@@ -849,25 +849,45 @@ function renderEquityTab() {
   }
 }
 
-function renderJournalFiltered() {
+async function renderJournalFiltered() {
   const keyword = (document.getElementById('journalSearchInput')?.value || '').trim().toLowerCase();
   const journalBody = document.getElementById('journalTableBody');
   if (!journalBody) return;
-  const journal = buildJournal(state.transactions).filter(row => {
-    if (!keyword) return true;
-    return [row.summary, row.bank, row.debitAccount, row.creditAccount, row.voucher]
-      .some(field => (field || '').toLowerCase().includes(keyword));
-  });
-  journalBody.innerHTML = '';
-  if (!journal.length) {
-    journalBody.innerHTML = '<tr><td colspan="9" class="muted">沒有符合條件的分錄。</td></tr>';
-    return;
+
+  try {
+    const journal = await buildJournal(state.transactions || []);
+    
+    const filtered = journal.filter(row => {
+      if (!keyword) return true;
+      return [row.summary, row.bank, row.debitAccount, row.creditAccount, row.voucher]
+        .some(field => (field || '').toLowerCase().includes(keyword));
+    });
+
+    journalBody.innerHTML = '';
+    if (!filtered.length) {
+      journalBody.innerHTML = '<tr><td colspan="9" class="muted">沒有符合條件的分錄。</td></tr>';
+      return;
+    }
+
+    filtered.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.date}</td>
+        <td>${row.summary}</td>
+        <td>${row.bank}</td>
+        <td>${row.debitAccount}</td>
+        <td>${Number(row.debitAmount).toLocaleString()}</td>
+        <td>${row.creditAccount}</td>
+        <td>${Number(row.creditAmount).toLocaleString()}</td>
+        <td>${row.voucher || '-'}</td>
+        <td>${row.status}</td>
+      `;
+      journalBody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('渲染日記帳失敗:', err);
+    journalBody.innerHTML = '<tr><td colspan="9" class="muted">載入失敗</td></tr>';
   }
-  journal.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${row.date}</td><td>${row.summary}</td><td>${row.bank}</td><td>${row.debitAccount}</td><td>${Number(row.debitAmount).toLocaleString()}</td><td>${row.creditAccount}</td><td>${Number(row.creditAmount).toLocaleString()}</td><td>${row.voucher || '-'}</td><td>${row.status}</td>`;
-    journalBody.appendChild(tr);
-  });
 }
 
 function renderTabs() {
