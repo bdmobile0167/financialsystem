@@ -1978,6 +1978,7 @@ window.deleteDepartment = async (id) => {
 };
 
 // === 專案相關 ===
+// === 專案相關 ===
 async function loadAndRenderProjects() {
   try {
     const projects = await fetchProjects();
@@ -1987,39 +1988,38 @@ async function loadAndRenderProjects() {
     let html = '';
     const userRole = state.currentUser?.role;
 
+    // 管理員和會計可以看到全公司總覽
     if (['accounting', 'admin'].includes(userRole)) {
-      html = '<option value="all">全公司總覽</option>';
+      html += '<option value="all">全公司總覽</option>';
     }
-    projects.forEach(p => {
-      html += `<option value="${p.id}">${p.project_code || '無編號'} - ${p.name}</option>`;
-    });
+
+    // 加入所有專案
+    if (projects && projects.length > 0) {
+      projects.forEach(p => {
+        html += `<option value="${p.id}">${p.project_code || '無編號'} - ${p.name}</option>`;
+      });
+    } else {
+      html += '<option value="">尚無專案</option>';
+    }
+
     select.innerHTML = html;
 
-    // === 關鍵：保護目前選擇狀態 ===
-    const currentSelected = state.currentProjectId || 'all';
-
-    // 如果目前選擇還在選項裡，就保留它
-    const hasValidSelection = Array.from(select.options).some(opt => opt.value === currentSelected);
-
-    if (hasValidSelection) {
-      select.value = currentSelected;
-      state.currentProjectId = currentSelected;
+    // 保留使用者之前的選擇
+    const savedProjectId = state.currentProjectId;
+    if (savedProjectId && Array.from(select.options).some(opt => opt.value === savedProjectId)) {
+      select.value = savedProjectId;
     } else if (['accounting', 'admin'].includes(userRole)) {
       select.value = 'all';
       state.currentProjectId = 'all';
     } else if (projects.length > 0) {
       select.value = projects[0].id;
       state.currentProjectId = projects[0].id;
-    } else {
-      select.value = '';
-      state.currentProjectId = null;
     }
 
-    // 只綁定一次事件
+    // 只綁定一次 change 事件
     if (!select.dataset.listenerBound) {
       select.addEventListener('change', () => {
         state.currentProjectId = select.value;
-        // 立即刷新相關畫面
         renderDashboard();
         renderTransactionTable();
         renderReports();
@@ -2030,9 +2030,10 @@ async function loadAndRenderProjects() {
 
   } catch (e) {
     console.error('載入專案失敗:', e);
-    // 防止整個 dashboard 崩掉
     const select = document.getElementById('globalProjectSelect');
-    if (select) select.innerHTML = '<option value="all">全公司總覽</option>';
+    if (select) {
+      select.innerHTML = '<option value="all">全公司總覽</option>';
+    }
   }
 }
 
