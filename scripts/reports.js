@@ -12,11 +12,12 @@ export function summarizeTransactions(transactions) {
 // reports.js
 export async function buildJournal(transactions = []) {
   try {
-    const { data: journalEntries, error } = await supabase   // 改成直接用 supabase
+    const { data: journalEntries, error } = await supabase
       .from('journal_entries')
       .select(`
         *,
-        accounts!inner(code, name)
+        debit_account:accounts!debit_account_code(code, name),
+        credit_account:accounts!credit_account_code(code, name)
       `)
       .order('entry_date', { ascending: false });
 
@@ -26,10 +27,17 @@ export async function buildJournal(transactions = []) {
       date: entry.entry_date || entry.date,
       summary: entry.description || entry.memo || '未註明',
       bank: entry.bank_name || entry.bank || '-',
-      debitAccount: `${entry.debit_account_code || ''} ${entry.debit_account_name || ''}`.trim(),
+      // 這裡也要對應修改，改從關聯展開的物件中讀取科目代碼與名稱
+      debitAccount: entry.debit_account 
+        ? `${entry.debit_account.code} ${entry.debit_account.name}`.trim()
+        : `${entry.debit_account_code || ''} ${entry.debit_account_name || ''}`.trim(),
       debitAmount: Number(entry.debit_amount || 0),
-      creditAccount: `${entry.credit_account_code || ''} ${entry.credit_account_name || ''}`.trim(),
+      
+      creditAccount: entry.credit_account 
+        ? `${entry.credit_account.code} ${entry.credit_account.name}`.trim()
+        : `${entry.credit_account_code || ''} ${entry.credit_account_name || ''}`.trim(),
       creditAmount: Number(entry.credit_amount || 0),
+      
       voucher: entry.voucher_no || entry.voucher || '-',
       status: entry.status || '已入帳'
     }));
