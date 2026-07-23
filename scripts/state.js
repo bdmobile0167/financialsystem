@@ -30,7 +30,8 @@ export function loadState(state) {
     state.optionList = parsed.optionList || OPTION_LIST;
     state.standardizedSettings = parsed.standardizedSettings || STANDARDIZED_STRUCTURE_SETTINGS;
   } else {
-    state.transactions = SAMPLE_DATA;
+    // 📍【修改位置】：將原本的 SAMPLE_DATA 替換成空陣列 []
+    state.transactions = [];
     saveState(state);
   }
   const user = localStorage.getItem(USER_KEY);
