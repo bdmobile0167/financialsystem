@@ -1329,70 +1329,64 @@ function initializeEventsInternal() {
       e.preventDefault();
 
       try {
-        // -----------------------------------------------------------------
-        // 📍 【位置一】：在最上方取得 HTML 裡面的檔案上傳元件
-        // -----------------------------------------------------------------
-        const fileInput = document.getElementById('voucherFileInput'); 
-        const selectedFile = fileInput?.files[0] || null;
+        // === 安全取得所有表單元素 ===
+        const vDateEl = document.getElementById('vDate');
+        const vProjectEl = document.getElementById('vProject');
+        const vSummaryEl = document.getElementById('vSummary');
+        const fileInput = document.getElementById('voucherFileInput');
 
-        const txDate = document.getElementById('vDate').value || new Date().toISOString().split('T')[0];
-        const projectId = document.getElementById('vProject').value || null;
-        const generalSummary = document.getElementById('vSummary').value.trim() || "批量多行核銷單據";
+        const txDate = vDateEl ? vDateEl.value : new Date().toISOString().split('T')[0];
+        const projectId = vProjectEl ? vProjectEl.value : null;
+        const generalSummary = vSummaryEl ? vSummaryEl.value.trim() : "批量多行核銷單據";
 
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
         let invoiceLines = [];
         let calculatedTotal = 0;
 
-        // 遍歷 Excel 表格的每一列，收集資料
         rows.forEach(row => {
-          // 🛡️ 安全防護：使用 optional chaining (?.) 避免抓不到元素時噴出 Cannot read properties of null
           const descInput = row.querySelector('.grid-desc');
           const amtInput = row.querySelector('.grid-amount');
           const invTypeInput = row.querySelector('.grid-inv-type');
           const invNumInput = row.querySelector('.grid-inv-num');
 
-          // 🧹 自動過濾空白列：如果摘要不存在、或者金額不存在/小於等於 0，直接跳過這一列
           if (!descInput || !amtInput) return;
-          
+
           const desc = descInput.value.trim();
           const amt = Number(amtInput.value || 0);
           const invType = invTypeInput ? invTypeInput.value : '無';
           const invNum = invNumInput ? invNumInput.value.trim() : '';
 
-          // 若該列沒有填寫摘要或金額為 0，視為空白列自動過濾
-          if (!desc || amt <= 0) {
-            return; 
-          }
+          if (!desc || amt <= 0) return;
 
           calculatedTotal += amt;
+
           detailLines.push({
             description: desc,
-            account_code: '6100', // 預設管理費用科目
+            account_code: '6100',
             amount: amt
           });
 
           if (invType !== '無') {
             invoiceLines.push({
               invoice_type: invType,
-              invoice_number: invNum,
+              invoice_number: invNum || null,
               amount: amt,
               tax_amount: 0
             });
           }
         });
 
-        // 檢查是否真的有有效的明細
         if (detailLines.length === 0) {
-          throw new Error('請至少完整填寫一列有效的摘要與金額項目（空白列將會被自動過濾）！');
+          throw new Error('請至少填寫一筆有效的摘要與金額！');
         }
 
-        // 1. 寫入主表 public.vouchers (合併為一筆總清單)
+        // 1. 建立主表
         const { data: voucherMain, error: vError } = await supabase
           .from('vouchers')
           .insert([{
             voucher_no: 'VCH-' + Date.now(),
-            project_id: projectId === 'all' ? null : projectId,
+            project_id: projectId && projectId !== 'all' ? projectId : null,
             applicant_id: state.currentUser?.id,
             tx_date: txDate,
             category: '營業',
@@ -1403,38 +1397,33 @@ function initializeEventsInternal() {
 
         if (vError) throw vError;
 
-        // 2. 批量寫入子表明細明細行 public.voucher_lines
+        // 2. 明細
         const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
         const { error: lError } = await supabase.from('voucher_lines').insert(finalLines);
         if (lError) throw lError;
 
-        // 3. 批量寫入憑證發票子表 public.invoices
+        // 3. 發票
         if (invoiceLines.length > 0) {
           const finalInvoices = invoiceLines.map(i => ({ ...i, voucher_id: voucherMain.id }));
           await supabase.from('invoices').insert(finalInvoices);
         }
 
-        // -----------------------------------------------------------------
-        // 📍 【位置二】：寫在第 3 步後面！若有選擇檔案，自動上傳 Supabase Storage 並寫入資料庫
-        // -----------------------------------------------------------------
-        if (selectedFile) {
-          // saveAttachment 已在 ui.js 第 6 行 import
-          await saveAttachment(voucherMain.id, selectedFile);
+        // 4. 上傳附件
+        if (fileInput && fileInput.files[0]) {
+          await saveAttachment(voucherMain.id, fileInput.files[0]);
         }
 
-        alert(`多筆項目已順利加總，並成功合併發送為一筆總清單單據！總計金額：$${calculatedTotal.toLocaleString()}`);
-        
-        // -----------------------------------------------------------------
-        // 📍 【位置三】：清空檔案選擇器
-        // -----------------------------------------------------------------
+        alert(`送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
+
+        // 重置表單
         if (fileInput) fileInput.value = '';
         excelVoucherForm.reset();
-        
-        // 更新系統 Dashboard
+
         renderDashboard();
         if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
 
       } catch (err) {
+        console.error(err);
         alert('送出報支單失敗：' + err.message);
       }
     });
