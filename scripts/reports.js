@@ -1,4 +1,5 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
+import { supabase } from './supabaseClient.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -11,9 +12,7 @@ export function summarizeTransactions(transactions) {
 // reports.js
 export async function buildJournal(transactions = []) {
   try {
-    if (!window.supabase) throw new Error('supabase 未定義');
-
-    const { data: journalEntries, error } = await window.supabase
+    const { data: journalEntries, error } = await supabase   // 改成直接用 supabase
       .from('journal_entries')
       .select(`
         *,
