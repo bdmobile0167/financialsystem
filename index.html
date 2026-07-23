@@ -231,47 +231,61 @@
         </section>
 
         <section id="voucherWorkflow" class="tab-panel" style="display:none;">
-          <div class="grid grid-2">
-            <div class="panel">
-              <h3>新增報支申請</h3>
-              <input type="file" id="voucherFileInput" accept="image/*,.pdf" />
-                <button type="button" id="addVoucherLineBtn" class="secondary">+ 新增明細行</button>
-                <table id="voucherLinesTable">
-                  <thead><tr><th>摘要</th><th>科目</th><th>金額</th><th>操作</th></tr></thead>
-                  <tbody></tbody>
-                </table>
+        <!-- 將原本的雙欄 (grid-2) 移除，讓填表區塊擁有完整寬度以容納多欄位表格 -->
+          
+          <div class="panel" style="margin-bottom: 20px;">
+            <h3>新增報支申請</h3>
+            
+            <!-- 補上完整的 form 標籤與新的表單結構 -->
+          <form id="voucherCreateForm" class="form-container">
+            <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+              <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
+              <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
+                
+                <!-- 修正：將原本的起訖日期保留，但加入 JS 需要的單一日期 vDate -->
+                <div style="flex: 1; min-width: 200px;">
+                  <label>申請日期：</label>
+                  <input type="date" id="vDate" required>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                  <label>行程起訖日期 (選填)：</label>
+                  <input type="date" id="vStartDate"> ~ <input type="date" id="vEndDate">
+                </div>
+                
+                <!-- 新增：JS 需要的下拉選單 -->
+                <div style="flex: 1; min-width: 200px;">
+                  <label>專案：</label>
+                  <select id="vProject"><option value="">載入中...</option></select>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                  <label>部門：</label>
+                  <select id="vDepartment"><option value="">載入中...</option></select>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                  <label>會計科目：</label>
+                  <select id="vAccountCode"><option value="">載入中...</option></select>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                  <label>支付銀行帳戶：</label>
+                  <select id="vBankAccount"><option value="">載入中...</option></select>
+                </div>
 
-                <label>日期</label>
-                <input type="date" id="vDate" required />
-
-                <label>專案 / 預算科目</label>
-                <select id="vProject"></select>
-
-                <label>摘要說明</label>
-                <input type="text" id="vSummary" required />
-
-                <label>金額</label>
-                <input type="number" id="vAmount" min="0" required />
-
-                <label>憑證類型</label>
-                <select id="vInvoiceType">
-                  <option value="發票">發票</option>
-                  <option value="收據">收據</option>
-                  <option value="無">無憑證</option>
-                </select>
-
-                <label>發票號碼（收據/無憑證可留空）</label>
-                <input type="text" id="vInvoiceNumber" />
-
-                <button type="submit" class="primary-btn">送出申請</button>
-              </form>
+              </div>
+              <div>
+                <label style="display:block; margin-bottom:5px;">報支主旨/摘要說明：</label>
+                <input type="text" id="vSummary" style="width: 100%; padding: 8px;" placeholder="請輸入主旨..." required>
+              </div>
             </div>
-            <div class="panel">
-              <h3>報支申請清單</h3>
-              <p class="muted">依照你的角色，自動只顯示你有權限看到的資料。</p>
-              <div id="voucherWorkflowList"></div>
-            </div>
+            <!-- 下方保留你原本的 #excelLinesBody 與 總計金額區塊 -->
           </div>
+
+          <!-- 下方保留原本的清單區塊 -->
+          <div class="panel">
+            <h3>報支申請清單</h3>
+            <p class="muted">依照你的角色，自動只顯示你有權限看到的資料。</p>
+            <div id="voucherWorkflowList"></div>
+          </div>
+        </section>
         </section>
 
         <section id="voucherCenter" class="tab-panel" style="display:none;">
@@ -542,7 +556,30 @@
       </main>
     </div>
   </div>
-
+  <!-- 銀行帳戶編輯 Modal -->
+  <div id="editBankModal" class="login-shell" style="display:none; z-index: 9999;">
+    <div class="card">
+      <h2>編輯銀行帳戶</h2>
+      <form id="editBankForm" onsubmit="event.preventDefault(); saveBankEdit();">
+        <input type="hidden" id="edit_bank_id" />
+        <label>銀行名稱</label>
+        <input type="text" id="edit_bank_name" required />
+        <label>帳戶名稱 (戶名)</label>
+        <input type="text" id="edit_account_name" />
+        <label>帳號</label>
+        <input type="text" id="edit_account_number" required />
+        <label>分行</label>
+        <input type="text" id="edit_branch" />
+        <label>幣別</label>
+        <input type="text" id="edit_currency" value="TWD" />
+        
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+          <button type="submit" class="primary-btn">儲存更新</button>
+          <button type="button" class="secondary" onclick="document.getElementById('editBankModal').style.display='none'">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script type="module" src="./scripts/main.js"></script>
 </body>
 </html>

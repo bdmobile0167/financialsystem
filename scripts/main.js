@@ -12,12 +12,17 @@ async function bootstrap() {
 
 bootstrap();
 
+// ==========================================
+// 報支單明細：新增一列 (包含日期、發票號碼連動與身分證遮蔽)
+// ==========================================
 window.addExcelRow = () => {
   const tbody = document.getElementById('excelLinesBody');
   if (!tbody) return;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-desc" placeholder="摘要說明" style="width:96%; padding:4px;" required></td>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <input type="month" class="grid-date" style="width:96%; padding:4px;" required>
+    </td>
     <td style="padding:4px; border:1px solid #ddd;">
       <select class="grid-inv-type" style="width:100%; padding:4px;" onchange="toggleInvoiceNum(this)">
         <option value="無">無</option>
@@ -25,38 +30,107 @@ window.addExcelRow = () => {
         <option value="收據">收據</option>
       </select>
     </td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="請填寫發票號碼" style="width:90%; padding:4px;" required></td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="number" class="grid-price" placeholder="單價" style="width:90%; padding:4px;" min="0" oninput="calculateRowTotal(this)"></td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="number" class="grid-qty" placeholder="數量" style="width:90%; padding:4px;" min="1" value="1" oninput="calculateRowTotal(this)"></td>
-    <td style="padding:4px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="總金額" style="width:90%; padding:4px;" min="0"></td>
-    <td style="padding:4px; border:1px solid #ddd; text-align:center;"><button type="button" class="danger" onclick="this.closest('tr').remove()">刪除</button></td>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <input type="text" class="grid-inv-num" placeholder="請填寫發票號碼" style="width:90%; padding:4px;" required>
+    </td>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <input type="text" class="grid-desc" placeholder="項目/摘要說明 (例: 住宿費)" style="width:96%; padding:4px;" required>
+    </td>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <input type="number" class="grid-amount" placeholder="金額" style="width:90%; padding:4px;" min="0" oninput="calculateTotalAmount()" required>
+    </td>
+    <td style="padding:4px; border:1px solid #ddd; white-space: nowrap;">
+      <input type="text" class="grid-payee-id" placeholder="填身分證/統編" style="width:50%; padding:4px;" onblur="fetchAndMaskPayee(this)">
+      <span class="payee-name-display" style="margin-left:5px; color:#0369a1; font-weight:bold; font-size:13px;"></span>
+    </td>
+    <td style="padding:4px; border:1px solid #ddd; text-align:center;">
+      <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateTotalAmount();">刪除</button>
+    </td>
   `;
   tbody.appendChild(tr);
 };
 
+// ==========================================
 // 憑證類別連動檢查（選擇發票時強制填寫發票號碼）
+// ==========================================
 window.toggleInvoiceNum = (selectEl) => {
   const row = selectEl.closest('tr');
   const invNumInput = row.querySelector('.grid-inv-num');
-  if (selectEl.value === '發票' || selectEl.value === '收據') {
+  if (selectEl.value === '發票') {
     invNumInput.setAttribute('required', 'true');
-    invNumInput.placeholder = '必填憑證號碼';
+    invNumInput.placeholder = '必填發票號碼';
   } else {
     invNumInput.removeAttribute('required');
-    invNumInput.placeholder = '可留空';
+    invNumInput.placeholder = '選填';
   }
 };
 
-// 自動計算總金額，允許手動誤差調整
-window.calculateRowTotal = (element) => {
-  const row = element.closest('tr');
-  const price = parseFloat(row.querySelector('.grid-price').value) || 0;
-  const qty = parseFloat(row.querySelector('.grid-qty').value) || 1;
-  const amountInput = row.querySelector('.grid-amount');
+// ==========================================
+// 計算整張表單的總金額
+// ==========================================
+window.calculateTotalAmount = () => {
+  const amounts = document.querySelectorAll('.grid-amount');
+  let total = 0;
+  amounts.forEach(input => {
+    total += parseFloat(input.value) || 0;
+  });
   
-  // 自動幫忙計算總金額，使用者亦可手動覆寫調整誤差
-  amountInput.value = price * qty;
+  // 自動將加總結果顯示在下方的總計區塊 (若 HTML 有對應 ID)
+  const totalDisplay = document.getElementById('voucherTotalAmount');
+  if (totalDisplay) {
+    totalDisplay.textContent = '$' + total.toLocaleString();
+  }
 };
+
+// ==========================================
+// 身分證/統編 查詢與姓名遮蔽 (例如：李O白)
+// ==========================================
+window.fetchAndMaskPayee = async (inputEl) => {
+  const idStr = inputEl.value.trim();
+  const displaySpan = inputEl.closest('td').querySelector('.payee-name-display');
+  
+  if (!idStr) {
+    displaySpan.textContent = '';
+    return;
+  }
+
+  displaySpan.textContent = '查詢中...';
+  try {
+    // 💡 之後這裡會換成正式的 Supabase 資料庫查詢 API
+    // 例如：const { data } = await supabase.from('vendors').select('name').eq('tax_id', idStr).single();
+    
+    // 這裡先用模擬資料庫來測試前端效果
+    const fullName = await mockFetchNameFromDB(idStr);
+
+    if (fullName) {
+      displaySpan.textContent = maskName(fullName);
+    } else {
+      displaySpan.textContent = '查無此人';
+    }
+  } catch (err) {
+    displaySpan.textContent = '查詢失敗';
+  }
+};
+
+// 姓名遮蔽邏輯
+function maskName(name) {
+  if (!name) return '';
+  if (name.length <= 2) return name[0] + 'O';
+  if (name.length === 3) return name[0] + 'O' + name[2];
+  return name[0] + 'O'.repeat(name.length - 2) + name[name.length - 1];
+}
+
+// 模擬資料庫查詢 (測試用)
+async function mockFetchNameFromDB(idStr) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // 若輸入這兩組身分證，會讀取到特定人名，否則預設帶出李大白
+      if (idStr === 'B223755666') resolve('李曉明'); 
+      else if (idStr === 'R932012338') resolve('張曉嵐');
+      else resolve('李大白');
+    }, 400); 
+  });
+}
 
 function loadState() {
   const saved = localStorage.getItem('my_app_state');
