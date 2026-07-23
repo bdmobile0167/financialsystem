@@ -30,27 +30,9 @@ export async function inviteNewUser(payload) {
     body: JSON.stringify(payload)
   });
 
-  return res.json();
-}
-
-// 在 adminApi.js 中
-async function createNewUser(userData) {
-  try {
-    // 呼叫你的 Netlify Function，而不是直接用 supabase.auth.signUp
-    const response = await fetch('/.netlify/functions/invite', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(userData) // 確保有傳遞 email, password, role 等資料
-    });
-
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    
-    alert('新帳號開通成功！');
-    // 重新整理帳號列表
-  } catch (error) {
-    alert(`開通帳號失敗：${error.message}`);
+  const result = await res.json();
+  if (!res.ok || !result.ok) {
+    throw new Error(result.message || `開通失敗（HTTP ${res.status}）`);
   }
+  return result;
 }

@@ -11,32 +11,6 @@ import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/mo
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 
-// === 專案選擇器（最上方專案切換）===
-const projectSelect = document.getElementById('globalProjectSelect');
-
-if (projectSelect) {
-  projectSelect.addEventListener('change', async (e) => {
-    const selectedProjectId = e.target.value;
-    
-    state.currentProjectId = selectedProjectId;
-    localStorage.setItem('selectedProjectId', selectedProjectId);
-    
-    console.log('專案已切換至：', selectedProjectId);
-    
-    renderDashboard();           // 更新 Dashboard
-    renderTransactionTable();    // 更新交易列表
-    renderReports();             // 更新報表
-    renderVoucherWorkflowList(); // 更新報支列表
-  });
-
-  // 恢復上次選擇
-  const savedProjectId = localStorage.getItem('selectedProjectId');
-  if (savedProjectId) {
-    projectSelect.value = savedProjectId;
-    state.currentProjectId = savedProjectId;
-  }
-}
-
 const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
 
 async function populateInviteDepartmentSelect() {
@@ -422,6 +396,28 @@ function renderReportSignature(elementId) {
   `;
 }
 
+function applyReportPeriodPreset(preset) {
+  const year = new Date().getFullYear();
+  const startInput = document.getElementById('reportPeriodStart');
+  const endInput = document.getElementById('reportPeriodEnd');
+  if (!startInput || !endInput) return;
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = new Date();
+  const ranges = {
+    year: [`${year}-01-01`, `${year}-12-31`],
+    q1: [`${year}-01-01`, `${year}-03-31`],
+    q2: [`${year}-04-01`, `${year}-06-30`],
+    q3: [`${year}-07-01`, `${year}-09-30`],
+    q4: [`${year}-10-01`, `${year}-12-31`],
+    month: [`${year}-${pad(today.getMonth() + 1)}-01`, today.toISOString().slice(0, 10)],
+    all: ['', '']
+  };
+  const [start, end] = ranges[preset] || ['', ''];
+  startInput.value = start;
+  endInput.value = end;
+  renderReports();
+}
+
 function renderReports() {
   let periodTx = getReportPeriodTransactions();
   
@@ -757,6 +753,63 @@ function initializeEventsInternal() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
+  document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
+    const approveBtn = e.target.closest('.approve-voucher-btn');
+    const rejectBtn = e.target.closest('.reject-voucher-btn');
+    const historyBtn = e.target.closest('.view-history-btn');
+
+    if (approveBtn || rejectBtn) {
+      const btn = approveBtn || rejectBtn;
+      const id = btn.dataset.id;
+      const stage = btn.dataset.stage;
+      const vouchers = await fetchMyVouchers();
+      const voucher = vouchers.find(v => v.id === id);
+      if (!voucher) return;
+
+      try {
+        if (approveBtn) {
+          stage === 'manager' ? await managerApprove(voucher) : await accountingApprove(voucher);
+          showMessage('已核准。');
+        } else {
+          const reason = prompt('請輸入退件原因（必填）：');
+          if (!reason || !reason.trim()) {
+            showMessage('已取消，退件必須填寫原因。', true);
+            return;
+          }
+          stage === 'manager' ? await managerReject(voucher, reason.trim()) : await accountingReject(voucher, reason.trim());
+          showMessage('已退件。');
+        }
+        renderVoucherWorkflowList();
+      } catch (error) {
+        showMessage(`操作失敗：${error.message}`, true);
+      }
+      return;
+    }
+
+    if (historyBtn) {
+      const id = historyBtn.dataset.id;
+      const historyEl = document.getElementById(`history-${id}`);
+      if (!historyEl) return;
+      if (historyEl.style.display === 'none') {
+        historyEl.style.display = 'block';
+        historyEl.innerHTML = '<p class="muted">載入中…</p>';
+        try {
+          const logs = await fetchWorkflowLogs(id);
+          historyEl.innerHTML = logs.length ? logs.map(l => `
+            <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">
+              ${new Date(l.created_at).toLocaleString('zh-TW')}｜${l.action}
+              ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
+              ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
+            </div>`).join('') : '<p class="muted">尚無紀錄。</p>';
+        } catch (error) {
+          historyEl.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
+        }
+      } else {
+        historyEl.style.display = 'none';
+      }
+    }
+  });
+
   // Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1061,6 +1114,14 @@ function initializeEventsInternal() {
     }, 100);
   });
 
+  document.querySelectorAll('.period-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyReportPeriodPreset(btn.dataset.preset));
+  });
+
+  safeListener('exportExcelBtn', 'click', () => {
+    exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
+  });
+
   safeListener('inviteUserForm', 'submit', async (e) => { e.preventDefault();
     const resultBox = document.getElementById('inviteResultBox');
     try {
@@ -1354,7 +1415,7 @@ function renderVoucherCard(v) {
   if (isMine && ['pending_review', 'manager_rejected', 'accounting_rejected'].includes(v.status)) {
     actions += `<span class="muted" style="font-size:12px;">可修改後重送（下一階段補上編輯介面）</span>`;
   }
-  if (role === 'manager' && v.status === 'pending_review') {
+  if (['manager', 'admin'].includes(role) && v.status === 'pending_review') {
     actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="manager">核准</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
   }
@@ -1523,42 +1584,43 @@ async function loadAndRenderProjects() {
     let html = '';
     const userRole = state.currentUser?.role;
 
-    // 1. 只有 accounting 和 admin 才能看到「全公司總覽」
     if (['accounting', 'admin'].includes(userRole)) {
       html = '<option value="all">全公司總覽</option>';
     }
-
-    // 2. 渲染過濾後的專案列表
     projects.forEach(p => {
       html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
     });
-
     select.innerHTML = html;
 
-    // 3. 安全地設定預設的 currentProjectId
-    if (['accounting', 'admin'].includes(userRole)) {
-      // 財務或管理員，預設載入「全公司」
+    // 關鍵修正：只有「目前沒有有效選擇」時才套用預設值，
+    // 避免每次 render() 都把使用者剛選好的專案強制改回全公司總覽
+    const hasValidSelection = state.currentProjectId &&
+      Array.from(select.options).some(opt => opt.value === state.currentProjectId);
+
+    if (hasValidSelection) {
+      select.value = state.currentProjectId;
+    } else if (['accounting', 'admin'].includes(userRole)) {
       state.currentProjectId = 'all';
       select.value = 'all';
     } else if (projects.length > 0) {
-      // 員工或經理，預設選取他們權限內的第一個專案
       state.currentProjectId = projects[0].id;
       select.value = projects[0].id;
     } else {
-      // 如果該部門沒有任何專案
       state.currentProjectId = null;
       select.value = '';
     }
 
-    // 4. 綁定事件監聽器（注意：先移除舊的監聽器避免重複綁定）
-    select.replaceWith(select.cloneNode(true)); 
-    const newSelect = document.getElementById('globalProjectSelect');
-    
-    newSelect.addEventListener('change', () => {
-      state.currentProjectId = newSelect.value;
-      render(); // 重新 render dashboard 與其他元件
-    });
-
+    // 只綁定一次事件，不要每次都 clone/replace（那樣會丟失狀態）
+    if (!select.dataset.listenerBound) {
+      select.addEventListener('change', () => {
+        state.currentProjectId = select.value;
+        renderDashboard();
+        renderTransactionTable();
+        renderReports();
+        if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+      });
+      select.dataset.listenerBound = 'true';
+    }
   } catch (e) {
     console.error('載入專案失敗:', e);
   }

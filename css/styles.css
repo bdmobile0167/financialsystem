@@ -339,15 +339,16 @@ td button {
 
 @media print {
   body * {
-    display: none !important;
+    visibility: hidden !important;
   }
   #reports,
   #reports * {
-    display: block !important;
     visibility: visible !important;
   }
   #reports {
-    position: static !important;
+    position: absolute !important;
+    left: 0;
+    top: 0;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -362,7 +363,8 @@ td button {
   #saveSettingsBtn,
   #setPasswordBtn,
   #printReportBtn,
-  #exportReportBtn {
+  #exportReportBtn,
+  #exportExcelBtn {
     display: none !important;
   }
   table {
