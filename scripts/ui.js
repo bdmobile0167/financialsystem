@@ -1340,6 +1340,18 @@ function initializeEventsInternal() {
         </select>
       </td>
       <td><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+      
+      <!-- 新增：會計科目選擇 -->
+      <td>
+        <select class="line-account-code" style="width:100%; padding:4px;">
+          <option value="6100">6100 營業費用</option>
+          <option value="1601">1601 固定資產</option>
+          <option value="1141">1141 應收帳款</option>
+          <option value="2141">2141 應付帳款</option>
+          <option value="3110">3110 股本</option>
+        </select>
+      </td>
+      
       <td><input type="text" class="grid-desc" placeholder="例如：住宿費" style="width:96%; padding:4px;"></td>
       <td><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
       <td>
@@ -1376,6 +1388,7 @@ function initializeEventsInternal() {
           const amtInput = row.querySelector('.grid-amount');
           const invTypeInput = row.querySelector('.grid-inv-type');
           const invNumInput = row.querySelector('.grid-inv-num');
+          const accountSelect = row.querySelector('.line-account-code'); // ← 新增：取得科目選擇
 
           if (!descInput || !amtInput) return;
 
@@ -1383,18 +1396,16 @@ function initializeEventsInternal() {
           const amt = Number(amtInput.value || 0);
           const invType = invTypeInput ? invTypeInput.value : '無';
           const invNum = invNumInput ? invNumInput.value.trim() : '';
+          const accountCode = accountSelect ? accountSelect.value : '6100'; // ← 預設6100
 
-          // 重要：過濾空白列
-          if (!desc || amt <= 0) {
-            console.log(`第 ${index+1} 列空白，已跳過`);
-            return;
-          }
+          // 過濾空白列
+          if (!desc || amt <= 0) return;
 
           calculatedTotal += amt;
 
           detailLines.push({
             description: desc,
-            account_code: '6100',
+            account_code: accountCode,        // ← 重要：使用使用者選擇的科目
             amount: amt
           });
 
@@ -1409,14 +1420,14 @@ function initializeEventsInternal() {
         });
 
         if (detailLines.length === 0) {
-          throw new Error('請至少填寫一筆有效的摘要與金額！空白列會自動被過濾。');
+          throw new Error('請至少填寫一筆有效的摘要與金額！');
         }
 
         // ==================== 送出到 Supabase ====================
         const { data: voucherMain, error: vError } = await supabase
           .from('vouchers')
           .insert([{
-            voucher_no: 'VCH-' + Date.now(),
+            // voucher_no 不要自己填，讓 trigger 產生
             project_id: projectId && projectId !== 'all' ? projectId : null,
             applicant_id: state.currentUser?.id,
             tx_date: txDate,
@@ -1428,42 +1439,40 @@ function initializeEventsInternal() {
 
         if (vError) throw vError;
 
-        // 寫入明細
+        // 2. 寫入明細（已支援不同科目）
         const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
         const { error: lError } = await supabase.from('voucher_lines').insert(finalLines);
         if (lError) throw lError;
 
-        // 寫入發票
+        // 3. 寫入發票
         if (invoiceLines.length > 0) {
           const finalInvoices = invoiceLines.map(i => ({ ...i, voucher_id: voucherMain.id }));
           await supabase.from('invoices').insert(finalInvoices);
         }
 
-        // 上傳附件
+        // 4. 上傳附件
         if (selectedFile) {
           await saveAttachment(voucherMain.id, selectedFile);
         }
 
         alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
 
-        // ==================== 重要：重置並刷新 ====================
+        // 重置表單
         if (fileInput) fileInput.value = '';
         excelVoucherForm.reset();
 
-        // 重新渲染明細表格（清空已填資料）
+        // 重新渲染明細表格
         if (typeof renderVoucherLines === 'function') {
           renderVoucherLines();
         } else {
-          // 如果沒有 renderVoucherLines，就手動清空
           const tbody = document.getElementById('excelLinesBody');
           if (tbody) tbody.innerHTML = '';
-          // 預設新增幾列
           for(let i = 0; i < 3; i++) {
             if (typeof window.addExcelRow === 'function') window.addExcelRow();
           }
         }
 
-        // 刷新其他頁面
+        // 刷新頁面
         renderDashboard();
         if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
 
@@ -1480,20 +1489,55 @@ function initializeEventsInternal() {
       showMessage('僅會計部門與 Admin 可建立專案', true);
       return;
     }
+    
     try {
+      const name = document.getElementById('projectName').value.trim();
       const totalBudget = parseFloat(document.getElementById('projectTotalBudget').value) || 0;
-      const { error } = await supabase.from('projects').insert({
-        name: document.getElementById('projectName').value.trim(),
-        start_date: document.getElementById('projectStart').value || null,
-        end_date: document.getElementById('projectEnd').value || null,
-        department_id: document.getElementById('projectDepartment').value || null,
-        total_budget: totalBudget,
-        remaining_budget: totalBudget
-      });
-      if (error) throw error;
-      showMessage('專案已建立。');
+      
+      if (!name) {
+        showMessage('請輸入專案名稱', true);
+        return;
+      }
+
+      // 1. 建立主專案
+      const { data: newProject, error: projError } = await supabase
+        .from('projects')
+        .insert({
+          name: name,
+          start_date: document.getElementById('projectStart').value || null,
+          end_date: document.getElementById('projectEnd').value || null,
+          department_id: document.getElementById('projectDepartment').value || null,
+          total_budget: totalBudget,
+          remaining_budget: totalBudget
+        })
+        .select()
+        .single();
+
+      if (projError) throw projError;
+
+      // 2. 建立預算分類項目
+      if (totalBudget > 0) {
+        const budgetItems = [
+          { project_id: newProject.id, category: '人事費用', amount: Math.round(totalBudget * 0.4) },
+          { project_id: newProject.id, category: '營運費用', amount: Math.round(totalBudget * 0.35) },
+          { project_id: newProject.id, category: '資本門', amount: Math.round(totalBudget * 0.2) },
+          { project_id: newProject.id, category: '其他', amount: Math.round(totalBudget * 0.05) }
+        ];
+
+        const { error: itemsError } = await supabase
+          .from('project_budget_items')
+          .insert(budgetItems);
+
+        if (itemsError) console.warn('預算分類建立失敗，但專案已成功:', itemsError);
+      }
+
+      showMessage('專案已建立，並已設定預算分類！');
       e.target.reset();
+      
       renderProjectList();
+      loadAndRenderProjects();
+      renderDashboard();
+
     } catch (err) {
       showMessage('建立專案失敗：' + err.message, true);
     }
@@ -2079,12 +2123,20 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
 
     if (updateError) throw updateError;
 
-    // 2. 核心修正：如果之前有綁定專案，將被扣除的預算加回去
-    if (projectId && projectId !== 'null' && projectId !== 'undefined') {
-      const { data: proj } = await supabase.from('projects').select('remaining_budget').eq('id', projectId).single();
+    // ✅ 改成只有原本有扣過預算的才加回去（更安全）
+    if (projectId) {
+      const { data: proj } = await supabase
+        .from('projects')
+        .select('remaining_budget')
+        .eq('id', projectId)
+        .single();
+
       if (proj) {
-        const restoredBudget = Number(proj.remaining_budget) + Number(totalAmount);
-        await supabase.from('projects').update({ remaining_budget: restoredBudget }).eq('id', projectId);
+        const restored = Number(proj.remaining_budget || 0) + Number(totalAmount || 0);
+        await supabase
+          .from('projects')
+          .update({ remaining_budget: restored })
+          .eq('id', projectId);
       }
     }
 

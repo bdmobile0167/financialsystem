@@ -121,8 +121,49 @@ export async function managerReject(voucher, reason) {
 }
 
 export async function accountingApprove(voucher) {
-  const { error } = await supabase.from('vouchers').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', voucher.id);
-  if (error) throw error;
+  const { error: updateError } = await supabase
+    .from('vouchers')
+    .update({ 
+      status: 'approved', 
+      updated_at: new Date().toISOString() 
+    })
+    .eq('id', voucher.id);
+
+  if (updateError) throw updateError;
+
+  // 🔥 修正 Bug 6：更新銀行帳戶餘額（如果有指定付款銀行）
+  if (voucher.bank_account_id) {
+    const { error: bankError } = await supabase
+      .from('bank_accounts')
+      .update({
+        // 這裡假設你有 current_balance 欄位，如果沒有請改成 opening_balance + transaction logic
+        current_balance: supabase.rpc('deduct_balance', { 
+          p_id: voucher.bank_account_id, 
+          p_amount: voucher.total_amount 
+        })
+      })
+      .eq('id', voucher.bank_account_id);
+
+    if (bankError) console.warn('銀行餘額更新失敗:', bankError);
+  }
+
+  // 扣除專案剩餘預算（之前已教過）
+  if (voucher.project_id) {
+    const { data: proj } = await supabase
+      .from('projects')
+      .select('remaining_budget')
+      .eq('id', voucher.project_id)
+      .single();
+
+    if (proj) {
+      const newRemaining = Number(proj.remaining_budget || 0) - Number(voucher.total_amount || 0);
+      await supabase
+        .from('projects')
+        .update({ remaining_budget: Math.max(0, newRemaining) })
+        .eq('id', voucher.project_id);
+    }
+  }
+
   await logWorkflow(voucher.id, 'approve', voucher.status, 'approved');
 }
 

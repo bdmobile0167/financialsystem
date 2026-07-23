@@ -7,19 +7,48 @@ export function summarizeTransactions(transactions) {
   return { revenue, expense, netProfit };
 }
 
-export function buildJournal(transactions) {
-  const { journalEntries } = runAccountingPipeline(transactions);
-  return journalEntries.map(entry => ({
-    date: entry.date,
-    summary: entry.memo,
-    bank: entry.bank,
-    debitAccount: `${entry.debitAccountCode} ${entry.debitAccountName}`,
-    debitAmount: entry.debitAmount,
-    creditAccount: `${entry.creditAccountCode} ${entry.creditAccountName}`,
-    creditAmount: entry.creditAmount,
-    voucher: entry.voucher,
-    status: entry.status
-  }));
+// ✅ 修正版：優先從 Supabase journal_entries 讀取
+export async function buildJournal(transactions = []) {
+  try {
+    // 優先使用資料庫（這才是正確的記帳來源）
+    const { data: journalEntries, error } = await supabase
+      .from('journal_entries')
+      .select(`
+        *,
+        accounts!inner(code, name)
+      `)
+      .order('entry_date', { ascending: false });
+
+    if (error) throw error;
+
+    return journalEntries.map(entry => ({
+      date: entry.entry_date || entry.date,
+      summary: entry.description || entry.memo || '未註明',
+      bank: entry.bank_name || entry.bank || '-',
+      debitAccount: `${entry.debit_account_code || entry.debitAccountCode} ${entry.debit_account_name || ''}`,
+      debitAmount: Number(entry.debit_amount || entry.debitAmount || 0),
+      creditAccount: `${entry.credit_account_code || entry.creditAccountCode} ${entry.credit_account_name || ''}`,
+      creditAmount: Number(entry.credit_amount || entry.creditAmount || 0),
+      voucher: entry.voucher_no || entry.voucher || '-',
+      status: entry.status || '已入帳'
+    }));
+  } catch (err) {
+    console.warn('從 journal_entries 讀取失敗，降級使用本地計算:', err.message);
+    
+    // 降級：使用原本的本地 pipeline
+    const { journalEntries: localEntries } = runAccountingPipeline(transactions);
+    return localEntries.map(entry => ({
+      date: entry.date,
+      summary: entry.memo,
+      bank: entry.bank,
+      debitAccount: `${entry.debitAccountCode} ${entry.debitAccountName}`,
+      debitAmount: entry.debitAmount,
+      creditAccount: `${entry.creditAccountCode} ${entry.creditAccountName}`,
+      creditAmount: entry.creditAmount,
+      voucher: entry.voucher,
+      status: entry.status
+    }));
+  }
 }
 
 export function buildIncomeStatement(transactions) {
@@ -75,4 +104,13 @@ export function getEquityAnalysis(transactions) {
 
 export function getTrialBalance(transactions) {
   return runAccountingPipeline(transactions).trialBalance;
+}
+
+export async function fetchJournalEntries() {
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('*, accounts(*)')
+    .order('entry_date', { ascending: false });
+  if (error) throw error;
+  return data;
 }
