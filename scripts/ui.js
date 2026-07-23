@@ -286,23 +286,25 @@ async function renderDashboard() {
   const isPrivileged = ['admin', 'accounting'].includes(user.role);
 
   try {
-    // 取得報支單資料
-    let voucherQuery = supabase.from('vouchers').select('*');
-    if (!isPrivileged) {
+    // ====================== 取得報支單（重要：部門權限過濾） ======================
+    let voucherQuery = supabase.from('vouchers')
+      .select('*, profiles!applicant_id(full_name), departments(name)');
+
+    // 非管理員/會計 → 只能看自己部門的資料
+    if (!isPrivileged && user.department_id) {
       voucherQuery = voucherQuery.eq('department_id', user.department_id);
     }
-    const { data: vchs, error: vError } = await voucherQuery;
+
+    const { data: vchs, error: vError } = await voucherQuery.order('created_at', { ascending: false });
     if (vError) throw vError;
 
     let dashboardHTML = '';
 
-    // ====================== 只有管理員/會計才顯示的 4 張卡片 ======================
+    // 4張卡片（只有管理員/會計看得到）
     if (isPrivileged) {
-      // 年度總預算
       const { data: projects } = await supabase.from('projects').select('total_budget');
       const annualBudget = projects?.reduce((sum, p) => sum + Number(p.total_budget || 0), 0) || 0;
 
-      // 銀行餘額（修正欄位名稱）
       const { data: banks } = await supabase.from('bank_accounts').select('*');
       const bankBalance = banks?.reduce((sum, b) => sum + Number(b.opening_balance || 0), 0) || 0;
 
@@ -318,11 +320,11 @@ async function renderDashboard() {
             <h2 style="margin:10px 0 0; color:#1f2937;">$${annualBudget.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">已付款 (Closed)</h4>
+            <h4 style="margin:0; color:#6b7280;">已付款</h4>
             <h2 style="margin:10px 0 0; color:#1f2937;">$${totalPaid.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #f59e0b; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">待付款 (Approved)</h4>
+            <h4 style="margin:0; color:#6b7280;">待付款</h4>
             <h2 style="margin:10px 0 0; color:#1f2937;">$${pendingPayment.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
@@ -333,39 +335,43 @@ async function renderDashboard() {
       `;
     }
 
-    // ====================== 所有人都看得到的明細列表 ======================
+    // ====================== 明細列表（所有人都看得到，但已過濾） ======================
     dashboardHTML += `
-      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-        <h3>${isPrivileged ? '全公司核銷明細' : '我的部門核銷進度'}</h3>
+      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); margin-top:20px;">
+        <h3>${isPrivileged ? '全公司核銷明細' : '我的部門核銷紀錄'}</h3>
         <table style="width:100%; border-collapse: collapse;">
           <thead>
-            <tr style="background:#f8f9fa; text-align:left;">
-              <th style="padding:12px; border-bottom:1px solid #e5e7eb;">單號</th>
-              <th style="padding:12px; border-bottom:1px solid #e5e7eb;">摘要</th>
-              <th style="padding:12px; border-bottom:1px solid #e5e7eb;">金額</th>
-              <th style="padding:12px; border-bottom:1px solid #e5e7eb;">狀態</th>
+            <tr style="background:#f8f9fa;">
+              <th>單號</th>
+              <th>申請人</th>
+              <th>部門</th>
+              <th>摘要</th>
+              <th>金額</th>
+              <th>狀態</th>
             </tr>
           </thead>
           <tbody>
-            ${vchs.filter(v => ['approved', 'closed', 'manager_rejected', 'accounting_rejected', 'pending_review', 'pending_accounting'].includes(v.status)).map(v => `
+            ${vchs.map(v => `
               <tr>
-                <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${v.voucher_no || '未編號'}</td>
-                <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${v.title || v.summary || '-'}</td>
-                <td style="padding:12px; border-bottom:1px solid #e5e7eb;">$${Number(v.total_amount || 0).toLocaleString()}</td>
-                <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${getStatusBadge(v.status)}</td>
+                <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold;">${v.voucher_no || '未編號'}</a></td>
+                <td>${v.profiles?.full_name || '-'}</td>
+                <td>${v.departments?.name || '-'}</td>
+                <td>${v.summary || '-'}</td>
+                <td>$${Number(v.total_amount || 0).toLocaleString()}</td>
+                <td>${getStatusBadgeWithDate(v)}</td>
               </tr>
-            `).join('') || '<tr><td colspan="4" style="text-align:center; padding:12px;">無紀錄</td></tr>'}
+            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:20px;">目前尚無核銷紀錄</td></tr>'}
           </tbody>
         </table>
       </div>
     `;
 
-    container.innerHTML = dashboardHTML;   // ← 先渲染卡片 + 列表
+    container.innerHTML = dashboardHTML;
 
   } catch (err) {
-      console.error('渲染 Dashboard 失敗:', err);
-      container.innerHTML = `<p style="color:red;">Dashboard 載入失敗：${err.message}</p>`;
-    }
+    console.error('渲染 Dashboard 失敗:', err);
+    container.innerHTML = `<p style="color:red; padding:20px;">載入失敗：${err.message}</p>`;
+  }
 
     // ====================== 專案/全公司總覽 部分 ======================
     const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
@@ -2343,3 +2349,18 @@ window.closeVoucher = async (voucherId) => {
     alert('銷案失敗：' + err.message);
   }
 };
+
+function getStatusBadgeWithDate(v) {
+  let text = '';
+  if (v.status === 'closed') {
+    text = `已付款 ${v.payment_date ? v.payment_date : ''}`;
+    return `<span class="badge success">已付款</span>`;
+  } else if (v.status === 'approved') {
+    return `<span class="badge warning">待付款</span>`;
+  } else if (v.status === 'pending_accounting') {
+    return `<span class="badge warning">待會計核准</span>`;
+  } else if (v.status === 'pending_review') {
+    return `<span class="badge warning">待主管審核</span>`;
+  }
+  return `<span class="badge">${v.status || '處理中'}</span>`;
+}
