@@ -1991,32 +1991,35 @@ async function loadAndRenderProjects() {
       html = '<option value="all">全公司總覽</option>';
     }
     projects.forEach(p => {
-      html += `<option value="${p.id}">${p.project_code} - ${p.name}</option>`;
+      html += `<option value="${p.id}">${p.project_code || '無編號'} - ${p.name}</option>`;
     });
     select.innerHTML = html;
 
-    // 關鍵修正：只有「目前沒有有效選擇」時才套用預設值，
-    // 避免每次 render() 都把使用者剛選好的專案強制改回全公司總覽
-    const hasValidSelection = state.currentProjectId &&
-      Array.from(select.options).some(opt => opt.value === state.currentProjectId);
+    // === 關鍵：保護目前選擇狀態 ===
+    const currentSelected = state.currentProjectId || 'all';
+
+    // 如果目前選擇還在選項裡，就保留它
+    const hasValidSelection = Array.from(select.options).some(opt => opt.value === currentSelected);
 
     if (hasValidSelection) {
-      select.value = state.currentProjectId;
+      select.value = currentSelected;
+      state.currentProjectId = currentSelected;
     } else if (['accounting', 'admin'].includes(userRole)) {
-      state.currentProjectId = 'all';
       select.value = 'all';
+      state.currentProjectId = 'all';
     } else if (projects.length > 0) {
-      state.currentProjectId = projects[0].id;
       select.value = projects[0].id;
+      state.currentProjectId = projects[0].id;
     } else {
-      state.currentProjectId = null;
       select.value = '';
+      state.currentProjectId = null;
     }
 
-    // 只綁定一次事件，不要每次都 clone/replace（那樣會丟失狀態）
+    // 只綁定一次事件
     if (!select.dataset.listenerBound) {
       select.addEventListener('change', () => {
         state.currentProjectId = select.value;
+        // 立即刷新相關畫面
         renderDashboard();
         renderTransactionTable();
         renderReports();
@@ -2024,8 +2027,12 @@ async function loadAndRenderProjects() {
       });
       select.dataset.listenerBound = 'true';
     }
+
   } catch (e) {
     console.error('載入專案失敗:', e);
+    // 防止整個 dashboard 崩掉
+    const select = document.getElementById('globalProjectSelect');
+    if (select) select.innerHTML = '<option value="all">全公司總覽</option>';
   }
 }
 
