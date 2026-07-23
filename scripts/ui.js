@@ -1499,7 +1499,6 @@ function initializeEventsInternal() {
         return;
       }
 
-      // 1. 建立主專案
       const { data: newProject, error: projError } = await supabase
         .from('projects')
         .insert({
