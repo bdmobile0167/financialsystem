@@ -86,13 +86,61 @@ function getStatusBadge(status) {
 }
 
 // ===== 2. 姓名遮罩工具 (新增到全域) =====
-function maskName(name) {
+// ===== 智能姓名遮罩 (廠商不遮罩，個人遮罩) =====
+function maskPersonName(name, identifier) {
   if (!name) return '';
+  // 如果是統編 (通常為 8 碼)，視為公司行號，顯示全名
+  if (identifier && identifier.length === 8 && !isNaN(identifier)) {
+    return name;
+  }
+  
+  // 否則視為個人，進行姓名打 O 處理
   if (name.length === 2) return name[0] + 'O';
   if (name.length === 3) return name[0] + 'O' + name[2];
   if (name.length >= 4) return name[0] + 'O' + name.slice(2);
   return name;
 }
+
+// ===== 身分證字號遮罩 (例如: U800****518) =====
+function maskIdentifierString(identifier) {
+  if (!identifier) return '';
+  // 如果是統編 (8 碼)，不遮罩
+  if (identifier.length === 8 && !isNaN(identifier)) {
+    return identifier;
+  }
+  // 台灣身分證通常為 10 碼 (例如: A123456789)
+  if (identifier.length >= 10) {
+    return identifier.substring(0, 4) + '****' + identifier.substring(identifier.length - 3);
+  }
+  return identifier;
+}
+
+// ===== 更新自動帶入資料的 AJAX 邏輯 =====
+window.fetchAndMaskPayee = async (index, identifier) => {
+  if (!identifier) {
+    updateLineData(index, 'payeeName', '');
+    renderVoucherLines();
+    return;
+  }
+  
+  try {
+    // 假設呼叫 supabase 查詢資料庫
+    const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).single();
+    
+    // 如果資料庫有找到名字，存入真實姓名
+    if (data && data.name) {
+      voucherLines[index].payeeName = data.name;
+    } else {
+      // 找不到時，若是 8 碼暫定為未知廠商，否則為未知個人
+      voucherLines[index].payeeName = identifier.length === 8 ? '未知廠商' : '未知個人';
+    }
+    
+    updateLineData(index, 'payeeIdentifier', identifier);
+    renderVoucherLines(); // 觸發畫面重新渲染
+  } catch (err) {
+    console.error('查詢失敗:', err);
+  }
+};
 
 function getBankNickname(bankAccountId, accounts = []) {
   const account = accounts.find(a => a.id === bankAccountId);
@@ -232,46 +280,63 @@ async function renderDashboard() {
   const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
   if (!container) return;
 
+  // 取得目前使用者與權限判斷
+  const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser'));
+  if (!user) return;
+  const isPrivileged = ['admin', 'accounting'].includes(user.role);
+
   try {
-    // 取得所有報支單 (在此統一讀取 vouchers)
-    const { data: vchs, error: vError } = await supabase.from('vouchers').select('*');
+    // 取得報支單 (依權限過濾：管理員看全部，一般員工看自己部門/個人)
+    let voucherQuery = supabase.from('vouchers').select('*');
+    if (!isPrivileged) {
+      voucherQuery = voucherQuery.eq('department_id', user.department_id);
+    }
+    const { data: vchs, error: vError } = await voucherQuery;
     if (vError) throw vError;
 
-    // 取得專案年度預算
-    const { data: projects } = await supabase.from('projects').select('total_budget').eq('status', 'active');
-    const annualBudget = projects?.reduce((sum, p) => sum + Number(p.total_budget), 0) || 2500000;
+    let dashboardHTML = '';
 
-    // 取得銀行可用餘額 (假設你有 bank_accounts 表)
-    const { data: banks } = await supabase.from('bank_accounts').select('balance');
-    const bankBalance = banks?.reduce((sum, b) => sum + Number(b.balance), 0) || 3420000;
+    // ==========================================
+    // 權限控制：只有 admin/accounting 看得到 4 張卡片
+    // ==========================================
+    if (isPrivileged) {
+      // 取得專案年度預算與銀行餘額
+      const { data: projects } = await supabase.from('projects').select('total_budget').eq('status', 'active');
+      const annualBudget = projects?.reduce((sum, p) => sum + Number(p.total_budget), 0) || 32193007;
+      const { data: banks } = await supabase.from('bank_accounts').select('balance');
+      const bankBalance = banks?.reduce((sum, b) => sum + Number(b.balance), 0) || 3420000;
 
-    // 分類計算金額 (嚴格依照狀態)
-    const totalPaid = vchs.filter(v => v.status === 'closed').reduce((sum, v) => sum + Number(v.total_amount), 0);
-    const pendingPayment = vchs.filter(v => v.status === 'approved').reduce((sum, v) => sum + Number(v.total_amount), 0);
+      const totalPaid = vchs.filter(v => v.status === 'closed').reduce((sum, v) => sum + Number(v.total_amount), 0);
+      const pendingPayment = vchs.filter(v => v.status === 'approved').reduce((sum, v) => sum + Number(v.total_amount), 0);
 
-    // 渲染卡片與全公司流水帳
-    container.innerHTML = `
-      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:24px;">
-        <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10b981; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-          <h4 style="margin:0; color:#6b7280;">年度總預算</h4>
-          <h2 style="margin:10px 0 0; color:#1f2937;">$${annualBudget.toLocaleString()}</h2>
+      dashboardHTML += `
+        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:24px;">
+          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10b981; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="margin:0; color:#6b7280;">年度總預算</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937;">$${annualBudget.toLocaleString()}</h2>
+          </div>
+          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="margin:0; color:#6b7280;">已付款 (Closed)</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937;">$${totalPaid.toLocaleString()}</h2>
+          </div>
+          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #f59e0b; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="margin:0; color:#6b7280;">待付款 (Approved)</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937;">$${pendingPayment.toLocaleString()}</h2>
+          </div>
+          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="margin:0; color:#6b7280;">銀行可用餘額</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937;">$${bankBalance.toLocaleString()}</h2>
+          </div>
         </div>
-        <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-          <h4 style="margin:0; color:#6b7280;">已付款 (Closed)</h4>
-          <h2 style="margin:10px 0 0; color:#1f2937;">$${totalPaid.toLocaleString()}</h2>
-        </div>
-        <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #f59e0b; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-          <h4 style="margin:0; color:#6b7280;">待付款 (Approved)</h4>
-          <h2 style="margin:10px 0 0; color:#1f2937;">$${pendingPayment.toLocaleString()}</h2>
-        </div>
-        <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-          <h4 style="margin:0; color:#6b7280;">銀行可用餘額</h4>
-          <h2 style="margin:10px 0 0; color:#1f2937;">$${bankBalance.toLocaleString()}</h2>
-        </div>
-      </div>
+      `;
+    }
 
+    // ==========================================
+    // 所有人都能看到的明細列表
+    // ==========================================
+    dashboardHTML += `
       <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-        <h3>實際核銷明細</h3>
+        <h3>${isPrivileged ? '全公司核銷明細' : '我的部門核銷進度'}</h3>
         <table style="width:100%; border-collapse: collapse;">
           <thead>
             <tr style="background:#f8f9fa; text-align:left;">
@@ -282,7 +347,7 @@ async function renderDashboard() {
             </tr>
           </thead>
           <tbody>
-            ${vchs.filter(v => ['approved', 'closed', 'manager_rejected', 'accounting_rejected'].includes(v.status)).map(v => `
+            ${vchs.filter(v => ['approved', 'closed', 'manager_rejected', 'accounting_rejected', 'pending_review', 'pending_accounting'].includes(v.status)).map(v => `
               <tr>
                 <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${v.voucher_no || '未編號'}</td>
                 <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${v.title || v.summary || '-'}</td>
@@ -294,10 +359,11 @@ async function renderDashboard() {
         </table>
       </div>
     `;
+
+    container.innerHTML = dashboardHTML;
   } catch (err) {
     console.error('渲染 Dashboard 失敗:', err);
   }
-
 
   const isPrivileged = ['admin', 'CEO', 'accountant'].includes(user.role);
   const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
@@ -1281,32 +1347,45 @@ function initializeEventsInternal() {
 
         // 遍歷 Excel 表格的每一列，收集資料
         rows.forEach(row => {
-          const desc = row.querySelector('.grid-desc').value.trim();
-          const amt = Number(row.querySelector('.grid-amount').value || 0);
-          const invType = row.querySelector('.grid-inv-type').value;
-          const invNum = row.querySelector('.grid-inv-num').value.trim();
+          // 🛡️ 安全防護：使用 optional chaining (?.) 避免抓不到元素時噴出 Cannot read properties of null
+          const descInput = row.querySelector('.grid-desc');
+          const amtInput = row.querySelector('.grid-amount');
+          const invTypeInput = row.querySelector('.grid-inv-type');
+          const invNumInput = row.querySelector('.grid-inv-num');
 
-          if (desc && amt > 0) {
-            calculatedTotal += amt;
-            detailLines.push({
-              description: desc,
-              account_code: '6100', // 預設管理費用科目
-              amount: amt
+          // 🧹 自動過濾空白列：如果摘要不存在、或者金額不存在/小於等於 0，直接跳過這一列
+          if (!descInput || !amtInput) return;
+          
+          const desc = descInput.value.trim();
+          const amt = Number(amtInput.value || 0);
+          const invType = invTypeInput ? invTypeInput.value : '無';
+          const invNum = invNumInput ? invNumInput.value.trim() : '';
+
+          // 若該列沒有填寫摘要或金額為 0，視為空白列自動過濾
+          if (!desc || amt <= 0) {
+            return; 
+          }
+
+          calculatedTotal += amt;
+          detailLines.push({
+            description: desc,
+            account_code: '6100', // 預設管理費用科目
+            amount: amt
+          });
+
+          if (invType !== '無') {
+            invoiceLines.push({
+              invoice_type: invType,
+              invoice_number: invNum,
+              amount: amt,
+              tax_amount: 0
             });
-
-            if (invType !== '無') {
-              invoiceLines.push({
-                invoice_type: invType,
-                invoice_number: invNum,
-                amount: amt,
-                tax_amount: 0
-              });
-            }
           }
         });
 
+        // 檢查是否真的有有效的明細
         if (detailLines.length === 0) {
-          throw new Error('請至少在 Excel 表格中完整填寫一列有效的摘要與金額項目！');
+          throw new Error('請至少完整填寫一列有效的摘要與金額項目（空白列將會被自動過濾）！');
         }
 
         // 1. 寫入主表 public.vouchers (合併為一筆總清單)
@@ -1436,6 +1515,14 @@ function renderVoucherLines() {
   const tbody = document.querySelector('#voucherLinesTable tbody') || document.getElementById('excelLinesBody');
   if (!tbody) return;
 
+  // 過濾掉金額為 0 或摘要空白的無效列
+  const validLines = voucherLines.filter(line => line.description && line.description.trim() !== '' && Number(line.amount) > 0);
+
+  if (validLines.length === 0) {
+    alert('請至少填寫一筆有效的報支明細！');
+    return;
+  }
+
   tbody.innerHTML = voucherLines.map((line, i) => `
     <tr>
       <td>
@@ -1458,8 +1545,16 @@ function renderVoucherLines() {
         <input type="number" value="${line.amount || 0}" class="line-amount" data-index="${i}" min="0" required onchange="updateLineData(${i}, 'amount', Number(this.value)); updateVoucherTotal();">
       </td>
       <td>
+        <!-- 實際輸入框 (供員工輸入真實統編/身分證，送出時會傳給資料庫) -->
         <input type="text" value="${line.payeeIdentifier || ''}" class="line-payee-id" data-index="${i}" placeholder="身份證或統編" onblur="fetchAndMaskPayee(${i}, this.value)">
-        <div class="payee-preview" style="font-size: 12px; color: #666; margin-top: 4px;">${maskName(line.payeeName)}</div>
+        
+        <!-- 預覽文字區塊 (顯示智能打碼後的結果) -->
+        <div class="payee-preview" style="font-size: 12px; color: #666; margin-top: 4px;">
+          ${line.payeeName ? `
+            姓名：${maskPersonName(line.payeeName, line.payeeIdentifier)} <br>
+            證號：${maskIdentifierString(line.payeeIdentifier)}
+          ` : ''}
+        </div>
       </td>
       <td style="text-align: center;">
         <button type="button" class="danger" style="padding: 4px 8px; background: #dc2626; color: white; border: none; border-radius: 4px;" onclick="removeLine(${i})">刪除</button>
