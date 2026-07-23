@@ -365,7 +365,6 @@ async function renderDashboard() {
     console.error('渲染 Dashboard 失敗:', err);
   }
 
-  const isPrivileged = ['admin', 'CEO', 'accountant'].includes(user.role);
   const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
 
   try {
