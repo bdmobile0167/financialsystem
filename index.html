@@ -240,45 +240,56 @@
             <form id="voucherCreateForm" class="form-container">
               <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
                 <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
-                  <div style="flex: 1; min-width: 200px;">
-                    <label>申請日期：</label>
-                    <input type="date" id="vDate" required>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                  <div style="flex: 1;">
+                    <label>報支主旨 (必填)：</label>
+                    <input type="text" id="vTitle" placeholder="例如：20260720_AI應用計畫_業務費" required style="width: 100%;">
                   </div>
-                  <div style="flex: 1; min-width: 200px;">
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                  <div style="flex: 1;">
                     <label>專案：</label>
-                    <select id="vProject"><option value="">載入中...</option></select>
+                    <select id="vProject" required><option value="">載入中...</option></select>
                   </div>
-                  <div style="flex: 1; min-width: 200px;">
-                    <label>部門：</label>
-                    <select id="vDepartment"><option value="">載入中...</option></select>
+                  <div style="flex: 1;">
+                    <label>行程起日：</label>
+                    <input type="date" id="vTripStart">
                   </div>
-                
-                <!-- 新增：JS 需要的下拉選單 -->
-                <div style="flex: 1; min-width: 200px;">
-                  <label>專案：</label>
-                  <select id="vProject"><option value="">載入中...</option></select>
+                  <div style="flex: 1;">
+                    <label>行程迄日：</label>
+                    <input type="date" id="vTripEnd">
+                  </div>
                 </div>
-                <div style="flex: 1; min-width: 200px;">
-                  <label>部門：</label>
-                  <select id="vDepartment"><option value="">載入中...</option></select>
-                </div>
-                <div style="flex: 1; min-width: 200px;">
-                  <label>會計科目：</label>
-                  <select id="vAccountCode"><option value="">載入中...</option></select>
-                </div>
-                <div style="flex: 1; min-width: 200px;">
-                  <label>支付銀行帳戶：</label>
-                  <select id="vBankAccount"><option value="">載入中...</option></select>
-                </div>
+              </div>
 
+              <div class="panel">
+                <h4>核銷明細</h4>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                  <thead>
+                    <tr style="background: #f1f5f9;">
+                      <th style="padding: 8px; border: 1px solid #ddd;">單據年月</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">憑證類型</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">發票號碼</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">項目/摘要說明</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">金額</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">付款人(身分證/統編)</th>
+                      <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="excelLinesBody">
+                    <!-- JS 動態生成 -->
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold;">總計金額：</td>
+                      <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f;" id="voucherTotalDisplay">$0</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <button type="button" class="secondary" onclick="addExcelRow()">+ 新增一列</button>
+                <button type="submit" class="primary-btn" style="margin-top: 15px; width: 100%;">送出報支申請</button>
               </div>
-              <div>
-                <label style="display:block; margin-bottom:5px;">報支主旨/摘要說明：</label>
-                <input type="text" id="vSummary" style="width: 100%; padding: 8px;" placeholder="請輸入主旨..." required>
-              </div>
-            </div>
-            <!-- 下方保留你原本的 #excelLinesBody 與 總計金額區塊 -->
+            </form>
           </div>
 
           <!-- 下方保留原本的清單區塊 -->

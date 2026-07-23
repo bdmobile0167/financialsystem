@@ -147,3 +147,56 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
   if (error) throw error;
   await logWorkflow(voucher.id, 'resubmit', voucher.status, 'pending_review');
 }
+
+// 會計執行歸帳並付款銷案
+export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
+  try {
+    // 1. 取得 Voucher 金額等資訊
+    const { data: voucher, error: vError } = await supabase
+      .from('vouchers')
+      .select('*')
+      .eq('id', voucherId)
+      .single();
+    
+    if (vError) throw vError;
+    if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
+
+    // 2. 扣除銀行帳戶餘額 (呼叫你既有的 bank 模組邏輯，或直接 update)
+    // 假設有一個 stored procedure 或直接扣減
+    const { error: bankError } = await supabase.rpc('deduct_bank_balance', {
+      p_bank_id: bankAccountId,
+      p_amount: voucher.total_amount
+    });
+    if (bankError) throw bankError;
+
+    // 3. 建立 Journal Entry (會計分錄) 供報表使用
+    const { error: jeError } = await supabase
+      .from('journal_entries')
+      .insert([{
+        voucher_id: voucherId,
+        account_id: accountCodeId,
+        bank_account_id: bankAccountId,
+        amount: voucher.total_amount,
+        entry_date: paymentDate,
+        description: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
+      }]);
+    if (jeError) throw jeError;
+
+    // 4. 更新 Voucher 狀態為 closed
+    const { error: updateError } = await supabase
+      .from('vouchers')
+      .update({ 
+        status: 'closed',
+        payment_date: paymentDate,
+        closed_at: new Date().toISOString()
+      })
+      .eq('id', voucherId);
+
+    if (updateError) throw updateError;
+
+    return { success: true, message: '歸帳銷案成功' };
+  } catch (error) {
+    console.error('銷案失敗:', error);
+    return { success: false, error: error.message };
+  }
+}

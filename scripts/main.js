@@ -22,7 +22,7 @@ window.addExcelRow = () => {
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td style="padding:4px; border:1px solid #ddd;">
-      <input type="month" class="grid-date" style="width:96%; padding:4px;" required>
+      <input type="month" class="grid-month" style="width:96%; padding:4px;" required>
     </td>
     <td style="padding:4px; border:1px solid #ddd;">
       <select class="grid-inv-type" style="width:100%; padding:4px;" onchange="toggleInvoiceRequired(this)">
@@ -53,7 +53,6 @@ window.addExcelRow = () => {
   tbody.appendChild(tr);
 };
 
-// 切換發票必填
 window.toggleInvoiceRequired = (selectEl) => {
     const input = selectEl.closest('tr').querySelector('.grid-inv-num');
     if (selectEl.value === '發票') {
@@ -66,17 +65,15 @@ window.toggleInvoiceRequired = (selectEl) => {
         input.value = "";
         input.placeholder = "可留空";
     }
-}
+};
 
-// 自動加總
 window.calculateVoucherTotal = () => {
     const amounts = Array.from(document.querySelectorAll('.grid-amount')).map(el => Number(el.value) || 0);
     const total = amounts.reduce((a, b) => a + b, 0);
     const display = document.getElementById('voucherTotalDisplay');
     if(display) display.innerText = `$${total.toLocaleString()}`;
-}
+};
 
-// 身分證打碼邏輯 (前端打O)
 window.fetchPayeeName = (inputEl) => {
     const id = inputEl.value.trim();
     const nameSpan = inputEl.closest('td').querySelector('.grid-payee-name');
@@ -84,10 +81,10 @@ window.fetchPayeeName = (inputEl) => {
         nameSpan.innerText = '';
         return;
     }
-    // 模擬資料庫撈取 (未來可改為 await fetch...)
+    
+    // 這裡可改為呼叫 API 查詢真實姓名，目前套用打碼邏輯
     let fullName = id.length === 8 ? "廠商統一編號" : "李小白"; 
     
-    // 姓名打碼：李O, 李O白, 歐陽O鋒
     if (fullName.length === 2) {
         nameSpan.innerText = fullName[0] + "O";
     } else if (fullName.length === 3) {
@@ -97,7 +94,15 @@ window.fetchPayeeName = (inputEl) => {
     } else {
         nameSpan.innerText = fullName;
     }
-}
+};
+
+// 進入頁面時預設新增 3 列空白明細
+document.addEventListener('DOMContentLoaded', () => {
+    const tbody = document.getElementById('excelLinesBody');
+    if (tbody && tbody.children.length === 0) {
+        for(let i=0; i<3; i++) window.addExcelRow();
+    }
+});
 
 // 姓名遮蔽邏輯
 function maskName(name) {

@@ -205,20 +205,29 @@ async function renderDashboard() {
   const user = state.currentUser;
   if (!user) return;
 
-  // 1. 狀態標籤轉換器 (解決狀態未連動變更的問題)
+  // 1. 修正狀態標籤，移除寫死的「處理中」，精準對應工作流
   function getStatusBadge(status) {
-    const map = {
-      'pending_review': '<span style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待主管審核</span>',
-      'pending_accounting': '<span style="background:#fde047; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待會計核准</span>',
-      'approved': '<span style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准(待撥款)</span>',
-      'manager_rejected': '<span style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">主管退件</span>',
-      'accounting_rejected': '<span style="background:#fca5a5; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">會計退回</span>',
-      'closed': '<span style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已付款銷案</span>',
-      'cancelled': '<span style="background:#cbd5e1; color:#334155; padding:2px 8px; border-radius:12px; font-size:12px;">已撤銷</span>'
-    };
-    return map[status] || `<span style="background:#eee; padding:2px 8px; border-radius:12px; font-size:12px;">處理中</span>`;
+    switch (status) {
+      case 'pending_review':
+        return `<span style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待主管審核</span>`;
+      case 'pending_accounting':
+        return `<span style="background:#fde047; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待會計核准</span>`;
+      case 'approved':
+        return `<span style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准(待撥款)</span>`;
+      case 'manager_rejected':
+        return `<span style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">主管退件</span>`;
+      case 'accounting_rejected':
+        return `<span style="background:#fca5a5; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">會計退回</span>`;
+      case 'closed':
+        return `<span style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已付款銷案</span>`;
+      case 'cancelled':
+        return `<span style="background:#cbd5e1; color:#334155; padding:2px 8px; border-radius:12px; font-size:12px;">已撤銷</span>`;
+      default:
+        return `<span style="background:#eee; padding:2px 8px; border-radius:12px; font-size:12px;">未知狀態 (${status || '空'})</span>`;
+    }
   }
 
+  // 2. 重構 Dashboard 預算計算，只計算有效花費
   async function renderDashboard() {
     const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
     if (!container) return;
@@ -226,66 +235,64 @@ async function renderDashboard() {
     if (!user) return;
 
     const isPrivileged = ['admin', 'accounting'].includes(user.role);
-    const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
 
     try {
-      if (selectedProj === 'all') {
-        let voucherQuery = supabase.from('vouchers').select('*, profiles!applicant_id(full_name), departments(name)');
-        if (!isPrivileged) {
-          voucherQuery = voucherQuery.eq('department_id', user.department_id);
-        }
+      // 取得所有報支單 (依權限過濾)
+      let voucherQuery = supabase.from('vouchers').select('*, profiles!applicant_id(full_name), departments(name)');
+      if (!isPrivileged) {
+        voucherQuery = voucherQuery.eq('department_id', user.department_id);
+      }
+      const { data: vchs, error: vError } = await voucherQuery;
+      if (vError) throw vError;
 
-        const { data: vchs, error } = await voucherQuery;
-        if (error) throw error;
+      // 取得專案總預算 (這裡示範抓取 active 專案總和)
+      const { data: projects, error: pError } = await supabase.from('projects').select('total_budget').eq('status', 'active');
+      if (pError) throw pError;
+      const annualBudget = projects.reduce((sum, p) => sum + Number(p.total_budget), 0) || 5000000; // 若無資料預設 500萬
 
-        // 總覽預算計算
-        const annualBudget = 5000000; // 可改為從資料庫讀取
-        const validVouchers = vchs?.filter(v => ['closed', 'approved'].includes(v.status)) || [];
-        const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount), 0);
-        const remainingBudget = annualBudget - totalExpense;
-        const txCount = vchs?.length || 0;
+      // 【關鍵修正】實際花費只計算已核准與已銷案的單據
+      const validVouchers = vchs?.filter(v => ['closed', 'approved'].includes(v.status)) || [];
+      const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount), 0);
+      const remainingBudget = annualBudget - totalExpense;
 
-        container.innerHTML = `
-          <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
-            <h2>財務管理系統</h2>
-            <p>歡迎，${user.name || '使用者'} (${user.role})</p>
+      container.innerHTML = `
+        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
+          <h2>財務管理系統</h2>
+          <p>歡迎，${user.name || '使用者'} (${user.role})</p>
+        </div>
+        
+        <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745;">
+            <h4>年度總預算</h4><h3 style="color:#28a745;">$${annualBudget.toLocaleString()}</h3>
           </div>
-          
-          <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-              <h4>年度總預算</h4><h3 style="color:#28a745;">$${annualBudget.toLocaleString()}</h3>
-            </div>
-            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-              <h4>實際花費 (已核准/銷案)</h4><h3 style="color:#dc3545;">$${totalExpense.toLocaleString()}</h3>
-            </div>
-            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-              <h4>剩餘預算</h4><h3 style="color:#007bff;">$${remainingBudget.toLocaleString()}</h3>
-            </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545;">
+            <h4>實際花費 (已核准/結案)</h4><h3 style="color:#dc3545;">$${totalExpense.toLocaleString()}</h3>
           </div>
+          <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff;">
+            <h4>剩餘預算</h4><h3 style="color:#007bff;">$${remainingBudget.toLocaleString()}</h3>
+          </div>
+        </div>
 
-          <h3>${isPrivileged ? '公司全體實際核銷明細流水賬' : '所屬部門核銷進度'}</h3>
-          <table class="table" style="width:100%; background:#fff; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <thead>
-              <tr style="background:#f8f9fa;">
-                <th>單號</th><th>申請人</th><th>部門</th><th>摘要說明</th><th>金額</th><th>狀態</th>
+        <h3>${isPrivileged ? '公司全體報支明細' : '所屬部門報支進度'}</h3>
+        <table class="table" style="width:100%; background:#fff; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+          <thead>
+            <tr style="background:#f8f9fa;">
+              <th>單號</th><th>申請人</th><th>標題/摘要</th><th>金額</th><th>狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${vchs?.map(v => `
+              <tr>
+                <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')">${v.voucher_no}</a></td>
+                <td>${v.profiles?.full_name || '系統'}</td>
+                <td>${v.title || v.summary}</td>
+                <td>$${Number(v.total_amount).toLocaleString()}</td>
+                <td>${getStatusBadge(v.status)}</td>
               </tr>
-            </thead>
-            <tbody>
-              ${vchs?.map(v => `
-                <tr>
-                  <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no}</a></td>
-                  <td>${v.profiles?.full_name || '系統'}</td>
-                  <td>${v.departments?.name || '跨部門/未分類'}</td>
-                  <td>${v.summary}</td>
-                  <td>$${Number(v.total_amount).toLocaleString()}</td>
-                  <td>${getStatusBadge(v.status)}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="6" class="muted">目前無核銷明細資料</td></tr>'}
-            </tbody>
-          </table>
-        `;
-      } 
-      // 單一專案邏輯保留原本的... (省略未改動部分)
+            `).join('') || '<tr><td colspan="5">目前無報支資料</td></tr>'}
+          </tbody>
+        </table>
+      `;
     } catch (err) {
       console.error('渲染 Dashboard 失敗:', err);
     }
