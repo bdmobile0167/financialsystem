@@ -237,20 +237,22 @@
             <h3>新增報支申請</h3>
             
             <!-- 補上完整的 form 標籤與新的表單結構 -->
-          <form id="voucherCreateForm" class="form-container">
-            <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
-              <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
-              <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
-                
-                <!-- 修正：將原本的起訖日期保留，但加入 JS 需要的單一日期 vDate -->
-                <div style="flex: 1; min-width: 200px;">
-                  <label>申請日期：</label>
-                  <input type="date" id="vDate" required>
-                </div>
-                <div style="flex: 1; min-width: 200px;">
-                  <label>行程起訖日期 (選填)：</label>
-                  <input type="date" id="vStartDate"> ~ <input type="date" id="vEndDate">
-                </div>
+            <form id="voucherCreateForm" class="form-container">
+              <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+                <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
+                  <div style="flex: 1; min-width: 200px;">
+                    <label>申請日期：</label>
+                    <input type="date" id="vDate" required>
+                  </div>
+                  <div style="flex: 1; min-width: 200px;">
+                    <label>專案：</label>
+                    <select id="vProject"><option value="">載入中...</option></select>
+                  </div>
+                  <div style="flex: 1; min-width: 200px;">
+                    <label>部門：</label>
+                    <select id="vDepartment"><option value="">載入中...</option></select>
+                  </div>
                 
                 <!-- 新增：JS 需要的下拉選單 -->
                 <div style="flex: 1; min-width: 200px;">

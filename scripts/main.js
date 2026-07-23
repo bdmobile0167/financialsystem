@@ -15,6 +15,7 @@ bootstrap();
 // ==========================================
 // 報支單明細：新增一列 (包含日期、發票號碼連動與身分證遮蔽)
 // ==========================================
+// 動態產生明細列
 window.addExcelRow = () => {
   const tbody = document.getElementById('excelLinesBody');
   if (!tbody) return;
@@ -24,93 +25,79 @@ window.addExcelRow = () => {
       <input type="month" class="grid-date" style="width:96%; padding:4px;" required>
     </td>
     <td style="padding:4px; border:1px solid #ddd;">
-      <select class="grid-inv-type" style="width:100%; padding:4px;" onchange="toggleInvoiceNum(this)">
+      <select class="grid-inv-type" style="width:100%; padding:4px;" onchange="toggleInvoiceRequired(this)">
         <option value="無">無</option>
-        <option value="發票" selected>發票</option>
+        <option value="發票">發票</option>
         <option value="收據">收據</option>
       </select>
     </td>
     <td style="padding:4px; border:1px solid #ddd;">
-      <input type="text" class="grid-inv-num" placeholder="請填寫發票號碼" style="width:90%; padding:4px;" required>
+      <input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled>
     </td>
     <td style="padding:4px; border:1px solid #ddd;">
-      <input type="text" class="grid-desc" placeholder="項目/摘要說明 (例: 住宿費)" style="width:96%; padding:4px;" required>
+      <input type="text" class="grid-desc" placeholder="例如：住宿費" style="width:96%; padding:4px;" required>
     </td>
     <td style="padding:4px; border:1px solid #ddd;">
-      <input type="number" class="grid-amount" placeholder="金額" style="width:90%; padding:4px;" min="0" oninput="calculateTotalAmount()" required>
+      <input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" required oninput="calculateVoucherTotal()">
     </td>
-    <td style="padding:4px; border:1px solid #ddd; white-space: nowrap;">
-      <input type="text" class="grid-payee-id" placeholder="填身分證/統編" style="width:50%; padding:4px;" onblur="fetchAndMaskPayee(this)">
-      <span class="payee-name-display" style="margin-left:5px; color:#0369a1; font-weight:bold; font-size:13px;"></span>
+    <td style="padding:4px; border:1px solid #ddd;">
+      <div style="display:flex; align-items:center; gap:5px;">
+        <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:60%; padding:4px;" onblur="fetchPayeeName(this)">
+        <span class="grid-payee-name" style="font-size:12px; color:#666;"></span>
+      </div>
     </td>
     <td style="padding:4px; border:1px solid #ddd; text-align:center;">
-      <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateTotalAmount();">刪除</button>
+      <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
     </td>
   `;
   tbody.appendChild(tr);
 };
 
-// ==========================================
-// 憑證類別連動檢查（選擇發票時強制填寫發票號碼）
-// ==========================================
-window.toggleInvoiceNum = (selectEl) => {
-  const row = selectEl.closest('tr');
-  const invNumInput = row.querySelector('.grid-inv-num');
-  if (selectEl.value === '發票') {
-    invNumInput.setAttribute('required', 'true');
-    invNumInput.placeholder = '必填發票號碼';
-  } else {
-    invNumInput.removeAttribute('required');
-    invNumInput.placeholder = '選填';
-  }
-};
-
-// ==========================================
-// 計算整張表單的總金額
-// ==========================================
-window.calculateTotalAmount = () => {
-  const amounts = document.querySelectorAll('.grid-amount');
-  let total = 0;
-  amounts.forEach(input => {
-    total += parseFloat(input.value) || 0;
-  });
-  
-  // 自動將加總結果顯示在下方的總計區塊 (若 HTML 有對應 ID)
-  const totalDisplay = document.getElementById('voucherTotalAmount');
-  if (totalDisplay) {
-    totalDisplay.textContent = '$' + total.toLocaleString();
-  }
-};
-
-// ==========================================
-// 身分證/統編 查詢與姓名遮蔽 (例如：李O白)
-// ==========================================
-window.fetchAndMaskPayee = async (inputEl) => {
-  const idStr = inputEl.value.trim();
-  const displaySpan = inputEl.closest('td').querySelector('.payee-name-display');
-  
-  if (!idStr) {
-    displaySpan.textContent = '';
-    return;
-  }
-
-  displaySpan.textContent = '查詢中...';
-  try {
-    // 💡 之後這裡會換成正式的 Supabase 資料庫查詢 API
-    // 例如：const { data } = await supabase.from('vendors').select('name').eq('tax_id', idStr).single();
-    
-    // 這裡先用模擬資料庫來測試前端效果
-    const fullName = await mockFetchNameFromDB(idStr);
-
-    if (fullName) {
-      displaySpan.textContent = maskName(fullName);
+// 切換發票必填
+window.toggleInvoiceRequired = (selectEl) => {
+    const input = selectEl.closest('tr').querySelector('.grid-inv-num');
+    if (selectEl.value === '發票') {
+        input.disabled = false;
+        input.required = true;
+        input.placeholder = "必填發票號碼";
     } else {
-      displaySpan.textContent = '查無此人';
+        input.disabled = true;
+        input.required = false;
+        input.value = "";
+        input.placeholder = "可留空";
     }
-  } catch (err) {
-    displaySpan.textContent = '查詢失敗';
-  }
-};
+}
+
+// 自動加總
+window.calculateVoucherTotal = () => {
+    const amounts = Array.from(document.querySelectorAll('.grid-amount')).map(el => Number(el.value) || 0);
+    const total = amounts.reduce((a, b) => a + b, 0);
+    const display = document.getElementById('voucherTotalDisplay');
+    if(display) display.innerText = `$${total.toLocaleString()}`;
+}
+
+// 身分證打碼邏輯 (前端打O)
+window.fetchPayeeName = (inputEl) => {
+    const id = inputEl.value.trim();
+    const nameSpan = inputEl.closest('td').querySelector('.grid-payee-name');
+    if (!id) {
+        nameSpan.innerText = '';
+        return;
+    }
+    // 模擬資料庫撈取 (未來可改為 await fetch...)
+    let fullName = id.length === 8 ? "廠商統一編號" : "李小白"; 
+    
+    // 姓名打碼：李O, 李O白, 歐陽O鋒
+    if (fullName.length === 2) {
+        nameSpan.innerText = fullName[0] + "O";
+    } else if (fullName.length === 3) {
+        nameSpan.innerText = fullName[0] + "O" + fullName[2];
+    } else if (fullName.length >= 4) {
+        nameSpan.innerText = fullName[0] + "O" + fullName.substring(2);
+    } else {
+        nameSpan.innerText = fullName;
+    }
+}
 
 // 姓名遮蔽邏輯
 function maskName(name) {

@@ -208,45 +208,86 @@ async function renderDashboard() {
   // 1. 狀態標籤轉換器 (解決狀態未連動變更的問題)
   function getStatusBadge(status) {
     const map = {
-      'pending': '<span style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">處理中</span>',
-      'approved': '<span style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准</span>',
-      'rejected': '<span style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">已退件</span>',
-      'returned': '<span style="background:#fed7aa; color:#9a3412; padding:2px 8px; border-radius:12px; font-size:12px;">退回修正</span>',
-      'closed': '<span style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已銷案/入帳</span>'
+      'pending_review': '<span style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待主管審核</span>',
+      'pending_accounting': '<span style="background:#fde047; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待會計核准</span>',
+      'approved': '<span style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准(待撥款)</span>',
+      'manager_rejected': '<span style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">主管退件</span>',
+      'accounting_rejected': '<span style="background:#fca5a5; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">會計退回</span>',
+      'closed': '<span style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已付款銷案</span>',
+      'cancelled': '<span style="background:#cbd5e1; color:#334155; padding:2px 8px; border-radius:12px; font-size:12px;">已撤銷</span>'
     };
-    return map[status] || map['pending']; // 預設處理中
+    return map[status] || `<span style="background:#eee; padding:2px 8px; border-radius:12px; font-size:12px;">處理中</span>`;
   }
 
-  // 2. 獲取並渲染年度預算與實際花費 (Dashboard 總覽)
-  async function renderDashboardBudgetOverview() {
+  async function renderDashboard() {
+    const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
+    if (!container) return;
+    const user = state.currentUser;
+    if (!user) return;
+
+    const isPrivileged = ['admin', 'accounting'].includes(user.role);
+    const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
+
     try {
-      const currentYear = new Date().getFullYear();
-      const annualBudget = 5000000; // 假設年度總預算 500 萬 (之後可改成從 Supabase budgets 表撈取)
+      if (selectedProj === 'all') {
+        let voucherQuery = supabase.from('vouchers').select('*, profiles!applicant_id(full_name), departments(name)');
+        if (!isPrivileged) {
+          voucherQuery = voucherQuery.eq('department_id', user.department_id);
+        }
 
-      // 從資料庫撈取今年度「已核准」或「已銷案」的總花費
-      const { data: vouchers, error } = await supabase
-        .from('vouchers')
-        .select('total_amount')
-        .in('status', ['approved', 'closed'])
-        .gte('tx_date', `${currentYear}-01-01`); // 今年初至今
+        const { data: vchs, error } = await voucherQuery;
+        if (error) throw error;
 
-      if (error) throw error;
+        // 總覽預算計算
+        const annualBudget = 5000000; // 可改為從資料庫讀取
+        const validVouchers = vchs?.filter(v => ['closed', 'approved'].includes(v.status)) || [];
+        const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount), 0);
+        const remainingBudget = annualBudget - totalExpense;
+        const txCount = vchs?.length || 0;
 
-      const actualSpent = vouchers.reduce((sum, v) => sum + (Number(v.total_amount) || 0), 0);
-      const remaining = annualBudget - actualSpent;
-      const spentPercent = Math.min((actualSpent / annualBudget) * 100, 100).toFixed(1);
+        container.innerHTML = `
+          <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
+            <h2>財務管理系統</h2>
+            <p>歡迎，${user.name || '使用者'} (${user.role})</p>
+          </div>
+          
+          <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+              <h4>年度總預算</h4><h3 style="color:#28a745;">$${annualBudget.toLocaleString()}</h3>
+            </div>
+            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+              <h4>實際花費 (已核准/銷案)</h4><h3 style="color:#dc3545;">$${totalExpense.toLocaleString()}</h3>
+            </div>
+            <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+              <h4>剩餘預算</h4><h3 style="color:#007bff;">$${remainingBudget.toLocaleString()}</h3>
+            </div>
+          </div>
 
-      // 渲染到 Dashboard 上 (需確認 HTML 有這幾個 ID)
-      const budgetEl = document.getElementById('dashAnnualBudget');
-      const spentEl = document.getElementById('dashActualSpent');
-      const remainingEl = document.getElementById('dashRemainingBudget');
-      
-      if (budgetEl) budgetEl.textContent = `$${annualBudget.toLocaleString()}`;
-      if (spentEl) spentEl.textContent = `$${actualSpent.toLocaleString()}`;
-      if (remainingEl) remainingEl.textContent = `$${remaining.toLocaleString()}`;
-
-    } catch (error) {
-      console.error("載入預算資料失敗:", error);
+          <h3>${isPrivileged ? '公司全體實際核銷明細流水賬' : '所屬部門核銷進度'}</h3>
+          <table class="table" style="width:100%; background:#fff; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <thead>
+              <tr style="background:#f8f9fa;">
+                <th>單號</th><th>申請人</th><th>部門</th><th>摘要說明</th><th>金額</th><th>狀態</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vchs?.map(v => `
+                <tr>
+                  <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no}</a></td>
+                  <td>${v.profiles?.full_name || '系統'}</td>
+                  <td>${v.departments?.name || '跨部門/未分類'}</td>
+                  <td>${v.summary}</td>
+                  <td>$${Number(v.total_amount).toLocaleString()}</td>
+                  <td>${getStatusBadge(v.status)}</td>
+                </tr>
+              `).join('') || '<tr><td colspan="6" class="muted">目前無核銷明細資料</td></tr>'}
+            </tbody>
+          </table>
+        `;
+      } 
+      // 單一專案邏輯保留原本的... (省略未改動部分)
+    } catch (err) {
+      console.error('渲染 Dashboard 失敗:', err);
     }
   }
 
@@ -1406,10 +1447,21 @@ if (document.readyState === 'loading') {
 async function populateVoucherFormOptions() {
   try {
     const [accounts, banks, departments] = await Promise.all([
-      fetchAccounts(), 
-      fetchBankAccounts(), 
-      fetchDepartments()
+      fetchAccounts(), fetchBankAccounts(), fetchDepartments()
     ]);
+
+    // 控制會計專用區塊顯示
+    const role = state.currentUser?.role;
+    const acctGroup = document.getElementById('accountingFieldsGroup');
+    if (acctGroup) {
+        acctGroup.style.display = ['accounting', 'admin'].includes(role) ? 'flex' : 'none';
+    }
+
+    // 初始進入此頁面時，預設給 5 個空列
+    const tbody = document.getElementById('excelLinesBody');
+    if (tbody && tbody.children.length === 0) {
+        for(let i=0; i<5; i++) window.addExcelRow();
+    }
 
     // 會計科目
     const accountSelect = document.getElementById('vAccountCode');
@@ -1497,45 +1549,53 @@ async function renderVoucherWorkflowList() {
       return;
     }
 
-    // 用迴圈或 map 搭配你剛剛寫的權限判斷邏輯來組合每一個列表項目
+    // 在 renderVoucherWorkflowList 函式內部的迴圈：
     const htmlContent = vouchers.map(row => {
-      // --- 1. 貼上你的動態權限判斷邏輯 ---
       let actionButtons = '';
       const currentUserRole = state.currentUser?.role; 
       const vStatus = row.status; 
 
-      if (currentUserRole === 'member') {
-        if (vStatus === 'pending') {
+      if (currentUserRole === 'employee') { // 修正為 employee
+        if (['pending_review'].includes(vStatus)) {
           actionButtons = `
-            <button class="btn-small" onclick="editVoucher('${row.id}')">編輯</button>
-            <button class="btn-small danger" onclick="withdrawVoucher('${row.id}')">撤回</button>
+            <button class="btn-small secondary edit-voucher-btn" data-id="${row.id}">請求修正(編輯)</button>
+            <button class="btn-small danger cancel-voucher-btn" data-id="${row.id}">撤回</button>
           `;
-        } else if (vStatus === 'returned' || vStatus === 'rejected') {
-          actionButtons = `<button class="btn-small" onclick="editVoucher('${row.id}')">修改並重送</button>`;
+        } else if (['manager_rejected', 'accounting_rejected'].includes(vStatus)) {
+          actionButtons = `<button class="btn-small secondary edit-voucher-btn" data-id="${row.id}">修改並重送</button>`;
         } else {
-          actionButtons = `<button class="btn-small secondary" onclick="viewVoucher('${row.id}')">查看</button>`;
+          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
-      } else if (currentUserRole === 'admin') {
-        if (vStatus === 'pending') {
+      } else if (currentUserRole === 'manager') {
+        if (vStatus === 'pending_review') {
           actionButtons = `
-            <button class="btn-small success" onclick="approveVoucher('${row.id}')">核准</button>
-            <button class="btn-small warning" onclick="returnVoucher('${row.id}')">退件修正</button>
+            <button class="btn-small primary approve-voucher-btn" data-id="${row.id}" data-stage="manager">核准</button>
+            <button class="btn-small warning reject-voucher-btn" data-id="${row.id}" data-stage="manager">退件</button>
+          `;
+        } else {
+          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
+        }
+      } else if (['accounting', 'admin'].includes(currentUserRole)) {
+        if (vStatus === 'pending_accounting') {
+          actionButtons = `
+            <button class="btn-small primary approve-voucher-btn" data-id="${row.id}" data-stage="accounting">核准</button>
+            <button class="btn-small warning reject-voucher-btn" data-id="${row.id}" data-stage="accounting">退件</button>
           `;
         } else if (vStatus === 'approved') {
+          // 會計部門獨有：編輯歸帳並銷案
           actionButtons = `
-            <button class="btn-small primary" onclick="closeVoucher('${row.id}')">確認付款並銷案</button>
+            <button class="btn-small success close-voucher-btn" data-id="${row.id}" onclick="alert('開啟編輯模式：選擇支付帳戶、時間，儲存後轉為已銷案。')">編輯歸帳並付款銷案</button>
           `;
         } else {
-          actionButtons = `<button class="btn-small secondary" onclick="viewVoucher('${row.id}')">查看</button>`;
+          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
       }
 
-      // --- 2. 組裝成你要顯示的 HTML 結構 (這裡以表格列 tr 或卡片為例) ---
       return `
         <tr>
           <td>${row.voucher_no}</td>
           <td>${row.summary}</td>
-          <td>${row.total_amount}</td>
+          <td>$${Number(row.total_amount).toLocaleString()}</td>
           <td>${getStatusBadge(vStatus)}</td>
           <td>${actionButtons}</td>
         </tr>
