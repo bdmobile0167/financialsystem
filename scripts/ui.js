@@ -115,33 +115,6 @@ function maskIdentifierString(identifier) {
   return identifier;
 }
 
-// ===== 更新自動帶入資料的 AJAX 邏輯 =====
-window.fetchAndMaskPayee = async (index, identifier) => {
-  if (!identifier) {
-    updateLineData(index, 'payeeName', '');
-    renderVoucherLines();
-    return;
-  }
-  
-  try {
-    // 假設呼叫 supabase 查詢資料庫
-    const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).single();
-    
-    // 如果資料庫有找到名字，存入真實姓名
-    if (data && data.name) {
-      voucherLines[index].payeeName = data.name;
-    } else {
-      // 找不到時，若是 8 碼暫定為未知廠商，否則為未知個人
-      voucherLines[index].payeeName = identifier.length === 8 ? '未知廠商' : '未知個人';
-    }
-    
-    updateLineData(index, 'payeeIdentifier', identifier);
-    renderVoucherLines(); // 觸發畫面重新渲染
-  } catch (err) {
-    console.error('查詢失敗:', err);
-  }
-};
-
 function getBankNickname(bankAccountId, accounts = []) {
   const account = accounts.find(a => a.id === bankAccountId);
   return account ? account.nickname : '未設定';
@@ -1011,6 +984,24 @@ function initializeEventsInternal() {
     }
   });
 
+  safeListener('bulkVoucherUpload', 'change', (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const existingRows = Array.from(document.querySelectorAll('#excelLinesBody tr'));
+
+    files.forEach((file, i) => {
+      if (existingRows[i]) {
+        window.assignLineAttachment(existingRows[i].dataset.rowId, file);
+      } else {
+        window.addExcelRow(file);
+      }
+    });
+
+    showMessage(`已將 ${files.length} 張照片依順序分配到各列，請檢查是否正確。`);
+    e.target.value = '';
+  });
+
   // Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1345,11 +1336,16 @@ function initializeEventsInternal() {
     }
   });
   // 全域函式：點擊按鈕動態往 Table 追加一列
-  window.addExcelRow = () => {
+let excelRowCounter = 0;
+const voucherLineAttachments = {}; // { rowId: File }
+
+  window.addExcelRow = (prefillFile = null) => {
     const tbody = document.getElementById('excelLinesBody');
     if (!tbody) return;
 
+    const rowId = `row-${excelRowCounter++}`;
     const tr = document.createElement('tr');
+    tr.dataset.rowId = rowId;
     tr.innerHTML = `
       <td><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
       <td>
@@ -1360,8 +1356,6 @@ function initializeEventsInternal() {
         </select>
       </td>
       <td><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
-      
-      <!-- 新增：會計科目選擇 -->
       <td>
         <select class="line-account-code" style="width:100%; padding:4px;">
           <option value="6100">6100 營業費用</option>
@@ -1371,17 +1365,31 @@ function initializeEventsInternal() {
           <option value="3110">3110 股本</option>
         </select>
       </td>
-      
       <td><input type="text" class="grid-desc" placeholder="例如：住宿費" style="width:96%; padding:4px;"></td>
       <td><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
+      <td><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
       <td>
-        <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;">
+        <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
+        <button type="button" class="secondary" style="padding:2px 6px; font-size:12px;" onclick="this.previousElementSibling.click()">📎</button>
+        <div class="attachment-label" style="font-size:11px; color:#666; margin-top:2px;">未選擇</div>
       </td>
       <td style="text-align:center;">
         <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
       </td>
     `;
     tbody.appendChild(tr);
+
+    if (prefillFile) {
+      window.assignLineAttachment(rowId, prefillFile);
+    }
+  };
+
+  window.assignLineAttachment = (rowId, file) => {
+    if (!file) return;
+    voucherLineAttachments[rowId] = file;
+    const row = document.querySelector(`tr[data-row-id="${rowId}"]`);
+    const label = row?.querySelector('.attachment-label');
+    if (label) label.textContent = `已選擇：${file.name}`;
   };
 
   // 表單提交封包邏輯
@@ -1396,7 +1404,7 @@ function initializeEventsInternal() {
 
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject')?.value || null;
-        const generalSummary = document.getElementById('vSummary')?.value.trim() || "批量多行核銷單據";
+        const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
 
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
@@ -1458,6 +1466,16 @@ function initializeEventsInternal() {
           }]).select().single();
 
         if (vError) throw vError;
+        
+        if (selectedFile) {
+          try {
+            const attachmentId = await saveAttachment(selectedFile);
+            await supabase.from('vouchers').update({ attachment_id: attachmentId }).eq('id', voucherMain.id);
+          } catch (attErr) {
+            console.error('附件上傳失敗，但單據已送出：', attErr);
+            showMessage('單據已送出，但附件上傳失敗，請之後補上傳。', true);
+          }
+        }
 
         // 2. 寫入明細（已支援不同科目）
         const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
@@ -1470,10 +1488,18 @@ function initializeEventsInternal() {
           await supabase.from('invoices').insert(finalInvoices);
         }
 
-        // 4. 上傳附件
-        if (selectedFile) {
-          await saveAttachment(voucherMain.id, selectedFile);
-        }
+        // 4. 上傳附件（逐列）
+        const attachmentUploads = rows.map(async (row) => {
+          const rowId = row.dataset.rowId;
+          const file = voucherLineAttachments[rowId];
+          if (!file) return;
+          try {
+            await saveAttachment(voucherMain.id, file);
+          } catch (err) {
+            console.error(`第 ${rowId} 列附件上傳失敗：`, err);
+          }
+        });
+        await Promise.all(attachmentUploads);
 
         alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
 
@@ -1581,95 +1607,11 @@ function initializeEventsInternal() {
       showMessage('新增部門失敗：' + err.message, true);
     }
   });
-  safeListener('addVoucherLineBtn', 'click', () => {
-    voucherLines.push({ description: '', accountCode: '', amount: 0 });
-    renderVoucherLines();
-  });
   // 交易表單
   setupTransactionForm();
 }
 
 let voucherLines = [];
-
-// ===== 3. 更新新增列的資料結構 =====
-// 找到你原本 push 4個欄位的地方，改成以下結構：
-function addVoucherLine() {
-  voucherLines.push({
-    receiptMonth: '',
-    receiptType: 'invoice',
-    invoiceNumber: '',
-    description: '',
-    amount: 0,
-    payeeIdentifier: '',
-    payeeName: '' // 這裡未來會透過 API 自動帶入
-  });
-  renderVoucherLines();
-}
-
-// ===== 4. 重寫明細渲染邏輯 =====
-function renderVoucherLines() {
-  const tbody = document.querySelector('#voucherLinesTable tbody') || document.getElementById('excelLinesBody');
-  if (!tbody) return;
-
-  // 過濾掉金額為 0 或摘要空白的無效列
-  const validLines = voucherLines.filter(line => line.description && line.description.trim() !== '' && Number(line.amount) > 0);
-
-  if (validLines.length === 0) {
-    alert('請至少填寫一筆有效的報支明細！');
-    return;
-  }
-
-  tbody.innerHTML = voucherLines.map((line, i) => `
-    <tr>
-      <td>
-        <input type="month" value="${line.receiptMonth || ''}" class="line-month" data-index="${i}" onchange="updateLineData(${i}, 'receiptMonth', this.value)">
-      </td>
-      <td>
-        <select class="line-type" data-index="${i}" onchange="updateLineData(${i}, 'receiptType', this.value); renderVoucherLines();">
-          <option value="invoice" ${line.receiptType==='invoice'?'selected':''}>發票</option>
-          <option value="receipt" ${line.receiptType==='receipt'?'selected':''}>收據</option>
-          <option value="none" ${line.receiptType==='none'?'selected':''}>無</option>
-        </select>
-      </td>
-      <td>
-        <input type="text" value="${line.invoiceNumber || ''}" class="line-invoice" data-index="${i}" placeholder="${line.receiptType==='invoice' ? '必填發票號碼' : '可留空'}" ${line.receiptType==='invoice' ? 'required' : ''} onchange="updateLineData(${i}, 'invoiceNumber', this.value)">
-      </td>
-      <td>
-        <input type="text" value="${line.description || ''}" class="line-desc" data-index="${i}" placeholder="住宿費 / 餐費" required onchange="updateLineData(${i}, 'description', this.value)">
-      </td>
-      <td>
-        <input type="number" value="${line.amount || 0}" class="line-amount" data-index="${i}" min="0" required onchange="updateLineData(${i}, 'amount', Number(this.value)); updateVoucherTotal();">
-      </td>
-      <td>
-        <!-- 實際輸入框 (供員工輸入真實統編/身分證，送出時會傳給資料庫) -->
-        <input type="text" value="${line.payeeIdentifier || ''}" class="line-payee-id" data-index="${i}" placeholder="身份證或統編" onblur="fetchAndMaskPayee(${i}, this.value)">
-        
-        <!-- 預覽文字區塊 (顯示智能打碼後的結果) -->
-        <div class="payee-preview" style="font-size: 12px; color: #666; margin-top: 4px;">
-          ${line.payeeName ? `
-            姓名：${maskPersonName(line.payeeName, line.payeeIdentifier)} <br>
-            證號：${maskIdentifierString(line.payeeIdentifier)}
-          ` : ''}
-        </div>
-      </td>
-      <td style="text-align: center;">
-        <button type="button" class="danger" style="padding: 4px 8px; background: #dc2626; color: white; border: none; border-radius: 4px;" onclick="removeLine(${i})">刪除</button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-// 輔助函式：更新陣列資料
-window.updateLineData = (index, field, value) => {
-  voucherLines[index][field] = value;
-};
-
-// 輔助函式：刪除列
-window.removeLine = (index) => {
-  voucherLines.splice(index, 1);
-  renderVoucherLines();
-  updateVoucherTotal();
-};
 
 async function initialize() {
     loadState(state);
@@ -1845,8 +1787,9 @@ async function renderVoucherWorkflowList() {
 
       return `
         <tr>
-          <td>${row.voucher_no || '未編號'}</td>
+          <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${row.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${row.voucher_no || '未編號'}</a></td>
           <td>${row.summary || '-'}</td>
+          <td>${row.voucher_lines?.length || 0} 筆</td>
           <td>$${Number(row.total_amount || 0).toLocaleString()}</td>
           <td>${getStatusBadge(vStatus)}</td>
           <td>${actionButtons}</td>
@@ -2311,29 +2254,6 @@ window.saveBankEdit = async () => {
   }
 };
 
-// ===== 6. 統編/身分證自動查詢對象名稱 (整合到明細中) =====
-window.fetchAndMaskPayee = async (index, identifier) => {
-  if (!identifier) return;
-  
-  try {
-    const { data, error } = await supabase
-      .from('payees')
-      .select('name')
-      .eq('identifier', identifier)
-      .single();
-      
-    if (data && data.name) {
-      voucherLines[index].payeeName = data.name;
-    } else {
-      voucherLines[index].payeeName = '未知對象 (未建檔)';
-    }
-    // 重新渲染表格以顯示遮罩後的名稱
-    renderVoucherLines();
-  } catch (err) {
-    console.error('查詢付款對象失敗:', err);
-  }
-};
-
 // 會計詳細審核 Modal
 window.openAccountingReviewModal = async (voucherId) => {
   try {
@@ -2402,19 +2322,56 @@ window.openAccountingReviewModal = async (voucherId) => {
   }
 };
 
-// 執行歸帳
 window.accountingApproveAndClose = async (voucherId) => {
-  const accountCode = document.getElementById('reviewAccountCode').value;
   const bankId = document.getElementById('reviewBankAccount').value;
-  const note = document.getElementById('reviewNote').value;
+  const note = document.getElementById('reviewNote').value.trim();
 
-  // 這裡可以呼叫你原本的 closeVoucherByAccounting 函式
-  alert(`已核准並歸帳！\n科目：${accountCode}\n銀行：${bankId}\n備註：${note}`);
-  
-  // 關閉 Modal 並刷新列表
-  document.querySelector('.modal-backdrop').remove();
-  renderVoucherWorkflowList();
-  renderDashboard();
+  try {
+    const { data: voucher, error: fetchErr } = await supabase
+      .from('vouchers').select('*').eq('id', voucherId).single();
+    if (fetchErr || !voucher) throw new Error('找不到單據資料');
+
+    // 1. 核准（狀態改成 approved，資料庫會自動觸發產生總帳分錄）
+    const { error: statusErr } = await supabase
+      .from('vouchers')
+      .update({ status: 'approved', updated_at: new Date().toISOString() })
+      .eq('id', voucherId);
+    if (statusErr) throw statusErr;
+
+    // 2. 記錄審批歷程
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('voucher_workflow_logs').insert({
+      voucher_id: voucherId, actor_id: user.id, action: 'approve',
+      from_status: voucher.status, to_status: 'approved',
+      reject_reason: note || null
+    });
+
+    // 3. 記錄實際付款方式
+    await supabase.from('voucher_payments').insert({
+      voucher_id: voucherId,
+      payment_type: bankId ? 'bank_transfer' : 'cash',
+      bank_account_id: bankId || null,
+      amount: voucher.total_amount,
+      paid_at: new Date().toISOString().slice(0, 10)
+    });
+
+    // 4. 真正扣除專案剩餘預算（之前這個從來沒被扣過，這裡補上）
+    if (voucher.project_id) {
+      const { data: proj } = await supabase
+        .from('projects').select('remaining_budget').eq('id', voucher.project_id).single();
+      if (proj) {
+        const newRemaining = Number(proj.remaining_budget) - Number(voucher.total_amount);
+        await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', voucher.project_id);
+      }
+    }
+
+    showMessage('已核准並完成歸帳，總帳分錄已自動產生。');
+    document.querySelector('.modal-backdrop').remove();
+    renderVoucherWorkflowList();
+    renderDashboard();
+  } catch (err) {
+    alert('歸帳失敗：' + err.message);
+  }
 };
 
 window.closeVoucher = async (voucherId) => {
