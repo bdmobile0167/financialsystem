@@ -267,22 +267,22 @@
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
                   <thead>
                     <tr style="background: #f1f5f9;">
-                      <th style="padding: 8px; border: 1px solid #ddd;">單據年月</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">憑證類型</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">發票號碼</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">項目/摘要說明</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">金額</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">付款人(身分證/統編)</th>
-                      <th style="padding: 8px; border: 1px solid #ddd;">操作</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">單據年月</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">憑證類型</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">發票號碼</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 22%;">會計科目 / 項目說明</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">金額</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">付款人(身分證/統編)</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 20%;">操作與附件</th>
                     </tr>
                   </thead>
                   <tbody id="excelLinesBody">
-                    <!-- JS 動態生成 -->
+                    <!-- 統一由 JavaScript 動態生成，確保每一列都有會計科目與附件 -->
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold;">總計金額：</td>
-                      <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f;" id="voucherTotalDisplay">$0</td>
+                      <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold; border: 1px solid #ddd;">總計金額：</td>
+                      <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="voucherTotalDisplay">$0</td>
                     </tr>
                   </tfoot>
                 </table>
