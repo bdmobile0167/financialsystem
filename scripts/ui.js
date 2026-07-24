@@ -288,7 +288,7 @@ async function renderDashboard() {
       const { data: banks } = await supabase.from('bank_accounts').select('*');
       const bankBalance = banks?.reduce((sum, b) => sum + Number(b.opening_balance || 0), 0) || 0;
 
-      const totalPaid = vchs.filter(v => v.status === 'closed')
+      const totalPaid = vchs.filter(v => v.status === 'approved')
                            .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
       const pendingPayment = vchs.filter(v => v.status === 'approved')
                                 .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
@@ -372,6 +372,16 @@ async function renderDashboard() {
         const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
         const txCount = vchs?.length || 0;
 
+        // 全部專案加總（所有角色都看得到）
+        const { data: allProjects } = await supabase.from('projects').select('total_budget');
+        const totalProjectBudget = allProjects?.reduce((sum, p) => sum + Number(p.total_budget || 0), 0) || 0;
+
+        const { data: allProjectVouchers } = await supabase.from('vouchers').select('total_amount, status').not('project_id', 'is', null);
+        const totalProjectSpent = (allProjectVouchers || [])
+          .filter(v => v.status !== 'voided')
+          .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
+        const totalProjectRemaining = totalProjectBudget - totalProjectSpent;
+
         // 注意：這裡使用 += ，不會蓋掉前面的 4 張卡片
         container.innerHTML += `
           <div style="margin-top: 30px;">
@@ -380,7 +390,7 @@ async function renderDashboard() {
               <p>歡迎，${user.name || '使用者'} (${user.role})</p>
             </div>
             
-            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:16px;">
               <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
                 <h4>總申請筆數</h4><h3>${txCount} 筆</h3>
               </div>
@@ -389,6 +399,17 @@ async function renderDashboard() {
               </div>
               <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
                 <h4>本月狀態</h4><h3>正常營運</h3>
+              </div>
+            </div>
+            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                <h4>專案預算總額</h4><h3 style="color:#28a745;">$${totalProjectBudget.toLocaleString()}</h3>
+              </div>
+              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                <h4>專案實際花費</h4><h3 style="color:#dc3545;">$${totalProjectSpent.toLocaleString()}</h3>
+              </div>
+              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                <h4>專案剩餘預算</h4><h3 style="color:#007bff;">$${totalProjectRemaining.toLocaleString()}</h3>
               </div>
             </div>
 
@@ -1404,9 +1425,6 @@ const voucherLineAttachments = {}; // { rowId: File }
       e.preventDefault();
 
       try {
-        const fileInput = document.getElementById('voucherFileInput');
-        const selectedFile = fileInput?.files[0] || null;
-
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
@@ -1463,6 +1481,8 @@ const voucherLineAttachments = {}; // { rowId: File }
             // voucher_no 不要自己填，讓 trigger 產生
             project_id: projectId && projectId !== 'all' ? projectId : null,
             applicant_id: state.currentUser?.id,
+            department_id: document.getElementById('vDepartment')?.value || null,
+            current_manager_id: document.getElementById('vManagerPicker')?.value || null,
             tx_date: txDate,
             category: '營業',
             summary: generalSummary,
@@ -1471,16 +1491,6 @@ const voucherLineAttachments = {}; // { rowId: File }
           }]).select().single();
 
         if (vError) throw vError;
-        
-        if (selectedFile) {
-          try {
-            const attachmentId = await saveAttachment(selectedFile);
-            await supabase.from('vouchers').update({ attachment_id: attachmentId }).eq('id', voucherMain.id);
-          } catch (attErr) {
-            console.error('附件上傳失敗，但單據已送出：', attErr);
-            showMessage('單據已送出，但附件上傳失敗，請之後補上傳。', true);
-          }
-        }
 
         // 2. 寫入明細（已支援不同科目）
         const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
@@ -1494,7 +1504,7 @@ const voucherLineAttachments = {}; // { rowId: File }
         }
 
         // 4. 上傳附件（逐列）
-        const attachmentUploads = rows.map(async (row) => {
+        const attachmentUploads = Array.from(rows).map(async (row) => {
           const rowId = row.dataset.rowId;
           const file = voucherLineAttachments[rowId];
           if (!file) return;
@@ -1509,7 +1519,6 @@ const voucherLineAttachments = {}; // { rowId: File }
         alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
 
         // 重置表單
-        if (fileInput) fileInput.value = '';
         excelVoucherForm.reset();
 
         // 重新渲染明細表格
@@ -1583,11 +1592,19 @@ const voucherLineAttachments = {}; // { rowId: File }
 
       showMessage('專案已建立，並已設定預算分類！');
       e.target.reset();
+
+      if (selectedTeamMembers.length > 0 && newProject?.id) {
+        await supabase.from('user_projects').insert(
+          selectedTeamMembers.map(m => ({ user_id: m.id, project_id: newProject.id }))
+        );
+      }
+      selectedTeamMembers = [];
+      renderTeamMemberList();
       
       renderProjectList();
       loadAndRenderProjects();
       renderDashboard();
-
+      
     } catch (err) {
       showMessage('建立專案失敗：' + err.message, true);
     }
@@ -1693,6 +1710,18 @@ async function populateVoucherFormOptions() {
       projectSelect.innerHTML = '<option value="">無專案</option>' + 
         projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name}</option>`).join('');
     }
+
+    document.getElementById('vDepartment')?.addEventListener('change', async (e) => {
+      const deptId = e.target.value;
+      const managerSelect = document.getElementById('vManagerPicker');
+      if (!managerSelect) return;
+      managerSelect.innerHTML = '<option value="">不指定</option>';
+      if (!deptId) return;
+      const { data: managers } = await supabase
+        .from('profiles').select('id, full_name').eq('department_id', deptId).eq('role', 'manager');
+      managerSelect.innerHTML += (managers || []).map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
+    });
+
   } catch (error) {
     console.error(error);
     showMessage(`載入表單選項失敗：${error.message}`, true);
@@ -2411,4 +2440,45 @@ function getStatusBadgeWithDate(v) {
     return `<span class="badge warning">待主管審核</span>`;
   }
   return `<span class="badge">${v.status || '處理中'}</span>`;
+}
+
+let selectedTeamMembers = [];
+
+async function populateProjectFormTeamPickers() {
+  const deptSelect = document.getElementById('teamMemberDept');
+  if (!deptSelect) return;
+  const departments = await fetchDepartments();
+  deptSelect.innerHTML = departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  await refreshTeamMemberPersonOptions();
+  deptSelect.addEventListener('change', refreshTeamMemberPersonOptions);
+}
+
+async function refreshTeamMemberPersonOptions() {
+  const deptId = document.getElementById('teamMemberDept')?.value;
+  const personSelect = document.getElementById('teamMemberPerson');
+  if (!deptId || !personSelect) return;
+  const { data: people } = await supabase.from('profiles').select('id, full_name').eq('department_id', deptId);
+  personSelect.innerHTML = (people || []).map(p => `<option value="${p.id}">${p.full_name}</option>`).join('');
+}
+
+window.addTeamMember = () => {
+  const personSelect = document.getElementById('teamMemberPerson');
+  const id = personSelect?.value;
+  const name = personSelect?.selectedOptions[0]?.textContent;
+  if (!id || selectedTeamMembers.some(m => m.id === id)) return;
+  selectedTeamMembers.push({ id, name });
+  renderTeamMemberList();
+};
+
+window.removeTeamMember = (id) => {
+  selectedTeamMembers = selectedTeamMembers.filter(m => m.id !== id);
+  renderTeamMemberList();
+};
+
+function renderTeamMemberList() {
+  const list = document.getElementById('teamMemberList');
+  if (!list) return;
+  list.innerHTML = selectedTeamMembers.map(m =>
+    `<li>${m.name} <button type="button" onclick="removeTeamMember('${m.id}')" style="color:red; border:none; background:none; cursor:pointer;">移除</button></li>`
+  ).join('') || '<li class="muted">尚未指派成員</li>';
 }
