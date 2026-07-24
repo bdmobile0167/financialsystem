@@ -908,7 +908,7 @@ function initializeEventsInternal() {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, handler);
   };
-  
+
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1348,34 +1348,38 @@ const voucherLineAttachments = {}; // { rowId: File }
     const tr = document.createElement('tr');
     tr.dataset.rowId = rowId;
     tr.innerHTML = `
-      <td><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
-      <td>
-        <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)">
+      <td style="padding: 8px; border: 1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">
+        <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
           <option value="無">無</option>
           <option value="發票">發票</option>
           <option value="收據">收據</option>
         </select>
       </td>
-      <td><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
-      <td>
-        <select class="line-account-code" style="width:100%; padding:4px;">
-          <option value="6100">6100 營業費用</option>
-          <option value="1601">1601 固定資產</option>
-          <option value="1141">1141 應收帳款</option>
-          <option value="2141">2141 應付帳款</option>
-          <option value="3110">3110 股本</option>
-        </select>
+      <td style="padding: 8px; border: 1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">
+        <div style="display: flex; gap: 4px; flex-direction: column;">
+          <select class="line-account-code" style="width:100%; padding:4px;">
+            <option value="6100">6100 營業費用</option>
+            <option value="1601">1601 固定資產</option>
+            <option value="1141">1141 應收帳款</option>
+            <option value="2141">2141 應付帳款</option>
+            <option value="3110">3110 股本</option>
+          </select>
+          <input type="text" class="grid-desc" placeholder="例如：住宿費說明" style="width:96%; padding:4px;">
+        </div>
       </td>
-      <td><input type="text" class="grid-desc" placeholder="例如：住宿費" style="width:96%; padding:4px;"></td>
-      <td><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
-      <td><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
-      <td>
-        <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
-        <button type="button" class="secondary" style="padding:2px 6px; font-size:12px;" onclick="this.previousElementSibling.click()">📎</button>
-        <div class="attachment-label" style="font-size:11px; color:#666; margin-top:2px;">未選擇</div>
-      </td>
-      <td style="text-align:center;">
-        <button type="button" class="danger" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
+      <td style="padding: 8px; border: 1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
+      <td style="padding: 8px; border: 1px solid #ddd;"><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
+      <td style="padding: 8px; border: 1px solid #ddd; text-align:center;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <div>
+            <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
+            <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="this.previousElementSibling.click()">📎 附件</button>
+            <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">未選擇</div>
+          </div>
+          <button type="button" class="danger" style="padding:4px 8px; font-size:12px;" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
