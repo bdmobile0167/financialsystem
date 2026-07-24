@@ -903,6 +903,12 @@ function initializeEvents() {
 }
 
 function initializeEventsInternal() {
+  // 1. Define it first
+  const safeListener = (id, event, handler) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+  };
+  
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1033,11 +1039,6 @@ function initializeEventsInternal() {
       }
     });
   });
-  // 安全的事件綁定
-  const safeListener = (id, event, handler) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener(event, handler);
-  };
 
   safeListener('voucherSearchInput', 'input', renderVoucherCenter);
   safeListener('journalSearchInput', 'input', renderJournalFiltered);
