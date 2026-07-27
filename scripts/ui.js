@@ -294,7 +294,6 @@ async function renderDashboard() {
 
     const totalBudget = filteredProjects.reduce((s, p) => s + Number(p.total_budget || 0), 0);
 
-    // 報支單依專案過濾（若有選）— 這段要在 totalSpent 之前
     let displayVouchers = vouchers;
     if (selectedProj !== 'all') {
       displayVouchers = vouchers.filter(v => v.project_id === selectedProj);
@@ -310,19 +309,13 @@ async function renderDashboard() {
 
     const totalRemaining = Math.max(0, totalBudget - totalSpent);
 
-    // 報支單依專案過濾（若有選）
-    let displayVouchers = vouchers;
-    if (selectedProj !== 'all') {
-      displayVouchers = vouchers.filter(v => v.project_id === selectedProj);
-    }
-
-    // ---------- 3. 待辦數字（狀態要統一） ----------
-    const pendingReview = displayVouchers.filter(v => v.status === 'pending_review').length;
-    const pendingAccounting = displayVouchers.filter(v => v.status === 'pending_accounting').length;
-    const pendingPayment = displayVouchers.filter(v => v.status === 'approved').length;
-    const rejectedCount = displayVouchers.filter(v =>
-      v.status === 'manager_rejected' || v.status === 'accounting_rejected'
-    ).length;
+        // ---------- 3. 待辦數字（狀態要統一） ----------
+        const pendingReview = displayVouchers.filter(v => v.status === 'pending_review').length;
+        const pendingAccounting = displayVouchers.filter(v => v.status === 'pending_accounting').length;
+        const pendingPayment = displayVouchers.filter(v => v.status === 'approved').length;
+        const rejectedCount = displayVouchers.filter(v =>
+          v.status === 'manager_rejected' || v.status === 'accounting_rejected'
+        ).length;
 
     // ---------- 4. 畫面 ----------
     let html = `
