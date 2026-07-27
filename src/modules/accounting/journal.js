@@ -1,4 +1,7 @@
 import { loadChartOfAccounts } from './chartOfAccounts.js';
+import { runAccountingPipeline } from './index.js'; // 供 catch 降級使用
+// 請根據您專案實際的路徑引入 supabase (例如以下路徑)
+import { supabase } from '../../../scripts/supabaseClient.js';
 
 function resolveAccounts(accounts, category, type) {
   const bank = accounts.find(a => a.code === '1102');
@@ -21,6 +24,28 @@ function resolveAccounts(accounts, category, type) {
   return type === '支出'
     ? { debit: expense, credit: bank }
     : { debit: bank, credit: revenue };
+}
+
+// 請將這個遺失的函式補回 journal.js 檔案中
+export function buildJournalEntries(transactions = []) {
+  const accounts = loadChartOfAccounts();
+  return transactions.map(tx => {
+    const { debit, credit } = resolveAccounts(accounts, tx.category, tx.type);
+    
+    return {
+      date: tx.date || '-',
+      memo: tx.desc || tx.summary || '未註明',
+      bank: tx.bank || '-',
+      debitAccountCode: debit ? debit.code : '-',
+      debitAccountName: debit ? debit.name : '-',
+      debitAmount: Number(tx.amount || 0),
+      creditAccountCode: credit ? credit.code : '-',
+      creditAccountName: credit ? credit.name : '-',
+      creditAmount: Number(tx.amount || 0),
+      voucher: tx.id || '-',
+      status: '已入帳'
+    };
+  });
 }
 
 export async function buildJournal(transactions = []) {
