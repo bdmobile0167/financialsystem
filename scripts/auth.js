@@ -14,10 +14,12 @@ export function isLocalTestMode() {
 
 export function formatUser(user) {
   const email = normalizeEmail(user.email || user.user_metadata?.email || '');
+  // 如果是 admin 信箱維持 admin；否則優先採用資料庫傳過來的 role，若沒有才給預設值
+  const role = isAdminUser(email) ? 'admin' : (user.role || user.user_metadata?.role || 'employee');
   return {
     username: email,
     name: user.user_metadata?.full_name || user.email || 'Netlify 使用者',
-    role: isAdminUser(email) ? 'admin' : 'member'
+    role: role
   };
 }
 
