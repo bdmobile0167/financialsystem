@@ -253,14 +253,20 @@ async function renderDashboard() {
   const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
   if (!container) return;
 
-  const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
-  if (!user || !user.id) return;
+  const user = state.currentUser;
+  if (!user || !user.id) {
+    container.innerHTML = '<p class="muted">請先登入</p>';
+    return;
+  }
 
-  const isPrivileged = ['admin', 'accounting'].includes(user.role);
+  const role = user.role;
+  const isPrivileged = ['admin', 'accounting'].includes(role); // 只有這兩種看全公司
+  const selectedProj = state.currentProjectId || 'all';
 
   try {
-    // 1. 取得報支單（根據角色權限過濾）
-    let voucherQuery = supabase.from('vouchers')
+    // ---------- 1. 依角色抓報支單 ----------
+    let voucherQuery = supabase
+      .from('vouchers')
       .select('*, profiles!applicant_id(full_name), departments(name)')
       .order('created_at', { ascending: false });
 
@@ -270,262 +276,128 @@ async function renderDashboard() {
 
     const { data: vchs, error: vError } = await voucherQuery;
     if (vError) throw vError;
+    const vouchers = vchs || [];
 
-    let dashboardHTML = '';
+    // ---------- 2. 依角色抓專案（預算來源） ----------
+    let projectQuery = supabase.from('projects').select('id, name, project_code, total_budget, remaining_budget, department_id');
+    if (!isPrivileged && user.department_id) {
+      // 一般員工／主管：只看自己部門的專案
+      projectQuery = projectQuery.eq('department_id', user.department_id);
+    }
+    const { data: projects } = await projectQuery;
+    const projectList = projects || [];
 
-    // 4張卡片（只有管理員/會計看得到）
-    if (isPrivileged) {
-      // 計算各狀態待辦數量
-      const pendingReview = vchs.filter(v => v.status === 'pending_review').length;
-      const pendingAccounting = vchs.filter(v => v.status === 'approved').length; // 待歸帳/待付款
-      const paidToday = vchs.filter(v => v.status === 'closed' && v.closed_at?.startsWith(new Date().toISOString().split('T')[0])).length;
-      const rejectedCount = vchs.filter(v => v.status === 'rejected').length;
+    // 有選單一專案時，再過濾
+    const filteredProjects = selectedProj !== 'all'
+      ? projectList.filter(p => p.id === selectedProj)
+      : projectList;
 
-      // 取得年度預算與銀行餘額
-      const { data: projects } = await supabase.from('projects').select('total_budget');
-      const annualBudget = projects?.reduce((sum, p) => sum + Number(p.total_budget || 0), 0) || 0;
+    const totalBudget = filteredProjects.reduce((s, p) => s + Number(p.total_budget || 0), 0);
+    const totalRemaining = filteredProjects.reduce((s, p) => s + Number(p.remaining_budget || 0), 0);
+    const totalSpent = totalBudget - totalRemaining;
 
-      const { data: banks } = await supabase.from('bank_accounts').select('*');
-      const bankBalance = banks?.reduce((sum, b) => sum + Number(b.opening_balance || 0), 0) || 0;
+    // 報支單依專案過濾（若有選）
+    let displayVouchers = vouchers;
+    if (selectedProj !== 'all') {
+      displayVouchers = vouchers.filter(v => v.project_id === selectedProj);
+    }
 
-      const totalPaid = vchs.filter(v => v.status === 'closed')
-        .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
-      const pendingPaymentTotal = vchs.filter(v => v.status === 'approved')
-        .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
+    // ---------- 3. 待辦數字（狀態要統一） ----------
+    const pendingReview = displayVouchers.filter(v => v.status === 'pending_review').length;
+    const pendingAccounting = displayVouchers.filter(v => v.status === 'pending_accounting').length;
+    const pendingPayment = displayVouchers.filter(v => v.status === 'approved').length;
+    const rejectedCount = displayVouchers.filter(v =>
+      v.status === 'manager_rejected' || v.status === 'accounting_rejected'
+    ).length;
 
-      dashboardHTML += `
-        <div style="margin-bottom: 24px;">
-          <h2 style="color: #1f2937; margin-bottom: 8px;">CFO 財務管理總覽</h2>
-          <p style="color: #6b7280;">歡迎回來，${user.name || user.full_name || '使用者'} (${user.role})</p>
+    // ---------- 4. 畫面 ----------
+    let html = `
+      <div style="margin-bottom:20px;">
+        <h2 style="margin:0 0 4px;">財務總覽</h2>
+        <p class="muted">歡迎，${user.name || user.full_name || ''}（${role}）</p>
+      </div>
+    `;
+
+    // 待辦（所有角色都看得到「自己範圍內」的數字）
+    html += `
+      <div style="background:#fff; padding:16px; border-radius:8px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);">
+        <h3 style="margin:0 0 12px; font-size:15px;">今日待辦</h3>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; text-align:center;">
+          <div><div style="font-size:22px; font-weight:700; color:#f59e0b;">${pendingReview}</div><div class="muted" style="font-size:12px;">待主管審核</div></div>
+          <div><div style="font-size:22px; font-weight:700; color:#3b82f6;">${pendingAccounting}</div><div class="muted" style="font-size:12px;">待會計核准</div></div>
+          <div><div style="font-size:22px; font-weight:700; color:#10b981;">${pendingPayment}</div><div class="muted" style="font-size:12px;">待付款</div></div>
+          <div><div style="font-size:22px; font-weight:700; color:#ef4444;">${rejectedCount}</div><div class="muted" style="font-size:12px;">退件</div></div>
         </div>
+      </div>
+    `;
 
-        <!-- 今日待辦事項 -->
-        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); margin-bottom:24px;">
-          <h3 style="margin-top:0; font-size:16px; color:#374151; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">📌 今日待辦事項</h3>
-          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; text-align:center; padding-top:10px;">
-            <div>
-              <div style="font-size:24px; font-weight:bold; color:#f59e0b;">${pendingReview}</div>
-              <div style="font-size:13px; color:#6b7280; margin-top:4px;">待主管審核</div>
-            </div>
-            <div>
-              <div style="font-size:24px; font-weight:bold; color:#3b82f6;">${pendingAccounting}</div>
-              <div style="font-size:13px; color:#6b7280; margin-top:4px;">待財務歸帳/付款</div>
-            </div>
-            <div>
-              <div style="font-size:24px; font-weight:bold; color:#10b981;">${paidToday}</div>
-              <div style="font-size:13px; color:#6b7280; margin-top:4px;">今日已付款</div>
-            </div>
-            <div>
-              <div style="font-size:24px; font-weight:bold; color:#ef4444;">${rejectedCount}</div>
-              <div style="font-size:13px; color:#6b7280; margin-top:4px;">退件待修改</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 財務 KPI 指標 -->
-        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:24px;">
-          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10b981; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280; font-size:14px;">年度總預算</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${annualBudget.toLocaleString()}</h2>
-          </div>
-          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280; font-size:14px;">已付款總額</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${totalPaid.toLocaleString()}</h2>
-          </div>
-          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #f59e0b; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280; font-size:14px;">待付款總額</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${pendingPaymentTotal.toLocaleString()}</h2>
-          </div>
-          <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280; font-size:14px;">銀行可用餘額</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${bankBalance.toLocaleString()}</h2>
-          </div>
+    // 預算卡：有專案才顯示；沒有專案的人看到「尚無專案」
+    if (filteredProjects.length === 0) {
+      html += `
+        <div style="background:#fff; padding:16px; border-radius:8px; margin-bottom:16px;">
+          <p class="muted">目前沒有可檢視的專案預算。</p>
         </div>
       `;
     } else {
-      // 一般員工或部門主管的歡迎標題
-      dashboardHTML += `
-        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
-          <h2>財務管理系統 - 員工專區</h2>
-          <p>歡迎，${user.name || user.full_name || '使用者'} (${user.role})</p>
+      html += `
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
+          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #28a745;">
+            <div class="muted" style="font-size:13px;">${isPrivileged && selectedProj === 'all' ? '全公司' : '範圍內'}專案預算</div>
+            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalBudget.toLocaleString()}</div>
+          </div>
+          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #dc3545;">
+            <div class="muted" style="font-size:13px;">已使用</div>
+            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalSpent.toLocaleString()}</div>
+          </div>
+          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #007bff;">
+            <div class="muted" style="font-size:13px;">剩餘預算</div>
+            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalRemaining.toLocaleString()}</div>
+          </div>
         </div>
       `;
     }
-    // 3. 最近核銷案件總表（整合乾淨的單一表格，不再重複渲染兩次）
-    dashboardHTML += `
-      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-        <h3 style="margin-top:0; font-size:16px; color:#374151; margin-bottom:15px;">${isPrivileged ? '全公司最近核銷明細' : '所屬部門核銷進度'}</h3>
-        <table style="width:100%; border-collapse: collapse;">
+
+    // 核銷列表（只顯示自己權限範圍）
+    html += `
+      <div style="background:#fff; padding:16px; border-radius:8px;">
+        <h3 style="margin:0 0 12px; font-size:15px;">${isPrivileged ? '核銷明細' : '部門核銷進度'}</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
           <thead>
-            <tr style="background:#f8f9fa; text-align:left; border-bottom:2px solid #e5e7eb;">
-              <th style="padding:10px;">單號</th>
-              <th style="padding:10px;">申請人</th>
-              <th style="padding:10px;">部門</th>
-              <th style="padding:10px;">摘要說明</th>
-              <th style="padding:10px;">金額</th>
-              <th style="padding:10px;">狀態</th>
+            <tr style="background:#f8f9fa; text-align:left;">
+              <th style="padding:8px;">單號</th>
+              <th style="padding:8px;">申請人</th>
+              <th style="padding:8px;">部門</th>
+              <th style="padding:8px;">摘要</th>
+              <th style="padding:8px;">金額</th>
+              <th style="padding:8px;">狀態</th>
             </tr>
           </thead>
           <tbody>
-            ${vchs.map(v => `
-              <tr style="border-bottom:1px solid #e5e7eb;">
-                <td style="padding:10px;"><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no || '未編號'}</a></td>
-                <td style="padding:10px;">${v.profiles?.full_name || '-'}</td>
-                <td style="padding:10px;">${v.departments?.name || '-'}</td>
-                <td style="padding:10px;">${v.summary || '-'}</td>
-                <td style="padding:10px;">$${Number(v.total_amount || 0).toLocaleString()}</td>
-                <td style="padding:10px;"><span class="badge ${v.status}">${v.status}</span></td>
-              </tr>
-            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:20px; color:#6b7280;">目前尚無核銷紀錄</td></tr>'}
+            ${displayVouchers.length === 0
+              ? '<tr><td colspan="6" style="padding:16px; text-align:center;" class="muted">尚無資料</td></tr>'
+              : displayVouchers.map(v => `
+                <tr style="border-bottom:1px solid #eee;">
+                  <td style="padding:8px;">
+                    <a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#2563eb; font-weight:600;">
+                      ${v.voucher_no || '未編號'}
+                    </a>
+                  </td>
+                  <td style="padding:8px;">${v.profiles?.full_name || '-'}</td>
+                  <td style="padding:8px;">${v.departments?.name || '-'}</td>
+                  <td style="padding:8px;">${v.summary || '-'}</td>
+                  <td style="padding:8px;">$${Number(v.total_amount || 0).toLocaleString()}</td>
+                  <td style="padding:8px;">${typeof getStatusBadge === 'function' ? getStatusBadge(v.status) : (v.status || '-')}</td>
+                </tr>
+              `).join('')}
           </tbody>
         </table>
       </div>
     `;
 
-    container.innerHTML = dashboardHTML;
-
-    } catch (err) {
-    console.error('渲染 Dashboard 失敗:', err);
-    container.innerHTML = `<p style="color:red; padding:20px;">載入失敗：${err.message}</p>`;
-  }
-
-    // ====================== 專案/全公司總覽 部分 ======================
-    const selectedProj = state.currentProjectId || state.selectedProjectId || 'all';
-
-    try {
-      if (selectedProj === 'all') {
-        // ==================== 全公司總覽 ====================
-        let voucherQuery = supabase.from('vouchers').select('*, profiles!applicant_id(full_name), departments(name)');
-        
-        if (!isPrivileged) {
-          voucherQuery = voucherQuery.eq('department_id', user.department_id);
-        }
-
-        const { data: vchs, error } = await voucherQuery;
-        if (error) throw error;
-
-        const validVouchers = vchs?.filter(v => v.status !== 'voided') || [];
-        const totalExpense = validVouchers.reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
-        const txCount = vchs?.length || 0;
-
-        // 全部專案加總（所有角色都看得到）
-        const { data: allProjects } = await supabase.from('projects').select('total_budget');
-        const totalProjectBudget = allProjects?.reduce((sum, p) => sum + Number(p.total_budget || 0), 0) || 0;
-
-        const { data: allProjectVouchers } = await supabase.from('vouchers').select('total_amount, status').not('project_id', 'is', null);
-        const totalProjectSpent = (allProjectVouchers || [])
-          .filter(v => v.status !== 'voided')
-          .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
-        const totalProjectRemaining = totalProjectBudget - totalProjectSpent;
-
-        // 注意：這裡使用 += ，不會蓋掉前面的 4 張卡片
-        container.innerHTML += `
-          <div style="margin-top: 30px;">
-            <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
-              <h2>財務管理系統</h2>
-              <p>歡迎，${user.name || '使用者'} (${user.role})</p>
-            </div>
-            
-            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:16px;">
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>總申請筆數</h4><h3>${txCount} 筆</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>全公司實際支出 (核銷完成)</h4><h3 style="color:#d9534f;">$${totalExpense.toLocaleString()}</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>本月狀態</h4><h3>正常營運</h3>
-              </div>
-            </div>
-            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案預算總額</h4><h3 style="color:#28a745;">$${totalProjectBudget.toLocaleString()}</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案實際花費</h4><h3 style="color:#dc3545;">$${totalProjectSpent.toLocaleString()}</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案剩餘預算</h4><h3 style="color:#007bff;">$${totalProjectRemaining.toLocaleString()}</h3>
-              </div>
-            </div>
-
-            <h3>${isPrivileged ? '公司全體實際核銷明細流水賬' : '所屬部門核銷進度'}</h3>
-            <table class="table" style="width:100%; background:#fff; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-              <thead>
-                <tr style="background:#f8f9fa;">
-                  <th>單號</th><th>申請人</th><th>部門</th><th>摘要說明</th><th>金額</th><th>狀態</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${vchs?.map(v => `
-                  <tr>
-                    <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no}</a></td>
-                    <td>${v.profiles?.full_name || '系統'}</td>
-                    <td>${v.departments?.name || '跨部門/未分類'}</td>
-                    <td>${v.summary || '-'}</td>
-                    <td>$${Number(v.total_amount || 0).toLocaleString()}</td>
-                    <td><span class="badge ${v.status}">${v.status === 'voided' ? '已銷案' : '處理中'}</span></td>
-                  </tr>
-                `).join('') || '<tr><td colspan="6" class="muted">目前無核銷明細資料</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        `;
-      } 
-      else {
-        // ==================== 單一專案模式 ====================
-        const { data: proj } = await supabase.from('projects').select('*').eq('id', selectedProj).single();
-        const { data: projVchs } = await supabase.from('vouchers').select('*, profiles!applicant_id(full_name)').eq('project_id', selectedProj);
-
-        if (!proj) return;
-
-        const validProjVchs = projVchs?.filter(v => v.status !== 'voided') || [];
-        const actualSpent = validProjVchs.reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
-        const remainingBudget = Number(proj.total_budget || 0) - actualSpent;
-
-        container.innerHTML += `
-          <div style="margin-top: 30px;">
-            <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
-              <h2>專案控制面板：${proj.name}</h2>
-              <p>專案代碼：<strong>${proj.project_code}</strong></p>
-            </div>
-
-            <div class="stats-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案預算總額</h4><h3 style="color:#28a745;">$${Number(proj.total_budget || 0).toLocaleString()}</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #dc3545; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案實際花費</h4><h3 style="color:#dc3545;">$${actualSpent.toLocaleString()}</h3>
-              </div>
-              <div class="card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #007bff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                <h4>專案剩餘預算</h4><h3 style="color:#007bff;">$${remainingBudget.toLocaleString()}</h3>
-              </div>
-            </div>
-
-            <h4>專案核銷清單 (共計 ${projVchs?.length || 0} 筆資料)</h4>
-            <table class="table" style="width:100%; background:#fff;">
-              <thead>
-                <tr style="background:#f8f9fa;">
-                  <th>報支單號</th><th>申請人</th><th>摘要</th><th>金額</th><th>狀態</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${projVchs?.map(pv => `
-                  <tr>
-                    <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${pv.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${pv.voucher_no}</a></td>
-                    <td>${pv.profiles?.full_name || '-'}</td>
-                    <td>${pv.summary || '-'}</td>
-                    <td>$${Number(pv.total_amount || 0).toLocaleString()}</td>
-                    <td><span class="badge">${pv.status === 'voided' ? '已銷案(不計預算)' : '生效中'}</span></td>
-                  </tr>
-                `).join('') || '<tr><td colspan="5">該專案目前無單據紀錄</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        `;
-      }
-    } catch (e) {
-      console.error('專案總覽渲染失敗:', e);
+    container.innerHTML = html; // 只寫一次，不要 += 重複區塊
+  } catch (err) {
+    console.error('Dashboard 失敗:', err);
+    container.innerHTML = `<p style="color:red; padding:16px;">載入失敗：${err.message}</p>`;
   }
 }
 
@@ -1999,7 +1871,6 @@ window.deleteDepartment = async (id) => {
 };
 
 // === 專案相關 ===
-// === 專案相關 ===
 async function loadAndRenderProjects() {
   try {
     const projects = await fetchProjects();
@@ -2013,6 +1884,7 @@ async function loadAndRenderProjects() {
     if (['accounting', 'admin'].includes(userRole)) {
       html += '<option value="all">全公司總覽</option>';
     }
+    // employee / manager 不要加 all，或加「本部門」且 value 仍走部門過濾
 
     // 加入所有專案
     if (projects && projects.length > 0) {
@@ -2672,79 +2544,89 @@ async function renderFinancialCenter() {
 /**
  * 處理會計中心之付款結案與會計/銀行分錄連動 (升級版：含扣除專案預算)
  */
-async function processPayment(voucherId, totalAmount) {
-  const accountId = document.getElementById(`acc-${voucherId}`).value;
-  const bankId = document.getElementById(`bank-${voucherId}`).value;
+window.processPayment = async (voucherId, totalAmount) => {
+  const accountId = document.getElementById(`acc-${voucherId}`)?.value;
+  const bankId = document.getElementById(`bank-${voucherId}`)?.value;
 
   if (!accountId || !bankId) {
-    alert('【會計內控提示】請先指定此筆支出的會計科目與付款銀行！');
+    alert('請先指定會計科目與付款銀行');
     return;
   }
-
-  if (!confirm(`確定要完成此筆付款並寫入會計分錄與銀行流水嗎？\n金額：$${Number(totalAmount).toLocaleString()}`)) {
-    return;
-  }
+  if (!confirm(`確定付款結案？金額 $${Number(totalAmount).toLocaleString()}`)) return;
 
   try {
     const today = new Date().toISOString().split('T')[0];
+    const user = state.currentUser;
 
-    // 1. 取得該報支單的專案 ID，準備扣除預算
-    const { data: voucher } = await supabase
+    const { data: voucher, error: vErr } = await supabase
       .from('vouchers')
-      .select('project_id')
+      .select('project_id, status, voucher_no, summary')
       .eq('id', voucherId)
       .single();
+    if (vErr) throw vErr;
+    if (voucher.status !== 'approved') throw new Error('僅「已核准待付款」可結案');
 
-    // 2. 真正扣除專案剩餘預算 (融合您的舊版邏輯)
-    if (voucher && voucher.project_id) {
+    // 1. 扣專案預算
+    if (voucher.project_id) {
       const { data: proj } = await supabase
         .from('projects')
         .select('remaining_budget')
         .eq('id', voucher.project_id)
         .single();
-        
       if (proj) {
-        const newRemaining = Number(proj.remaining_budget) - Number(totalAmount);
-        await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', voucher.project_id);
+        await supabase
+          .from('projects')
+          .update({
+            remaining_budget: Math.max(0, Number(proj.remaining_budget || 0) - Number(totalAmount))
+          })
+          .eq('id', voucher.project_id);
       }
     }
 
-    // 3. 新增銀行交易流水紀錄 (Bank Transaction)
+    // 2. 銀行流水
     await supabase.from('bank_transactions').insert({
       bank_account_id: bankId,
       tx_date: today,
       type: '支出',
       amount: totalAmount,
       voucher_id: voucherId,
-      description: `報支單撥款結案 (ID: ${voucherId})`
+      description: `報支撥款 ${voucher.voucher_no || voucherId}`
     });
 
-    // 4. 建立總帳分錄 (Journal Entry)
+    // 3. 會計分錄（欄位名請依你的 DB 調整）
     await supabase.from('journal_entries').insert({
       entry_date: today,
-      debit_account_id: accountId,     
-      credit_account_id: null,         
+      debit_account_id: accountId,
       debit_amount: totalAmount,
       credit_amount: totalAmount,
-      memo: `報支單付款結案分錄`,
+      memo: `報支結案：${voucher.summary || voucher.voucher_no}`,
       voucher_id: voucherId
     });
 
-    // 5. 更新報支單狀態為已結案 (closed) 並寫入歷程
-    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId);
-    
-    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
+    // 4. 狀態改 closed
+    await supabase
+      .from('vouchers')
+      .update({
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        payment_date: today
+      })
+      .eq('id', voucherId);
+
+    // 5. 寫歷程
     await supabase.from('voucher_workflow_logs').insert({
       voucher_id: voucherId,
-      actor_id: user.id,
-      action: '付款結案 (Closed)'
+      actor_id: user?.id,
+      action: '付款結案 (Closed)',
+      from_status: 'approved',
+      to_status: 'closed'
     });
 
-    alert('✅ 付款完成！系統已自動完成會計歸帳、扣除專案預算，並產生銀行流水。');
-    
+    alert('付款完成');
     if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
+    if (typeof renderDashboard === 'function') renderDashboard();
   } catch (err) {
-    console.error('付款處理失敗:', err);
-    alert('付款處理失敗：' + err.message);
+    console.error(err);
+    alert('付款失敗：' + err.message);
   }
-}
+};
