@@ -629,28 +629,30 @@ function applyReportPeriodPreset(preset) {
   renderReports();
 }
 
-function renderReports() {
+async function renderReports() {
   let periodTx = getReportPeriodTransactions();
-  
+  const startDate = document.getElementById('reportPeriodStart')?.value || null;
+  const endDate = document.getElementById('reportPeriodEnd')?.value || null;
+
   // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
     periodTx = periodTx.filter(tx => tx.project_id === state.currentProjectId);
   }
 
   renderReportLetterhead('incomeLetterhead', '損益表');
-  renderTable('incomeTable', buildIncomeStatement(periodTx));
+  renderTable('incomeTable', await buildIncomeStatement(periodTx, startDate, endDate));
   renderReportSignature('incomeSignature');
 
   renderReportLetterhead('balanceLetterhead', '資產負債表');
-  renderTable('balanceTable', buildBalanceSheet(periodTx));
+  renderTable('balanceTable', await buildBalanceSheet(periodTx, startDate, endDate));
   renderReportSignature('balanceSignature');
 
   renderReportLetterhead('cashflowLetterhead', '現金流量表');
-  renderTable('cashflowTable', buildCashflowStatement(periodTx));
+  renderTable('cashflowTable', await buildCashflowStatement(periodTx, startDate, endDate));
   renderReportSignature('cashflowSignature');
 
   renderReportLetterhead('equityLetterhead', '權益變動表');
-  renderTable('equityTable', buildEquityStatement(periodTx));
+  renderTable('equityTable', await buildEquityStatement(periodTx, startDate, endDate));
   renderReportSignature('equitySignature');
 
   const analysis = getEquityAnalysis(periodTx);
@@ -1464,7 +1466,7 @@ const voucherLineAttachments = {}; // { rowId: File }
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
-
+        
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
         let invoiceLines = [];
@@ -1510,48 +1512,37 @@ const voucherLineAttachments = {}; // { rowId: File }
           throw new Error('請至少填寫一筆有效的摘要與金額！');
         }
 
-        // ==================== 送出到 Supabase ====================
-        const { data: voucherMain, error: vError } = await supabase
-          .from('vouchers')
-          .insert([{
-            // voucher_no 不要自己填，讓 trigger 產生
-            project_id: projectId && projectId !== 'all' ? projectId : null,
-            applicant_id: state.currentUser?.id,
-            department_id: document.getElementById('vDepartment')?.value || null,
-            current_manager_id: document.getElementById('vManagerPicker')?.value || null,
-            tx_date: txDate,
-            category: '營業',
-            summary: generalSummary,
-            total_amount: calculatedTotal,
-            status: 'pending_review'
-          }]).select().single();
+        const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
 
-        if (vError) throw vError;
+        // 收集附件對應 (利用你原本的 voucherLineAttachments)
+        // 我們把附件對應資訊也包進 payload 讓 API 統一處理
+        const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
 
-        // 2. 寫入明細（已支援不同科目）
-        const finalLines = detailLines.map(l => ({ ...l, voucher_id: voucherMain.id }));
-        const { error: lError } = await supabase.from('voucher_lines').insert(finalLines);
-        if (lError) throw lError;
+        // ==================== 整理成 Payload 包裹 ====================
+        const voucherPayload = {
+          txDate: txDate,
+          projectId: projectId && projectId !== 'all' ? projectId : null,
+          applicantId: state.currentUser?.id,
+          departmentId: departmentId,
+          currentManagerId: managerId,
+          category: '營業',
+          summary: generalSummary,
+          totalAmount: calculatedTotal,
+          status: 'pending_review',
+          detailLines: detailLines,
+          invoiceLines: invoiceLines,
+          attachmentsMap: attachmentsMap,
+          rows: rows // 傳入 rows 讓 API 層可以順便拿 rowId 找附件
+        };
 
-        // 3. 寫入發票
-        if (invoiceLines.length > 0) {
-          const finalInvoices = invoiceLines.map(i => ({ ...i, voucher_id: voucherMain.id }));
-          await supabase.from('invoices').insert(finalInvoices);
+        // ==================== 呼叫獨立的 API 取代原本的 Supabase 邏輯 ====================
+        const result = await createVoucher(voucherPayload);
+
+        if (!result || !result.success) {
+          throw new Error(result?.error || '建立報支單失敗');
         }
 
-        // 4. 上傳附件（逐列）
-        const attachmentUploads = Array.from(rows).map(async (row) => {
-          const rowId = row.dataset.rowId;
-          const file = voucherLineAttachments[rowId];
-          if (!file) return;
-          try {
-            await saveAttachment(voucherMain.id, file);
-          } catch (err) {
-            console.error(`第 ${rowId} 列附件上傳失敗：`, err);
-          }
-        });
-        await Promise.all(attachmentUploads);
-
+        // 成功提示
         alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
 
         // 重置表單
@@ -2698,20 +2689,14 @@ async function renderFinancialCenter() {
 }
 
 /**
- * 處理會計中心之付款結案與會計/銀行分錄連動
- * 檔案來源: netlify/scripts/ui.js
+ * 處理會計中心之付款結案與會計/銀行分錄連動 (升級版：含扣除專案預算)
  */
 async function processPayment(voucherId, totalAmount) {
   const accountId = document.getElementById(`acc-${voucherId}`).value;
   const bankId = document.getElementById(`bank-${voucherId}`).value;
 
-  // 1. 嚴格驗證：必須選定會計科目與付款銀行
-  if (!accountId) {
-    alert('【會計內控提示】請先指定此筆支出的會計科目！');
-    return;
-  }
-  if (!bankId) {
-    alert('【會計內控提示】請先指定付款的銀行帳戶！');
+  if (!accountId || !bankId) {
+    alert('【會計內控提示】請先指定此筆支出的會計科目與付款銀行！');
     return;
   }
 
@@ -2722,8 +2707,29 @@ async function processPayment(voucherId, totalAmount) {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // 2. 新增銀行交易流水紀錄 (Bank Transaction)
-    const { error: btError } = await supabase.from('bank_transactions').insert({
+    // 1. 取得該報支單的專案 ID，準備扣除預算
+    const { data: voucher } = await supabase
+      .from('vouchers')
+      .select('project_id')
+      .eq('id', voucherId)
+      .single();
+
+    // 2. 真正扣除專案剩餘預算 (融合您的舊版邏輯)
+    if (voucher && voucher.project_id) {
+      const { data: proj } = await supabase
+        .from('projects')
+        .select('remaining_budget')
+        .eq('id', voucher.project_id)
+        .single();
+        
+      if (proj) {
+        const newRemaining = Number(proj.remaining_budget) - Number(totalAmount);
+        await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', voucher.project_id);
+      }
+    }
+
+    // 3. 新增銀行交易流水紀錄 (Bank Transaction)
+    await supabase.from('bank_transactions').insert({
       bank_account_id: bankId,
       tx_date: today,
       type: '支出',
@@ -2731,37 +2737,31 @@ async function processPayment(voucherId, totalAmount) {
       voucher_id: voucherId,
       description: `報支單撥款結案 (ID: ${voucherId})`
     });
-    if (btError) throw btError;
 
-    // 3. 建立總帳分錄 (Journal Entry)
-    const { error: jeError } = await supabase.from('journal_entries').insert({
+    // 4. 建立總帳分錄 (Journal Entry)
+    await supabase.from('journal_entries').insert({
       entry_date: today,
-      debit_account_id: accountId,     // 借方：費用科目
-      credit_account_id: null,         // 貸方可依需求對應資產科目
+      debit_account_id: accountId,     
+      credit_account_id: null,         
       debit_amount: totalAmount,
       credit_amount: totalAmount,
       memo: `報支單付款結案分錄`,
       voucher_id: voucherId
     });
-    if (jeError) throw jeError;
 
-    // 4. 更新報支單狀態為已結案 (closed)
-    const { error: vError } = await supabase
-      .from('vouchers')
-      .update({ 
-        status: 'closed',
-        closed_at: new Date().toISOString()
-      })
-      .eq('id', voucherId);
-
-    if (vError) throw vError;
-
-    alert('✅ 付款完成！系統已自動完成會計歸帳、產生銀行流水與總帳分錄。');
+    // 5. 更新報支單狀態為已結案 (closed) 並寫入歷程
+    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId);
     
-    // 重新整理財務中心介面
-    if (typeof renderFinancialCenter === 'function') {
-      renderFinancialCenter();
-    }
+    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
+    await supabase.from('voucher_workflow_logs').insert({
+      voucher_id: voucherId,
+      actor_id: user.id,
+      action: '付款結案 (Closed)'
+    });
+
+    alert('✅ 付款完成！系統已自動完成會計歸帳、扣除專案預算，並產生銀行流水。');
+    
+    if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
   } catch (err) {
     console.error('付款處理失敗:', err);
     alert('付款處理失敗：' + err.message);

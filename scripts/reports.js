@@ -1,5 +1,6 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
+import { COMPANY_INFO } from './company-data.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);

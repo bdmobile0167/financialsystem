@@ -1,5 +1,6 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment } from './attachments.js';
+import { resolveVoucherNumber } from './voucherNumber.js'; // 假設編號檔案在此
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
@@ -59,12 +60,16 @@ export async function createVoucher(payload) {
     detailLines, 
     invoiceLines, 
     attachmentsMap,
-    rows 
+    rows,
+    voucherType = '發票',    // [已修正] 補上接收 voucherType
+    manualNumber = '',        // [已修正] 補上接收 manualNumber
+    bankAccountId = null      // [已修正] 補上接收 bankAccountId
   } = payload;
+  
+  const { data: { user } } = await supabase.auth.getUser();// 1. 自動產生或解析單據編號[cite: 12]
+  const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // 1. 建立報支單主表 (Voucher Main)
+  // 2. 建立報支單主表 (Voucher Main) - 確保寫入 voucher_no 與 bank_account_id
   const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
