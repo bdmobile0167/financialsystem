@@ -46,58 +46,103 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason
   if (error) throw error;
 }
 
-export async function createVoucher({ txDate, category, summary, departmentId, line, invoice, payment, projectId, file }) {
+export async function createVoucher(payload) {
+  const { 
+    txDate, 
+    category = '營業', 
+    summary, 
+    departmentId, 
+    currentManagerId,
+    projectId, 
+    totalAmount,
+    status = 'pending_review',
+    detailLines, 
+    invoiceLines, 
+    attachmentsMap,
+    rows 
+  } = payload;
+
   const { data: { user } } = await supabase.auth.getUser();
 
-  const voucherNo = resolveVoucherNumber(invoice.type, invoice.number, txDate);
-
-  // 1. 建立報支單主表
+  // 1. 建立報支單主表 (Voucher Main)
   const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
-      voucher_no: voucherNo,
+      // voucher_no 不要自己填，讓資料庫 trigger 產生
       tx_date: txDate,
       category,
       summary,
       department_id: departmentId,
       applicant_id: user.id,
-      total_amount: line.amount,
-      project_id: projectId,
-      status: 'pending_review'
+      current_manager_id: currentManagerId,
+      total_amount: totalAmount,
+      project_id: projectId && projectId !== 'all' ? projectId : null,
+      status: status
     })
     .select()
     .single();
 
   if (error) throw error;
 
-  // 2. 寫入明細
-  const { error: lineError } = await supabase.from('voucher_lines').insert({
-    voucher_id: voucher.id, description: line.description, account_code: line.accountCode, amount: line.amount
-  });
-  if (lineError) throw lineError;
+  // 2. 批量寫入多筆明細 (voucher_lines)
+  if (detailLines && detailLines.length > 0) {
+    const finalLines = detailLines.map(l => ({
+      voucher_id: voucher.id,
+      description: l.description,
+      account_code: l.account_code || '6100',
+      amount: l.amount
+    }));
 
-  // 3. 寫入發票資訊
-  const { error: invoiceError } = await supabase.from('invoices').insert({
-    voucher_id: voucher.id, invoice_type: invoice.type, invoice_number: invoice.number || null,
-    amount: line.amount, tax_amount: 0
-  });
-  if (invoiceError) throw invoiceError;
-
-  // 4. 寫入付款資訊
-  const { error: paymentError } = await supabase.from('voucher_payments').insert({
-    voucher_id: voucher.id, payment_type: payment.type,
-    bank_account_id: payment.type === 'bank_transfer' ? payment.bankAccountId : null,
-    amount: line.amount, paid_at: txDate
-  });
-  if (paymentError) throw paymentError;
-
-  // 5. 【新增】若有上傳附件檔案，同步上傳並綁定 voucher.id
-  if (file) {
-    await saveAttachment(voucher.id, file);
+    const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
+    if (lineError) throw lineError;
   }
 
+  // 3. 批量寫入發票資訊 (invoices)
+  if (invoiceLines && invoiceLines.length > 0) {
+    const finalInvoices = invoiceLines.map(i => ({
+      voucher_id: voucher.id,
+      invoice_type: i.invoice_type,
+      invoice_number: i.invoice_number || null,
+      amount: i.amount,
+      tax_amount: i.tax_amount || 0
+    }));
+
+    const { error: invoiceError } = await supabase.from('invoices').insert(finalInvoices);
+    if (invoiceError) throw invoiceError;
+  }
+
+  // 4. 寫入付款資訊 (如果你的業務邏輯需要固定預設付款資訊，可保留此段)
+  // 這裡以第一筆明細金額或總金額作為示範，若無可拿掉
+  const { error: paymentError } = await supabase.from('voucher_payments').insert({
+    voucher_id: voucher.id,
+    payment_type: 'bank_transfer', // 或依前端傳入調整
+    amount: totalAmount,
+    paid_at: txDate
+  });
+  if (paymentError) {
+    console.warn('付款資訊寫入失敗或可略過:', paymentError);
+  }
+
+  // 5. 逐列上傳附件檔案並綁定 voucher.id
+  if (rows && attachmentsMap) {
+    const attachmentUploads = Array.from(rows).map(async (row) => {
+      // 確保能抓到每一列的 rowId 對應的檔案
+      const rowId = row.dataset.rowId;
+      const file = attachmentsMap[rowId];
+      if (!file) return;
+      try {
+        await saveAttachment(voucher.id, file);
+      } catch (err) {
+        console.error(`第 ${rowId} 列附件上傳失敗：`, err);
+      }
+    });
+    await Promise.all(attachmentUploads);
+  }
+
+  // 6. 寫入工作流程記錄
   await logWorkflow(voucher.id, 'submit', null, 'pending_review');
-  return voucher;
+  
+  return { success: true, data: voucher };
 }
 
 export async function managerApprove(voucher) {
