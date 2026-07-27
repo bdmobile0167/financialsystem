@@ -1457,7 +1457,6 @@ const voucherLineAttachments = {}; // { rowId: File }
   };
 
   // 表單提交封包邏輯
-  // 表單提交封包邏輯
   const excelVoucherForm = document.getElementById('voucherCreateForm');
   if (excelVoucherForm) {
     excelVoucherForm.addEventListener('submit', async (e) => {
@@ -2689,7 +2688,7 @@ async function renderFinancialCenter() {
 /**
  * 處理會計中心之付款結案與會計/銀行分錄連動 (升級版：含扣除專案預算)
  */
-async function processPayment(voucherId, totalAmount) {
+window.processPayment = async (voucherId, totalAmount) => {
   const accountId = document.getElementById(`acc-${voucherId}`).value;
   const bankId = document.getElementById(`bank-${voucherId}`).value;
 
