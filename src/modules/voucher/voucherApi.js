@@ -1,5 +1,5 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { saveAttachment } from './attachments.js'; // 引入剛改好的 saveAttachment
+import { saveAttachment } from './attachments.js';
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
@@ -68,7 +68,6 @@ export async function createVoucher(payload) {
   const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
-      // voucher_no 不要自己填，讓資料庫 trigger 產生
       tx_date: txDate,
       category,
       summary,
@@ -111,11 +110,10 @@ export async function createVoucher(payload) {
     if (invoiceError) throw invoiceError;
   }
 
-  // 4. 寫入付款資訊 (如果你的業務邏輯需要固定預設付款資訊，可保留此段)
-  // 這裡以第一筆明細金額或總金額作為示範，若無可拿掉
+  // 4. 寫入付款資訊
   const { error: paymentError } = await supabase.from('voucher_payments').insert({
     voucher_id: voucher.id,
-    payment_type: 'bank_transfer', // 或依前端傳入調整
+    payment_type: 'bank_transfer',
     amount: totalAmount,
     paid_at: txDate
   });
@@ -126,7 +124,6 @@ export async function createVoucher(payload) {
   // 5. 逐列上傳附件檔案並綁定 voucher.id
   if (rows && attachmentsMap) {
     const attachmentUploads = Array.from(rows).map(async (row) => {
-      // 確保能抓到每一列的 rowId 對應的檔案
       const rowId = row.dataset.rowId;
       const file = attachmentsMap[rowId];
       if (!file) return;
@@ -176,12 +173,10 @@ export async function accountingApprove(voucher) {
 
   if (updateError) throw updateError;
 
-  // 🔥 修正 Bug 6：更新銀行帳戶餘額（如果有指定付款銀行）
   if (voucher.bank_account_id) {
     const { error: bankError } = await supabase
       .from('bank_accounts')
       .update({
-        // 這裡假設你有 current_balance 欄位，如果沒有請改成 opening_balance + transaction logic
         current_balance: supabase.rpc('deduct_balance', { 
           p_id: voucher.bank_account_id, 
           p_amount: voucher.total_amount 
@@ -192,7 +187,6 @@ export async function accountingApprove(voucher) {
     if (bankError) console.warn('銀行餘額更新失敗:', bankError);
   }
 
-  // 扣除專案剩餘預算（之前已教過）
   if (voucher.project_id) {
     const { data: proj } = await supabase
       .from('projects')
@@ -212,7 +206,7 @@ export async function accountingApprove(voucher) {
   await logWorkflow(voucher.id, 'approve', voucher.status, 'approved');
 }
 
-// 會計退件 → 直接退回申請人（跳過主管）
+// 會計退件 → 直接退回申請人
 export async function accountingReject(voucher, reason) {
   const { error } = await supabase
     .from('vouchers')
@@ -237,7 +231,6 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 // 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {
-    // 1. 取得 Voucher 金額等資訊
     const { data: voucher, error: vError } = await supabase
       .from('vouchers')
       .select('*')
@@ -247,15 +240,12 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     if (vError) throw vError;
     if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
 
-    // 2. 扣除銀行帳戶餘額 (呼叫你既有的 bank 模組邏輯，或直接 update)
-    // 假設有一個 stored procedure 或直接扣減
     const { error: bankError } = await supabase.rpc('deduct_bank_balance', {
       p_bank_id: bankAccountId,
       p_amount: voucher.total_amount
     });
     if (bankError) throw bankError;
 
-    // 3. 建立 Journal Entry (會計分錄) 供報表使用
     const { error: jeError } = await supabase
       .from('journal_entries')
       .insert([{
@@ -268,7 +258,6 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       }]);
     if (jeError) throw jeError;
 
-    // 4. 更新 Voucher 狀態為 closed
     const { error: updateError } = await supabase
       .from('vouchers')
       .update({ 
@@ -285,4 +274,28 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     console.error('銷案失敗:', error);
     return { success: false, error: error.message };
   }
+}
+
+// 取得使用者的報支單列表
+export async function fetchUserVouchers(userId) {
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('*, voucher_lines(*), invoices(*)')
+    .eq('applicant_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+// 取得單一報支單詳細資料
+export async function fetchVoucherDetail(voucherId) {
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('*, voucher_lines(*), invoices(*), voucher_payments(*)')
+    .eq('id', voucherId)
+    .single();
+
+  if (error) throw error;
+  return data;
 }
