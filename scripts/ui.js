@@ -2418,43 +2418,30 @@ window.openAccountingReviewModal = async (voucherId) => {
  * 1. 主管核准單據 (Approve)
  * 狀態轉為 approved，並寫入歷程，讓財務中心可以接手處理
  */
-window.approveVoucher = async (voucherId) => {
-  if (!confirm('確定要「核准」此單據嗎？\n核准後將送交財務中心執行歸帳與撥款。')) return;
+window.approveVoucher = async (voucherId, stage = 'manager') => {
+  if (!confirm('確定要核准此單據嗎？')) return;
 
   try {
-    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
-    
-    // A. 更新單據狀態為 approved
-    const { error: updateErr } = await supabase
-      .from('vouchers')
-      .update({ status: 'approved' })
-      .eq('id', voucherId);
-    
-    if (updateErr) throw updateErr;
+    const voucher = {
+      id: voucherId,
+      status: stage === 'manager' ? 'pending_review' : 'pending_accounting'
+    };
 
-    // B. 自動寫入審核異動歷程 (Audit Log)
-    const { error: logErr } = await supabase
-      .from('voucher_workflow_logs')
-      .insert({
-        voucher_id: voucherId,
-        actor_id: user.id,
-        action: '核准 (Approved)'
-      });
+    if (stage === 'manager') {
+      await managerApprove(voucher);
+    } else {
+      await accountingApprove(voucher);
+    }
 
-    if (logErr) throw logErr;
-
-    alert('✅ 單據已核准！已轉交財務部門。');
-    
-    // 重新整理畫面 (若在儀表板則重整儀表板)
+    alert('已核准');
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
-    
-    // 若 Modal 還開著，順便關閉它
+
     const modal = document.getElementById('voucherDetailModal');
     if (modal) modal.style.display = 'none';
-
   } catch (err) {
-    console.error('核准失敗:', err);
-    alert('系統錯誤，無法核准：' + err.message);
+    console.error(err);
+    alert('核准失敗：' + err.message);
   }
 };
 
@@ -2465,7 +2452,6 @@ window.approveVoucher = async (voucherId) => {
 window.rejectVoucher = async (voucherId) => {
   const reason = prompt('請輸入「退件原因」（必填）：');
   
-  // 若按取消或未填寫則中斷
   if (reason === null) return; 
   if (!reason.trim()) {
     alert('⚠️ 退件必須填寫原因，請重新操作！');
@@ -2475,7 +2461,6 @@ window.rejectVoucher = async (voucherId) => {
   try {
     const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
     
-    // A. 更新單據狀態為 rejected
     const { error: updateErr } = await supabase
       .from('vouchers')
       .update({ status: 'rejected' })
@@ -2483,7 +2468,6 @@ window.rejectVoucher = async (voucherId) => {
     
     if (updateErr) throw updateErr;
 
-    // B. 自動寫入退件歷程與原因 (Audit Log)
     const { error: logErr } = await supabase
       .from('voucher_workflow_logs')
       .insert({
@@ -2688,7 +2672,7 @@ async function renderFinancialCenter() {
 /**
  * 處理會計中心之付款結案與會計/銀行分錄連動 (升級版：含扣除專案預算)
  */
-window.processPayment = async (voucherId, totalAmount) => {
+async function processPayment(voucherId, totalAmount) {
   const accountId = document.getElementById(`acc-${voucherId}`).value;
   const bankId = document.getElementById(`bank-${voucherId}`).value;
 

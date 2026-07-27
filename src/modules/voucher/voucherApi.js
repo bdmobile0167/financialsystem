@@ -1,6 +1,7 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment } from './attachments.js';
-import { resolveVoucherNumber } from './voucherNumbering.js'; // 假設編號檔案在此
+import { resolveVoucherNumber } from './voucherNumbering.js';
+import { VOUCHER_STATUS } from './voucherStatus.js';
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
@@ -69,22 +70,23 @@ export async function createVoucher(payload) {
   const { data: { user } } = await supabase.auth.getUser();// 1. 自動產生或解析單據編號[cite: 12]
   const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
-  // 2. 建立報支單主表 (Voucher Main) - 確保寫入 voucher_no 與 bank_account_id
   const { data: voucher, error } = await supabase
-    .from('vouchers')
-    .insert({
-      tx_date: txDate,
-      category,
-      summary,
-      department_id: departmentId,
-      applicant_id: user.id,
-      current_manager_id: currentManagerId,
-      total_amount: totalAmount,
-      project_id: projectId && projectId !== 'all' ? projectId : null,
-      status: status
-    })
-    .select()
-    .single();
+      .from('vouchers')
+      .insert({
+        voucher_no: voucherNo,          // ← 補上
+        tx_date: txDate,
+        category,
+        summary,
+        department_id: departmentId,
+        applicant_id: user.id,
+        current_manager_id: currentManagerId || null,
+        total_amount: totalAmount,
+        project_id: projectId && projectId !== 'all' ? projectId : null,
+        bank_account_id: bankAccountId || null,  // 若有傳入
+        status: status
+      })
+      .select()
+      .single();
 
   if (error) throw error;
 
@@ -148,36 +150,31 @@ export async function createVoucher(payload) {
 }
 
 export async function managerApprove(voucher) {
-  const { error } = await supabase.from('vouchers').update({ status: 'pending_accounting', updated_at: new Date().toISOString() }).eq('id', voucher.id);
+  const { error } = await supabase
+    .from('vouchers')
+    .update({ status: VOUCHER_STATUS.PENDING_ACCOUNTING, updated_at: new Date().toISOString() })
+    .eq('id', voucher.id);
   if (error) throw error;
-  await logWorkflow(voucher.id, 'approve', voucher.status, 'pending_accounting');
+  await logWorkflow(voucher.id, 'manager_approve', voucher.status, VOUCHER_STATUS.PENDING_ACCOUNTING);
 }
 
-// 主管退件 → 直接退回申請人
 export async function managerReject(voucher, reason) {
   const { error } = await supabase
     .from('vouchers')
-    .update({ 
-      status: 'manager_rejected', 
-      updated_at: new Date().toISOString() 
-    })
+    .update({ status: VOUCHER_STATUS.MANAGER_REJECTED, updated_at: new Date().toISOString() })
     .eq('id', voucher.id);
   if (error) throw error;
-
-  await logWorkflow(voucher.id, 'reject', voucher.status, 'manager_rejected', reason);
+  await logWorkflow(voucher.id, 'manager_reject', voucher.status, VOUCHER_STATUS.MANAGER_REJECTED, reason);
 }
 
 export async function accountingApprove(voucher) {
-  const { error: updateError } = await supabase
+  const { error } = await supabase
     .from('vouchers')
-    .update({ 
-      status: 'approved', 
-      updated_at: new Date().toISOString() 
-    })
+    .update({ status: VOUCHER_STATUS.APPROVED, updated_at: new Date().toISOString() })
     .eq('id', voucher.id);
-
-  if (updateError) throw updateError;
-
+  if (error) throw error;
+  await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
+  
   if (voucher.bank_account_id) {
     const { error: bankError } = await supabase
       .from('bank_accounts')
@@ -207,8 +204,6 @@ export async function accountingApprove(voucher) {
         .eq('id', voucher.project_id);
     }
   }
-
-  await logWorkflow(voucher.id, 'approve', voucher.status, 'approved');
 }
 
 // 會計退件 → 直接退回申請人
