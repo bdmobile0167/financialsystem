@@ -254,24 +254,17 @@ async function renderDashboard() {
   if (!container) return;
 
   const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
-  if (!user) return;
+  if (!user || !user.id) return;
 
   const isPrivileged = ['admin', 'accounting'].includes(user.role);
 
   try {
-    // ====================== 取得報支單（重要：部門權限過濾） ======================
+    // 1. 取得報支單（根據角色權限過濾）
     let voucherQuery = supabase.from('vouchers')
       .select('*, profiles!applicant_id(full_name), departments(name)')
       .order('created_at', { ascending: false });
 
-    // 權限控制
-    if (isPrivileged) {
-      // admin 和 accounting 看全部
-    } else if (user.role === 'manager' && user.department_id) {
-      // manager 只能看自己部門
-      voucherQuery = voucherQuery.eq('department_id', user.department_id);
-    } else if (user.role === 'employee' && user.department_id) {
-      // employee 只能看自己部門
+    if (!isPrivileged && user.department_id) {
       voucherQuery = voucherQuery.eq('department_id', user.department_id);
     }
 
@@ -282,6 +275,13 @@ async function renderDashboard() {
 
     // 4張卡片（只有管理員/會計看得到）
     if (isPrivileged) {
+      // 計算各狀態待辦數量
+      const pendingReview = vchs.filter(v => v.status === 'pending_review').length;
+      const pendingAccounting = vchs.filter(v => v.status === 'approved').length; // 待歸帳/待付款
+      const paidToday = vchs.filter(v => v.status === 'closed' && v.closed_at?.startsWith(new Date().toISOString().split('T')[0])).length;
+      const rejectedCount = vchs.filter(v => v.status === 'rejected').length;
+
+      // 取得年度預算與銀行餘額
       const { data: projects } = await supabase.from('projects').select('total_budget');
       const annualBudget = projects?.reduce((sum, p) => sum + Number(p.total_budget || 0), 0) || 0;
 
@@ -290,57 +290,93 @@ async function renderDashboard() {
 
       const totalPaid = vchs.filter(v => v.status === 'closed')
         .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
-      const pendingPayment = vchs.filter(v => v.status === 'approved')
+      const pendingPaymentTotal = vchs.filter(v => v.status === 'approved')
         .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
 
       dashboardHTML += `
+        <div style="margin-bottom: 24px;">
+          <h2 style="color: #1f2937; margin-bottom: 8px;">CFO 財務管理總覽</h2>
+          <p style="color: #6b7280;">歡迎回來，${user.name || user.full_name || '使用者'} (${user.role})</p>
+        </div>
+
+        <!-- 今日待辦事項 -->
+        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); margin-bottom:24px;">
+          <h3 style="margin-top:0; font-size:16px; color:#374151; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">📌 今日待辦事項</h3>
+          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; text-align:center; padding-top:10px;">
+            <div>
+              <div style="font-size:24px; font-weight:bold; color:#f59e0b;">${pendingReview}</div>
+              <div style="font-size:13px; color:#6b7280; margin-top:4px;">待主管審核</div>
+            </div>
+            <div>
+              <div style="font-size:24px; font-weight:bold; color:#3b82f6;">${pendingAccounting}</div>
+              <div style="font-size:13px; color:#6b7280; margin-top:4px;">待財務歸帳/付款</div>
+            </div>
+            <div>
+              <div style="font-size:24px; font-weight:bold; color:#10b981;">${paidToday}</div>
+              <div style="font-size:13px; color:#6b7280; margin-top:4px;">今日已付款</div>
+            </div>
+            <div>
+              <div style="font-size:24px; font-weight:bold; color:#ef4444;">${rejectedCount}</div>
+              <div style="font-size:13px; color:#6b7280; margin-top:4px;">退件待修改</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 財務 KPI 指標 -->
         <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:24px;">
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10b981; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">年度總預算</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937;">$${annualBudget.toLocaleString()}</h2>
+            <h4 style="margin:0; color:#6b7280; font-size:14px;">年度總預算</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${annualBudget.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">已付款</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937;">$${totalPaid.toLocaleString()}</h2>
+            <h4 style="margin:0; color:#6b7280; font-size:14px;">已付款總額</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${totalPaid.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #f59e0b; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">待付款</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937;">$${pendingPayment.toLocaleString()}</h2>
+            <h4 style="margin:0; color:#6b7280; font-size:14px;">待付款總額</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${pendingPaymentTotal.toLocaleString()}</h2>
           </div>
           <div style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="margin:0; color:#6b7280;">銀行可用餘額</h4>
-            <h2 style="margin:10px 0 0; color:#1f2937;">$${bankBalance.toLocaleString()}</h2>
+            <h4 style="margin:0; color:#6b7280; font-size:14px;">銀行可用餘額</h4>
+            <h2 style="margin:10px 0 0; color:#1f2937; font-size:20px;">$${bankBalance.toLocaleString()}</h2>
           </div>
         </div>
       `;
+    } else {
+      // 一般員工或部門主管的歡迎標題
+      dashboardHTML += `
+        <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); margin-bottom:20px;">
+          <h2>財務管理系統 - 員工專區</h2>
+          <p>歡迎，${user.name || user.full_name || '使用者'} (${user.role})</p>
+        </div>
+      `;
     }
-
-    // ====================== 明細列表（所有人都看得到，但已過濾） ======================
+    // 3. 最近核銷案件總表（整合乾淨的單一表格，不再重複渲染兩次）
     dashboardHTML += `
-      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); margin-top:20px;">
-        <h3>${isPrivileged ? '全公司核銷明細' : '我的部門核銷紀錄'}</h3>
+      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+        <h3 style="margin-top:0; font-size:16px; color:#374151; margin-bottom:15px;">${isPrivileged ? '全公司最近核銷明細' : '所屬部門核銷進度'}</h3>
         <table style="width:100%; border-collapse: collapse;">
           <thead>
-            <tr style="background:#f8f9fa;">
-              <th>單號</th>
-              <th>申請人</th>
-              <th>部門</th>
-              <th>摘要</th>
-              <th>金額</th>
-              <th>狀態</th>
+            <tr style="background:#f8f9fa; text-align:left; border-bottom:2px solid #e5e7eb;">
+              <th style="padding:10px;">單號</th>
+              <th style="padding:10px;">申請人</th>
+              <th style="padding:10px;">部門</th>
+              <th style="padding:10px;">摘要說明</th>
+              <th style="padding:10px;">金額</th>
+              <th style="padding:10px;">狀態</th>
             </tr>
           </thead>
           <tbody>
             ${vchs.map(v => `
-              <tr>
-                <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold;">${v.voucher_no || '未編號'}</a></td>
-                <td>${v.profiles?.full_name || '-'}</td>
-                <td>${v.departments?.name || '-'}</td>
-                <td>${v.summary || '-'}</td>
-                <td>$${Number(v.total_amount || 0).toLocaleString()}</td>
-                <td>${getStatusBadgeWithDate(v)}</td>
+              <tr style="border-bottom:1px solid #e5e7eb;">
+                <td style="padding:10px;"><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${v.voucher_no || '未編號'}</a></td>
+                <td style="padding:10px;">${v.profiles?.full_name || '-'}</td>
+                <td style="padding:10px;">${v.departments?.name || '-'}</td>
+                <td style="padding:10px;">${v.summary || '-'}</td>
+                <td style="padding:10px;">$${Number(v.total_amount || 0).toLocaleString()}</td>
+                <td style="padding:10px;"><span class="badge ${v.status}">${v.status}</span></td>
               </tr>
-            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:20px;">目前尚無核銷紀錄</td></tr>'}
+            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:20px; color:#6b7280;">目前尚無核銷紀錄</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -348,7 +384,7 @@ async function renderDashboard() {
 
     container.innerHTML = dashboardHTML;
 
-  } catch (err) {
+    } catch (err) {
     console.error('渲染 Dashboard 失敗:', err);
     container.innerHTML = `<p style="color:red; padding:20px;">載入失敗：${err.message}</p>`;
   }
@@ -664,7 +700,7 @@ async function exportReportsToExcel() {
   addStatementSheet('現金流量表', '現金流量表', buildCashflowStatement(periodTx));
   addStatementSheet('權益變動表', '權益變動表', buildEquityStatement(periodTx));
 
-  const journal = buildJournal(periodTx);
+  const journal = await buildJournal(periodTx);
   const journalAoa = [
     ['日期', '摘要', '銀行', '借方科目', '借方金額', '貸方科目', '貸方金額', '憑證', '狀態'],
     ...journal.map(row => [row.date, row.summary, row.bank, row.debitAccount, row.debitAmount, row.creditAccount, row.creditAmount, row.voucher || '-', row.status])
