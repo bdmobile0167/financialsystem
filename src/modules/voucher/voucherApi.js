@@ -1,6 +1,6 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment } from './attachments.js';
-import { resolveVoucherNumber } from './voucherNumber.js'; // 假設編號檔案在此
+import { resolveVoucherNumber } from './voucherNumbering.js'; // 假設編號檔案在此
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
