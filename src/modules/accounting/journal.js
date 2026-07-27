@@ -23,30 +23,38 @@ function resolveAccounts(accounts, category, type) {
     : { debit: bank, credit: revenue };
 }
 
-export function buildJournalEntries(transactions) {
-  const accounts = loadChartOfAccounts();
+export async function buildJournal(transactions = []) {
+  try {
+    const { data: journalEntries, error } = await supabase
+      .from('journal_entries')
+      .select(`
+        *,
+        debit_account:accounts!debit_account_id(code, name),
+        credit_account:accounts!credit_account_id(code, name)
+      `)
+      .order('entry_date', { ascending: false });
 
-  return transactions.map((tx, index) => {
-    const amount = Number(tx.amount || 0);
-    const category = tx.category || '營業';
-    const { debit, credit } = resolveAccounts(accounts, category, tx.type);
+    if (error) throw error;
 
-    return {
-      id: `je-${tx.date}-${index}`,
-      date: tx.date,
-      memo: tx.detail || tx.customer || '未註明',
-      bank: tx.bank,
-      category,
-      debitAccountId: debit.id,
-      debitAccountCode: debit.code,
-      debitAccountName: debit.name,
-      debitAmount: amount,
-      creditAccountId: credit.id,
-      creditAccountCode: credit.code,
-      creditAccountName: credit.name,
-      creditAmount: amount,
-      voucher: tx.voucher || '',
-      status: tx.voucher ? '已對應' : '待補'
-    };
-  });
+    return journalEntries.map(entry => ({
+      date: entry.entry_date,
+      summary: entry.memo || '未註明',
+      bank: '-',
+      debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
+      debitAmount: Number(entry.debit_amount || 0),
+      creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
+      creditAmount: Number(entry.credit_amount || 0),
+      voucher: entry.transaction_id || '-',
+      status: '已入帳'
+    }));
+  } catch (err) {
+    console.warn('從 journal_entries 讀取失敗，降級使用本地計算:', err.message);
+    const { journalEntries: localEntries } = runAccountingPipeline(transactions);
+    return localEntries.map(entry => ({
+      date: entry.date, summary: entry.memo, bank: entry.bank,
+      debitAccount: `${entry.debitAccountCode} ${entry.debitAccountName}`, debitAmount: entry.debitAmount,
+      creditAccount: `${entry.creditAccountCode} ${entry.creditAccountName}`, creditAmount: entry.creditAmount,
+      voucher: entry.voucher, status: entry.status
+    }));
+  }
 }

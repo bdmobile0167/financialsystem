@@ -288,10 +288,10 @@ async function renderDashboard() {
       const { data: banks } = await supabase.from('bank_accounts').select('*');
       const bankBalance = banks?.reduce((sum, b) => sum + Number(b.opening_balance || 0), 0) || 0;
 
-      const totalPaid = vchs.filter(v => v.status === 'approved')
-                           .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
+      const totalPaid = vchs.filter(v => v.status === 'closed')
+        .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
       const pendingPayment = vchs.filter(v => v.status === 'approved')
-                                .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
+        .reduce((sum, v) => sum + Number(v.total_amount || 0), 0);
 
       dashboardHTML += `
         <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:24px;">
