@@ -293,7 +293,15 @@ async function renderDashboard() {
       : projectList;
 
     const totalBudget = filteredProjects.reduce((s, p) => s + Number(p.total_budget || 0), 0);
-    const totalRemaining = filteredProjects.reduce((s, p) => s + Number(p.remaining_budget || 0), 0);
+    const projectIds = new Set(filteredProjects.map(p => p.id));
+    const totalSpent = displayVouchers
+      .filter(v =>
+        projectIds.has(v.project_id) &&
+        ['approved', 'closed', 'pending_accounting'].includes(v.status)
+      )
+      .reduce((s, v) => s + Number(v.total_amount || 0), 0);
+
+    const totalRemaining = Math.max(0, totalBudget - totalSpent);
     const totalSpent = totalBudget - totalRemaining;
 
     // 報支單依專案過濾（若有選）
@@ -866,7 +874,22 @@ function initializeEventsInternal() {
 
   document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
     const approveBtn = e.target.closest('.approve-voucher-btn');
+    if (approveBtn) {
+      e.preventDefault();
+      const id = approveBtn.dataset.id;
+      const stage = approveBtn.dataset.stage || 'manager';
+      await window.approveVoucher(id, stage);
+      return;
+    }
     const rejectBtn = e.target.closest('.reject-voucher-btn');
+    if (rejectBtn) {
+      e.preventDefault();
+      const id = rejectBtn.dataset.id;
+      const stage = rejectBtn.dataset.stage || 'manager';
+      await window.rejectVoucher(id, stage);
+      return;
+    }
+
     const historyBtn = e.target.closest('.view-history-btn');
 
     if (approveBtn || rejectBtn) {
