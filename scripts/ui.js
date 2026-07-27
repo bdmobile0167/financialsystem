@@ -1457,6 +1457,7 @@ const voucherLineAttachments = {}; // { rowId: File }
   };
 
   // 表單提交封包邏輯
+  // 表單提交封包邏輯
   const excelVoucherForm = document.getElementById('voucherCreateForm');
   if (excelVoucherForm) {
     excelVoucherForm.addEventListener('submit', async (e) => {
@@ -1466,6 +1467,10 @@ const voucherLineAttachments = {}; // { rowId: File }
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
+        
+        // 補上部門與主管 ID 的取得，避免後續傳入 payload 時發生 ReferenceError
+        const departmentId = document.getElementById('vDepartment')?.value || null;
+        const managerId = document.getElementById('vManagerPicker')?.value || null;
         
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
@@ -1477,7 +1482,7 @@ const voucherLineAttachments = {}; // { rowId: File }
           const amtInput = row.querySelector('.grid-amount');
           const invTypeInput = row.querySelector('.grid-inv-type');
           const invNumInput = row.querySelector('.grid-inv-num');
-          const accountSelect = row.querySelector('.line-account-code'); // ← 新增：取得科目選擇
+          const accountSelect = row.querySelector('.line-account-code');
 
           if (!descInput || !amtInput) return;
 
@@ -1485,7 +1490,7 @@ const voucherLineAttachments = {}; // { rowId: File }
           const amt = Number(amtInput.value || 0);
           const invType = invTypeInput ? invTypeInput.value : '無';
           const invNum = invNumInput ? invNumInput.value.trim() : '';
-          const accountCode = accountSelect ? accountSelect.value : '6100'; // ← 預設6100
+          const accountCode = accountSelect ? accountSelect.value : '6100';
 
           // 過濾空白列
           if (!desc || amt <= 0) return;
@@ -1494,7 +1499,7 @@ const voucherLineAttachments = {}; // { rowId: File }
 
           detailLines.push({
             description: desc,
-            account_code: accountCode,        // ← 重要：使用使用者選擇的科目
+            account_code: accountCode,
             amount: amt
           });
 
@@ -1512,10 +1517,7 @@ const voucherLineAttachments = {}; // { rowId: File }
           throw new Error('請至少填寫一筆有效的摘要與金額！');
         }
 
-        const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
-
-        // 收集附件對應 (利用你原本的 voucherLineAttachments)
-        // 我們把附件對應資訊也包進 payload 讓 API 統一處理
+        // 僅宣告一次 attachmentsMap
         const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
 
         // ==================== 整理成 Payload 包裹 ====================
@@ -1532,23 +1534,20 @@ const voucherLineAttachments = {}; // { rowId: File }
           detailLines: detailLines,
           invoiceLines: invoiceLines,
           attachmentsMap: attachmentsMap,
-          rows: rows // 傳入 rows 讓 API 層可以順便拿 rowId 找附件
+          rows: rows
         };
 
-        // ==================== 呼叫獨立的 API 取代原本的 Supabase 邏輯 ====================
+        // ==================== 呼叫獨立的 API ====================
         const result = await createVoucher(voucherPayload);
 
         if (!result || !result.success) {
           throw new Error(result?.error || '建立報支單失敗');
         }
 
-        // 成功提示
         alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
 
-        // 重置表單
         excelVoucherForm.reset();
 
-        // 重新渲染明細表格
         if (typeof renderVoucherLines === 'function') {
           renderVoucherLines();
         } else {
@@ -1559,7 +1558,6 @@ const voucherLineAttachments = {}; // { rowId: File }
           }
         }
 
-        // 刷新頁面
         renderDashboard();
         if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
 
