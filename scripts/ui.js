@@ -2096,17 +2096,26 @@ function renderPermissionCheckboxes() {
   `).join('');
 }
 
-// 🔥 統一合併版：點擊單號跳出 Modal 詳細表單視窗
+// 🔥 統一合併版：點擊單號跳出 Modal 詳細表單視窗（含完整審核歷程）
 window.viewVoucherDetail = async (voucherId) => {
   try {
     const { data: vch, error: vError } = await supabase
-      .from('vouchers').select('*, profiles!applicant_id(full_name)')
-      .eq('id', voucherId).single();
+      .from('vouchers')
+      .select('*, profiles!applicant_id(full_name), departments(name)')
+      .eq('id', voucherId)
+      .single();
     
     if (vError || !vch) throw new Error('無法讀取報支明細資料');
 
     const { data: lines } = await supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId);
     const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId);
+    
+    // 💡 關鍵新增：取得該單據的審核與異動歷程 (Audit Logs)
+    const { data: logs } = await supabase
+      .from('voucher_workflow_logs')
+      .select('*, profiles!actor_id(full_name)')
+      .eq('voucher_id', voucherId)
+      .order('created_at', { ascending: true });
 
     // 建立一個覆蓋式動態 Modal 視窗
     let modal = document.getElementById('voucherDetailModal');
@@ -2119,28 +2128,53 @@ window.viewVoucherDetail = async (voucherId) => {
 
     modal.style.display = 'flex';
     modal.innerHTML = `
-      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:650px; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:700px; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
-          <h3 style="margin:0;">單據詳細內容 [${vch.voucher_no}]</h3>
+          <h3 style="margin:0;">單據詳細內容 [${vch.voucher_no || '未編號'}]</h3>
           <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
         </div>
-        <p><strong>申請日期：</strong>${vch.tx_date}</p>
-        <p><strong>申請人：</strong>${vch.profiles?.full_name || '未知'}</p>
-        <p><strong>主旨總結：</strong>${vch.summary}</p>
-        <p><strong>目前審核狀態：</strong><span style="color:orange; font-weight:bold;">${vch.status}</span></p>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:15px; font-size:14px; color:#4b5563;">
+          <p style="margin:4px 0;"><strong>申請日期：</strong>${vch.tx_date || vch.created_at?.split('T')[0]}</p>
+          <p style="margin:4px 0;"><strong>申請人：</strong>${vch.profiles?.full_name || '未知'}</p>
+          <p style="margin:4px 0;"><strong>部門：</strong>${vch.departments?.name || '-'}</p>
+          <p style="margin:4px 0;"><strong>目前審核狀態：</strong><span style="color:orange; font-weight:bold;">${vch.status}</span></p>
+          <p style="grid-column: span 2; margin:4px 0;"><strong>主旨總結：</strong>${vch.summary || '-'}</p>
+          <p style="grid-column: span 2; margin:4px 0;"><strong>總金額：</strong><span style="color:#d9534f; font-weight:bold; font-size:16px;">$${Number(vch.total_amount || 0).toLocaleString()}</span></p>
+        </div>
         
         <h4 style="margin-top:20px; border-left:4px solid #007bff; padding-left:8px;">報支項目拆分清單</h4>
-        <table class="table" style="width:100%; margin-bottom:15px; border:1px solid #ddd;">
-          <tr style="background:#f9f9f9;"><th>摘要項目說明</th><th>科目編號</th><th>核銷金額</th></tr>
-          ${lines?.map(l => `<tr><td>${l.description}</td><td>${l.account_code || '-'}</td><td>$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="3">無明細</td></tr>'}
+        <table class="table" style="width:100%; margin-bottom:15px; border:1px solid #ddd; border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f9f9f9; text-align:left;">
+              <th style="padding:8px; border:1px solid #ddd;">摘要項目說明</th>
+              <th style="padding:8px; border:1px solid #ddd;">科目編號</th>
+              <th style="padding:8px; border:1px solid #ddd;">核銷金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lines?.map(l => `<tr><td style="padding:8px; border:1px solid #ddd;">${l.description}</td><td style="padding:8px; border:1px solid #ddd;">${l.account_code || '-'}</td><td style="padding:8px; border:1px solid #ddd;">$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:8px; text-align:center;">無明細</td></tr>'}
+          </tbody>
         </table>
 
         ${invoices?.length ? `<p><strong>憑證關聯：</strong>${invoices[0].invoice_type} - 號碼：${invoices[0].invoice_number || '未填'}</p>` : ''}
         
+        <!-- 💡 關鍵新增：歷程清單區塊 -->
+        <h4 style="margin-top:20px; border-left:4px solid #10b981; padding-left:8px;">審核與異動歷程 (Audit Logs)</h4>
+        <ul style="padding-left:20px; font-size:13px; color:#4b5563; margin-top:8px; max-height:150px; overflow-y:auto; background:#f9f9f9; padding:10px 10px 10px 30px; border-radius:4px;">
+          ${logs?.map(log => `
+            <li style="margin-bottom:6px;">
+              <strong>[${new Date(log.created_at).toLocaleString()}]</strong> 
+              操作人：${log.profiles?.full_name || '系統'} - 動作：<strong>${log.action}</strong>
+              ${log.reject_reason ? `<br><span style="color:red;">退件原因：${log.reject_reason}</span>` : ''}
+            </li>
+          `).join('') || '<li>尚無歷程紀錄</li>'}
+        </ul>
+
         <div style="margin-top:20px; text-align:right; gap:10px; display:flex; justify-content:flex-end;">
-          ${vch.status !== 'voided' ? `
+          ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
             <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
-          ` : '<span style="color:#d9534f; font-weight:bold; align-self:center;">此單據已成功銷案</span>'}
+          ` : ''}
           <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">關閉</button>
         </div>
       </div>
@@ -2517,4 +2551,177 @@ function renderTeamMemberList() {
   list.innerHTML = selectedTeamMembers.map(m =>
     `<li>${m.name} <button type="button" onclick="removeTeamMember('${m.id}')" style="color:red; border:none; background:none; cursor:pointer;">移除</button></li>`
   ).join('') || '<li class="muted">尚未指派成員</li>';
+}
+
+/**
+ * 渲染財務中心 (Financial Center) - 專供會計與管理員進行歸帳與付款
+ * 檔案來源: netlify/scripts/ui.js
+ */
+async function renderFinancialCenter() {
+  const container = document.getElementById('dashboardContainer') || document.getElementById('mainContent') || document.getElementById('dashboard');
+  if (!container) return;
+
+  const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const isPrivileged = ['admin', 'accounting'].includes(user.role);
+
+  if (!isPrivileged) {
+    container.innerHTML = `<div style="padding:40px; text-align:center; color:red;"><h3>權限不足</h3><p>此頁面僅限財務與系統管理員存取。</p></div>`;
+    return;
+  }
+
+  try {
+    // 1. 取得所有狀態為 'approved' (主管已審核，等待財務處理) 的報支單
+    const { data: vouchers, error } = await supabase
+      .from('vouchers')
+      .select('*, profiles!applicant_id(full_name), departments(name)')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    // 2. 取得會計科目與銀行清單（供歸帳下拉選單使用）
+    const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+    const { data: banks } = await supabase.from('bank_accounts').select('*');
+
+    let html = `
+      <div style="margin-bottom: 24px;">
+        <h2 style="color: #1f2937; margin-bottom: 8px;">💰 財務中心 (Financial Center)</h2>
+        <p style="color: #6b7280;">集中處理主管已核准案件之會計歸帳、銀行撥款與結案作業。</p>
+      </div>
+
+      <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+        <h3 style="margin-top:0; font-size:16px; color:#374151; margin-bottom:15px;">待歸帳與待付款案件 (${vouchers?.length || 0} 筆)</h3>
+        
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background:#f8f9fa; text-align:left; border-bottom:2px solid #e5e7eb;">
+              <th style="padding:10px;">單號</th>
+              <th style="padding:10px;">申請人</th>
+              <th style="padding:10px;">部門</th>
+              <th style="padding:10px;">摘要說明</th>
+              <th style="padding:10px;">金額</th>
+              <th style="padding:10px; width:20%;">指定會計科目</th>
+              <th style="padding:10px; width:20%;">付款銀行</th>
+              <th style="padding:10px; text-align:center;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    if (!vouchers || vouchers.length === 0) {
+      html += `<tr><td colspan="8" style="text-align:center; padding:20px; color:#6b7280;">目前無待處理的核銷案件</td></tr>`;
+    } else {
+      for (const v of vouchers) {
+        html += `
+          <tr style="border-bottom:1px solid #e5e7eb;" id="row-${v.id}">
+            <td style="padding:10px;"><a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#007bff; font-weight:bold;">${v.voucher_no || '未編號'}</a></td>
+            <td style="padding:10px;">${v.profiles?.full_name || '-'}</td>
+            <td style="padding:10px;">${v.departments?.name || '-'}</td>
+            <td style="padding:10px;">${v.summary || '-'}</td>
+            <td style="padding:10px; font-weight:bold; color:#d9534f;">$${Number(v.total_amount || 0).toLocaleString()}</td>
+            <td style="padding:10px;">
+              <select id="acc-${v.id}" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                <option value="">-- 選擇會計科目 --</option>
+                ${accounts?.map(acc => `<option value="${acc.id}">${acc.code} ${acc.name}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:10px;">
+              <select id="bank-${v.id}" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                <option value="">-- 選擇付款銀行 --</option>
+                ${banks?.map(b => `<option value="${b.id}">${b.bank_name} (${b.account_number})</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:10px; text-align:center;">
+              <button onclick="processPayment('${v.id}', ${v.total_amount})" style="background:#10b981; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">
+                付款完成 (Closed)
+              </button>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.innerHTML = html;
+
+  } catch (err) {
+    console.error('載入財務中心失敗:', err);
+    container.innerHTML = `<p style="color:red; padding:20px;">載入失敗：${err.message}</p>`;
+  }
+}
+
+/**
+ * 處理會計中心之付款結案與會計/銀行分錄連動
+ * 檔案來源: netlify/scripts/ui.js
+ */
+async function processPayment(voucherId, totalAmount) {
+  const accountId = document.getElementById(`acc-${voucherId}`).value;
+  const bankId = document.getElementById(`bank-${voucherId}`).value;
+
+  // 1. 嚴格驗證：必須選定會計科目與付款銀行
+  if (!accountId) {
+    alert('【會計內控提示】請先指定此筆支出的會計科目！');
+    return;
+  }
+  if (!bankId) {
+    alert('【會計內控提示】請先指定付款的銀行帳戶！');
+    return;
+  }
+
+  if (!confirm(`確定要完成此筆付款並寫入會計分錄與銀行流水嗎？\n金額：$${Number(totalAmount).toLocaleString()}`)) {
+    return;
+  }
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // 2. 新增銀行交易流水紀錄 (Bank Transaction)
+    const { error: btError } = await supabase.from('bank_transactions').insert({
+      bank_account_id: bankId,
+      tx_date: today,
+      type: '支出',
+      amount: totalAmount,
+      voucher_id: voucherId,
+      description: `報支單撥款結案 (ID: ${voucherId})`
+    });
+    if (btError) throw btError;
+
+    // 3. 建立總帳分錄 (Journal Entry)
+    const { error: jeError } = await supabase.from('journal_entries').insert({
+      entry_date: today,
+      debit_account_id: accountId,     // 借方：費用科目
+      credit_account_id: null,         // 貸方可依需求對應資產科目
+      debit_amount: totalAmount,
+      credit_amount: totalAmount,
+      memo: `報支單付款結案分錄`,
+      voucher_id: voucherId
+    });
+    if (jeError) throw jeError;
+
+    // 4. 更新報支單狀態為已結案 (closed)
+    const { error: vError } = await supabase
+      .from('vouchers')
+      .update({ 
+        status: 'closed',
+        closed_at: new Date().toISOString()
+      })
+      .eq('id', voucherId);
+
+    if (vError) throw vError;
+
+    alert('✅ 付款完成！系統已自動完成會計歸帳、產生銀行流水與總帳分錄。');
+    
+    // 重新整理財務中心介面
+    if (typeof renderFinancialCenter === 'function') {
+      renderFinancialCenter();
+    }
+  } catch (err) {
+    console.error('付款處理失敗:', err);
+    alert('付款處理失敗：' + err.message);
+  }
 }
