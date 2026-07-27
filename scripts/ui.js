@@ -2426,55 +2426,97 @@ window.openAccountingReviewModal = async (voucherId) => {
   }
 };
 
-window.accountingApproveAndClose = async (voucherId) => {
-  const bankId = document.getElementById('reviewBankAccount').value;
-  const note = document.getElementById('reviewNote').value.trim();
+/**
+ * 1. 主管核准單據 (Approve)
+ * 狀態轉為 approved，並寫入歷程，讓財務中心可以接手處理
+ */
+window.approveVoucher = async (voucherId) => {
+  if (!confirm('確定要「核准」此單據嗎？\n核准後將送交財務中心執行歸帳與撥款。')) return;
 
   try {
-    const { data: voucher, error: fetchErr } = await supabase
-      .from('vouchers').select('*').eq('id', voucherId).single();
-    if (fetchErr || !voucher) throw new Error('找不到單據資料');
-
-    // 1. 核准（狀態改成 approved，資料庫會自動觸發產生總帳分錄）
-    const { error: statusErr } = await supabase
+    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
+    
+    // A. 更新單據狀態為 approved
+    const { error: updateErr } = await supabase
       .from('vouchers')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
+      .update({ status: 'approved' })
       .eq('id', voucherId);
-    if (statusErr) throw statusErr;
+    
+    if (updateErr) throw updateErr;
 
-    // 2. 記錄審批歷程
-    const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('voucher_workflow_logs').insert({
-      voucher_id: voucherId, actor_id: user.id, action: 'approve',
-      from_status: voucher.status, to_status: 'approved',
-      reject_reason: note || null
-    });
+    // B. 自動寫入審核異動歷程 (Audit Log)
+    const { error: logErr } = await supabase
+      .from('voucher_workflow_logs')
+      .insert({
+        voucher_id: voucherId,
+        actor_id: user.id,
+        action: '核准 (Approved)'
+      });
 
-    // 3. 記錄實際付款方式
-    await supabase.from('voucher_payments').insert({
-      voucher_id: voucherId,
-      payment_type: bankId ? 'bank_transfer' : 'cash',
-      bank_account_id: bankId || null,
-      amount: voucher.total_amount,
-      paid_at: new Date().toISOString().slice(0, 10)
-    });
+    if (logErr) throw logErr;
 
-    // 4. 真正扣除專案剩餘預算（之前這個從來沒被扣過，這裡補上）
-    if (voucher.project_id) {
-      const { data: proj } = await supabase
-        .from('projects').select('remaining_budget').eq('id', voucher.project_id).single();
-      if (proj) {
-        const newRemaining = Number(proj.remaining_budget) - Number(voucher.total_amount);
-        await supabase.from('projects').update({ remaining_budget: newRemaining }).eq('id', voucher.project_id);
-      }
-    }
+    alert('✅ 單據已核准！已轉交財務部門。');
+    
+    // 重新整理畫面 (若在儀表板則重整儀表板)
+    if (typeof renderDashboard === 'function') renderDashboard();
+    
+    // 若 Modal 還開著，順便關閉它
+    const modal = document.getElementById('voucherDetailModal');
+    if (modal) modal.style.display = 'none';
 
-    showMessage('已核准並完成歸帳，總帳分錄已自動產生。');
-    document.querySelector('.modal-backdrop').remove();
-    renderVoucherWorkflowList();
-    renderDashboard();
   } catch (err) {
-    alert('歸帳失敗：' + err.message);
+    console.error('核准失敗:', err);
+    alert('系統錯誤，無法核准：' + err.message);
+  }
+};
+
+/**
+ * 2. 主管退件單據 (Reject)
+ * 狀態轉為 rejected，強制填寫退件原因，並寫入歷程
+ */
+window.rejectVoucher = async (voucherId) => {
+  const reason = prompt('請輸入「退件原因」（必填）：');
+  
+  // 若按取消或未填寫則中斷
+  if (reason === null) return; 
+  if (!reason.trim()) {
+    alert('⚠️ 退件必須填寫原因，請重新操作！');
+    return;
+  }
+
+  try {
+    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
+    
+    // A. 更新單據狀態為 rejected
+    const { error: updateErr } = await supabase
+      .from('vouchers')
+      .update({ status: 'rejected' })
+      .eq('id', voucherId);
+    
+    if (updateErr) throw updateErr;
+
+    // B. 自動寫入退件歷程與原因 (Audit Log)
+    const { error: logErr } = await supabase
+      .from('voucher_workflow_logs')
+      .insert({
+        voucher_id: voucherId,
+        actor_id: user.id,
+        action: '退件 (Rejected)',
+        reject_reason: reason.trim()
+      });
+
+    if (logErr) throw logErr;
+
+    alert('❌ 單據已退件！申請人將會看到退件原因。');
+    
+    if (typeof renderDashboard === 'function') renderDashboard();
+    
+    const modal = document.getElementById('voucherDetailModal');
+    if (modal) modal.style.display = 'none';
+
+  } catch (err) {
+    console.error('退件失敗:', err);
+    alert('系統錯誤，無法退件：' + err.message);
   }
 };
 
