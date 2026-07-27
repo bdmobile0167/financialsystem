@@ -293,16 +293,22 @@ async function renderDashboard() {
       : projectList;
 
     const totalBudget = filteredProjects.reduce((s, p) => s + Number(p.total_budget || 0), 0);
+
+    // 報支單依專案過濾（若有選）— 這段要在 totalSpent 之前
+    let displayVouchers = vouchers;
+    if (selectedProj !== 'all') {
+      displayVouchers = vouchers.filter(v => v.project_id === selectedProj);
+    }
+
     const projectIds = new Set(filteredProjects.map(p => p.id));
     const totalSpent = displayVouchers
       .filter(v =>
-        projectIds.has(v.project_id) &&
+        (!v.project_id || projectIds.has(v.project_id)) &&
         ['approved', 'closed', 'pending_accounting'].includes(v.status)
       )
       .reduce((s, v) => s + Number(v.total_amount || 0), 0);
 
     const totalRemaining = Math.max(0, totalBudget - totalSpent);
-    const totalSpent = totalBudget - totalRemaining;
 
     // 報支單依專案過濾（若有選）
     let displayVouchers = vouchers;
