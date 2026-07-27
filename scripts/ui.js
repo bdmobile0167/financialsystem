@@ -871,21 +871,17 @@ function initializeEventsInternal() {
 
   sidebarOverlay?.addEventListener('click', closeSidebar);
 
-  document.getElementById('voucherWorkflowList')?.addEventListener('click', async (e) => {
+  document.addEventListener('click', async (e) => {
     const approveBtn = e.target.closest('.approve-voucher-btn');
     if (approveBtn) {
       e.preventDefault();
-      const id = approveBtn.dataset.id;
-      const stage = approveBtn.dataset.stage || 'manager';
-      await window.approveVoucher(id, stage);
+      await window.approveVoucher(approveBtn.dataset.id, approveBtn.dataset.stage || 'manager');
       return;
     }
     const rejectBtn = e.target.closest('.reject-voucher-btn');
     if (rejectBtn) {
       e.preventDefault();
-      const id = rejectBtn.dataset.id;
-      const stage = rejectBtn.dataset.stage || 'manager';
-      await window.rejectVoucher(id, stage);
+      await window.rejectVoucher(rejectBtn.dataset.id, rejectBtn.dataset.stage || 'manager');
       return;
     }
 
@@ -1711,8 +1707,8 @@ async function renderVoucherWorkflowList() {
       else if (currentUserRole === 'manager') {
         if (vStatus === 'pending_review') {
           actionButtons = `
-            <button class="btn-small primary approve-voucher-btn" data-id="${row.id}" data-stage="manager">核准</button>
-            <button class="btn-small warning reject-voucher-btn" data-id="${row.id}" data-stage="manager">退件</button>
+            <button type="button" class="approve-voucher-btn" data-id="${row.id}" data-stage="manager">核准</button>
+            <button type="button" class="reject-voucher-btn" data-id="${row.id}" data-stage="manager">退件</button>
           `;
         } else {
           actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
@@ -2343,46 +2339,28 @@ window.approveVoucher = async (voucherId, stage = 'manager') => {
  * 2. 主管退件單據 (Reject)
  * 狀態轉為 rejected，強制填寫退件原因，並寫入歷程
  */
-window.rejectVoucher = async (voucherId) => {
-  const reason = prompt('請輸入「退件原因」（必填）：');
-  
-  if (reason === null) return; 
+window.rejectVoucher = async (voucherId, stage = 'manager') => {
+  const reason = prompt('請輸入退件原因（必填）：');
+  if (reason === null) return;
   if (!reason.trim()) {
-    alert('⚠️ 退件必須填寫原因，請重新操作！');
+    alert('退件必須填寫原因');
     return;
   }
-
   try {
-    const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
-    
-    const { error: updateErr } = await supabase
-      .from('vouchers')
-      .update({ status: 'rejected' })
-      .eq('id', voucherId);
-    
-    if (updateErr) throw updateErr;
-
-    const { error: logErr } = await supabase
-      .from('voucher_workflow_logs')
-      .insert({
-        voucher_id: voucherId,
-        actor_id: user.id,
-        action: '退件 (Rejected)',
-        reject_reason: reason.trim()
-      });
-
-    if (logErr) throw logErr;
-
-    alert('❌ 單據已退件！申請人將會看到退件原因。');
-    
+    const voucher = {
+      id: voucherId,
+      status: stage === 'manager' ? 'pending_review' : 'pending_accounting'
+    };
+    if (stage === 'manager') {
+      await managerReject(voucher, reason.trim());
+    } else {
+      await accountingReject(voucher, reason.trim());
+    }
+    alert('已退件');
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
-    
-    const modal = document.getElementById('voucherDetailModal');
-    if (modal) modal.style.display = 'none';
-
   } catch (err) {
-    console.error('退件失敗:', err);
-    alert('系統錯誤，無法退件：' + err.message);
+    alert('退件失敗：' + err.message);
   }
 };
 
