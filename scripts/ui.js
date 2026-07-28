@@ -810,6 +810,8 @@ function renderTabs() {
   if (currentPanel) currentPanel.style.display = 'block';
 }
 
+
+
 function showApp() {
   if (!state.currentUser) {
     document.getElementById('loginView').style.display = 'grid';
@@ -839,6 +841,8 @@ function initializeEvents() {
   }
   initializeEventsInternal();
 }
+
+
 
 function initializeEventsInternal() {
   // 1. Define it first
@@ -917,24 +921,27 @@ function initializeEventsInternal() {
 
     if (historyBtn) {
       const id = historyBtn.dataset.id;
-      const historyEl = document.getElementById(`history-${id}`);
-      if (!historyEl) return;
-      if (historyEl.style.display === 'none') {
-        historyEl.style.display = 'block';
-        historyEl.innerHTML = '<p class="muted">載入中…</p>';
-        try {
-          const logs = await fetchWorkflowLogs(id);
-          historyEl.innerHTML = logs.length ? logs.map(l => `
-            <div style="font-size:13px; padding:4px 0; border-top:1px solid var(--border);">
-              ${new Date(l.created_at).toLocaleString('zh-TW')}｜${l.action}
-              ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
-              ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
-            </div>`).join('') : '<p class="muted">尚無紀錄。</p>';
-        } catch (error) {
-          historyEl.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
-        }
-      } else {
-        historyEl.style.display = 'none';
+      try {
+        const logs = await fetchWorkflowLogs(id);
+        const rows = logs.length ? logs.map(l => `
+          <div style="font-size:13px; padding:8px 0; border-top:1px solid #eee;">
+            ${new Date(l.created_at).toLocaleString('zh-TW')}｜${l.action}
+            ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
+            ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
+          </div>`).join('') : '<p class="muted">尚無審批紀錄。</p>';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;';
+        modal.innerHTML = `
+          <div style="background:#fff; padding:24px; border-radius:8px; max-width:500px; width:90%; max-height:70vh; overflow-y:auto;">
+            <h3 style="margin-top:0;">審批歷程</h3>
+            ${rows}
+            <button type="button" class="secondary" style="margin-top:16px;" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
+          </div>`;
+        document.body.appendChild(modal);
+      } catch (error) {
+        showMessage(`載入審批歷程失敗：${error.message}`, true);
       }
     }
   });
@@ -1288,6 +1295,41 @@ function initializeEventsInternal() {
   // 全域函式：點擊按鈕動態往 Table 追加一列
 let excelRowCounter = 0;
 const voucherLineAttachments = {}; // { rowId: File }
+  window.toggleInvoiceRequired = (selectEl) => {
+    const input = selectEl.closest('tr').querySelector('.grid-inv-num');
+    if (selectEl.value === '發票') {
+      input.disabled = false;
+      input.required = true;
+      input.placeholder = '必填發票號碼';
+    } else {
+      input.disabled = true;
+      input.required = false;
+      input.value = '';
+      input.placeholder = '可留空';
+    }
+  };
+
+  window.calculateVoucherTotal = () => {
+    const amounts = Array.from(document.querySelectorAll('.grid-amount')).map(el => Number(el.value) || 0);
+    const total = amounts.reduce((a, b) => a + b, 0);
+    const display = document.getElementById('voucherTotalDisplay');
+    if (display) display.innerText = `$${total.toLocaleString()}`;
+  };
+
+  window.fetchPayeeName = async (inputEl) => {
+    const idNumber = inputEl.value.trim();
+    const nameSpan = inputEl.closest('td').querySelector('.grid-payee-name');
+    if (!nameSpan) return;
+    if (!idNumber) { nameSpan.innerText = ''; return; }
+
+    nameSpan.innerText = '查詢中...';
+    const { data, error } = await supabase.from('payees').select('name').eq('id_number', idNumber).maybeSingle();
+    if (error || !data) {
+      nameSpan.innerText = '（查無資料，請手動確認姓名）';
+      return;
+    }
+    nameSpan.innerText = data.name;
+  };
 
   window.addExcelRow = (prefillFile = null) => {
     const tbody = document.getElementById('excelLinesBody');
@@ -1308,18 +1350,15 @@ const voucherLineAttachments = {}; // { rowId: File }
       <td style="padding: 8px; border: 1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
       <td style="padding: 8px; border: 1px solid #ddd;">
         <div style="display: flex; gap: 4px; flex-direction: column;">
-          <select class="line-account-code" style="width:100%; padding:4px;">
-            <option value="6100">6100 營業費用</option>
-            <option value="1601">1601 固定資產</option>
-            <option value="1141">1141 應收帳款</option>
-            <option value="2141">2141 應付帳款</option>
-            <option value="3110">3110 股本</option>
-          </select>
+          <select class="line-account-code" style="width:100%; padding:4px;"></select>
           <input type="text" class="grid-desc" placeholder="例如：住宿費說明" style="width:96%; padding:4px;">
         </div>
       </td>
       <td style="padding: 8px; border: 1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
-      <td style="padding: 8px; border: 1px solid #ddd;"><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">
+        <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
+        <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
+      </td>
       <td style="padding: 8px; border: 1px solid #ddd; text-align:center;">
         <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
           <div>
@@ -1332,6 +1371,11 @@ const voucherLineAttachments = {}; // { rowId: File }
       </td>
     `;
     tbody.appendChild(tr);
+
+    const accountSelect = tr.querySelector('.line-account-code');
+    if (accountSelect && window.__cachedAccounts) {
+      accountSelect.innerHTML = window.__cachedAccounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
+    }    
 
     if (prefillFile) {
       window.assignLineAttachment(rowId, prefillFile);
@@ -1576,6 +1620,8 @@ async function populateVoucherFormOptions() {
       fetchAccounts(), fetchBankAccounts(), fetchDepartments()
     ]);
 
+    window.__cachedAccounts = accounts;
+    
     // 控制會計專用區塊顯示
     const role = state.currentUser?.role;
     const acctGroup = document.getElementById('accountingFieldsGroup');
