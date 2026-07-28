@@ -80,6 +80,13 @@ export async function createVoucher(payload) {
   if (error) throw error;
 
   if (detailLines && detailLines.length > 0) {
+    const missingAccountLineIndex = detailLines.findIndex(
+      l => !l.account_code || String(l.account_code).trim() === ''
+    );
+    // 如果找到任何一行的 account_code 是空的，立刻拋出錯誤中斷執行
+    if (missingAccountLineIndex !== -1) {
+      throw new Error(`報支單明細第 ${missingAccountLineIndex + 1} 行缺少「會計科目代碼 (account_code)」，請確認填寫完整後再送出。`);
+    }
     const finalLines = detailLines.map(l => ({
       voucher_id: voucher.id,
       description: l.description,
