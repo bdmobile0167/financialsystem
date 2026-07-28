@@ -1,7 +1,7 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
-import { VOUCHER_STATUS } from './voucherStatus.js';
+import { VOUCHER_STATUS } from './voucherStatus.js';  // ← 同一資料夾
 
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('code');
@@ -49,61 +49,54 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason
 }
 
 export async function createVoucher(payload) {
-  const { 
-    txDate, 
-    category = '營業', 
-    summary, 
-    departmentId, 
-    currentManagerId,
-    projectId, 
-    totalAmount,
-    status = 'pending_review',
-    detailLines, 
-    invoiceLines, 
-    attachmentsMap,
-    rows,
-    voucherType = '發票',    // [已修正] 補上接收 voucherType
-    manualNumber = '',        // [已修正] 補上接收 manualNumber
-    bankAccountId = null      // [已修正] 補上接收 bankAccountId
+  const {
+    txDate, category = '營業', summary, departmentId, currentManagerId,
+    projectId, totalAmount, status = 'pending_review',
+    detailLines, invoiceLines, attachmentsMap, rows,
+    voucherType = '發票', manualNumber = ''
   } = payload;
-  
-  const { data: { user } } = await supabase.auth.getUser();// 1. 自動產生或解析單據編號[cite: 12]
+
+  const { data: { user } } = await supabase.auth.getUser();
   const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
   const { data: voucher, error } = await supabase
-      .from('vouchers')
-      .insert({
-        voucher_no: voucherNo,          // ← 補上
-        tx_date: txDate,
-        category,
-        summary,
-        department_id: departmentId,
-        applicant_id: user.id,
-        current_manager_id: currentManagerId || null,
-        total_amount: totalAmount,
-        project_id: projectId && projectId !== 'all' ? projectId : null,
-        bank_account_id: bankAccountId || null,  // 若有傳入
-        status: status
-      })
-      .select()
-      .single();
+    .from('vouchers')
+    .insert({
+      voucher_no: voucherNo,
+      tx_date: txDate,
+      category,
+      summary,
+      department_id: departmentId,
+      applicant_id: user.id,
+      current_manager_id: currentManagerId || null,
+      total_amount: totalAmount,
+      project_id: projectId && projectId !== 'all' ? projectId : null,
+      status: status
+      // ⛔ 不要在這裡放 bank_account_id，付款資訊只在會計「歸帳銷案」時才決定
+    })
+    .select()
+    .single();
 
   if (error) throw error;
 
-  // 2. 批量寫入多筆明細 (voucher_lines)
   if (detailLines && detailLines.length > 0) {
     const finalLines = detailLines.map(l => ({
       voucher_id: voucher.id,
       description: l.description,
-      account_code: l.account_code || '6100',
-      amount: l.amount
+      account_code: l.account_code || null,
+      amount: l.amount,
+      item_category: l.item_category || null,
+      item_category_note: l.item_category_note || null,
+      payee_identifier: l.payee_identifier || null,
+      payee_name: l.payee_name || null,
+      is_proxy_payment: l.is_proxy_payment || false,
+      proxy_payer_identifier: l.proxy_payer_identifier || null,
+      proxy_payer_name: l.proxy_payer_name || null
     }));
-
     const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
     if (lineError) throw lineError;
   }
 
-  // 3. 批量寫入發票資訊 (invoices)
   if (invoiceLines && invoiceLines.length > 0) {
     const finalInvoices = invoiceLines.map(i => ({
       voucher_id: voucher.id,
@@ -112,40 +105,22 @@ export async function createVoucher(payload) {
       amount: i.amount,
       tax_amount: i.tax_amount || 0
     }));
-
     const { error: invoiceError } = await supabase.from('invoices').insert(finalInvoices);
     if (invoiceError) throw invoiceError;
   }
 
-  // 4. 寫入付款資訊
-  const { error: paymentError } = await supabase.from('voucher_payments').insert({
-    voucher_id: voucher.id,
-    payment_type: 'bank_transfer',
-    amount: totalAmount,
-    paid_at: txDate
-  });
-  if (paymentError) {
-    console.warn('付款資訊寫入失敗或可略過:', paymentError);
-  }
-
-  // 5. 逐列上傳附件檔案並綁定 voucher.id
   if (rows && attachmentsMap) {
     const attachmentUploads = Array.from(rows).map(async (row) => {
       const rowId = row.dataset.rowId;
       const file = attachmentsMap[rowId];
       if (!file) return;
-      try {
-        await saveAttachment(voucher.id, file);
-      } catch (err) {
-        console.error(`第 ${rowId} 列附件上傳失敗：`, err);
-      }
+      try { await saveAttachment(voucher.id, file); }
+      catch (err) { console.error(`第 ${rowId} 列附件上傳失敗：`, err); }
     });
     await Promise.all(attachmentUploads);
   }
 
-  // 6. 寫入工作流程記錄
   await logWorkflow(voucher.id, 'submit', null, 'pending_review');
-  
   return { success: true, data: voucher };
 }
 
@@ -174,34 +149,13 @@ export async function accountingApprove(voucher) {
     .eq('id', voucher.id);
   if (error) throw error;
   await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
-  
-  if (voucher.bank_account_id) {
-    const { error: bankError } = await supabase
-      .from('bank_accounts')
-      .update({
-        current_balance: supabase.rpc('deduct_balance', { 
-          p_id: voucher.bank_account_id, 
-          p_amount: voucher.total_amount 
-        })
-      })
-      .eq('id', voucher.bank_account_id);
-
-    if (bankError) console.warn('銀行餘額更新失敗:', bankError);
-  }
 
   if (voucher.project_id) {
     const { data: proj } = await supabase
-      .from('projects')
-      .select('remaining_budget')
-      .eq('id', voucher.project_id)
-      .single();
-
+      .from('projects').select('remaining_budget').eq('id', voucher.project_id).single();
     if (proj) {
       const newRemaining = Number(proj.remaining_budget || 0) - Number(voucher.total_amount || 0);
-      await supabase
-        .from('projects')
-        .update({ remaining_budget: Math.max(0, newRemaining) })
-        .eq('id', voucher.project_id);
+      await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', voucher.project_id);
     }
   }
 }
@@ -232,41 +186,36 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {
     const { data: voucher, error: vError } = await supabase
-      .from('vouchers')
-      .select('*')
-      .eq('id', voucherId)
-      .single();
-    
+      .from('vouchers').select('*').eq('id', voucherId).single();
     if (vError) throw vError;
     if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
 
-    const { error: bankError } = await supabase.rpc('deduct_bank_balance', {
-      p_bank_id: bankAccountId,
-      p_amount: voucher.total_amount
-    });
+    const { data: bank, error: bankFetchError } = await supabase
+      .from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
+    if (bankFetchError) throw bankFetchError;
+
+    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
+    const { error: bankError } = await supabase
+      .from('bank_accounts')
+      .update({ balance: Number(currentBalance) - Number(voucher.total_amount) })
+      .eq('id', bankAccountId);
     if (bankError) throw bankError;
 
-    const { error: jeError } = await supabase
-      .from('journal_entries')
-      .insert([{
-        voucher_id: voucherId,
-        account_id: accountCodeId,
-        bank_account_id: bankAccountId,
-        amount: voucher.total_amount,
-        entry_date: paymentDate,
-        description: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
-      }]);
+    const { error: jeError } = await supabase.from('journal_entries').insert([{
+      voucher_id: voucherId,
+      debit_account_id: accountCodeId,
+      credit_account_id: (await supabase.from('accounts').select('id').eq('code', '1102').single()).data?.id,
+      debit_amount: voucher.total_amount,
+      credit_amount: voucher.total_amount,
+      entry_date: paymentDate,
+      memo: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
+    }]);
     if (jeError) throw jeError;
 
     const { error: updateError } = await supabase
       .from('vouchers')
-      .update({ 
-        status: 'closed',
-        payment_date: paymentDate,
-        closed_at: new Date().toISOString()
-      })
+      .update({ status: 'closed', payment_date: paymentDate, closed_at: new Date().toISOString() })
       .eq('id', voucherId);
-
     if (updateError) throw updateError;
 
     return { success: true, message: '歸帳銷案成功' };

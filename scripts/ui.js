@@ -1317,15 +1317,15 @@ const voucherLineAttachments = {}; // { rowId: File }
   };
 
   window.fetchPayeeName = async (inputEl) => {
-    const idNumber = inputEl.value.trim();
-    const nameSpan = inputEl.closest('td').querySelector('.grid-payee-name');
+    const identifier = inputEl.value.trim();
+    const nameSpan = inputEl.closest('td, div').querySelector('.grid-payee-name');
     if (!nameSpan) return;
-    if (!idNumber) { nameSpan.innerText = ''; return; }
+    if (!identifier) { nameSpan.innerText = ''; return; }
 
     nameSpan.innerText = '查詢中...';
-    const { data, error } = await supabase.from('payees').select('name').eq('id_number', idNumber).maybeSingle();
+    const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
     if (error || !data) {
-      nameSpan.innerText = '（查無資料，請手動確認姓名）';
+      nameSpan.innerText = '（查無資料，請洽會計新增）';
       return;
     }
     nameSpan.innerText = data.name;
@@ -1334,52 +1334,85 @@ const voucherLineAttachments = {}; // { rowId: File }
   window.addExcelRow = (prefillFile = null) => {
     const tbody = document.getElementById('excelLinesBody');
     if (!tbody) return;
+    const isAccounting = ['accounting', 'admin'].includes(state.currentUser?.role);
 
     const rowId = `row-${excelRowCounter++}`;
     const tr = document.createElement('tr');
     tr.dataset.rowId = rowId;
     tr.innerHTML = `
-      <td style="padding: 8px; border: 1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
-      <td style="padding: 8px; border: 1px solid #ddd;">
+      <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
+      <td style="padding:8px; border:1px solid #ddd;">
         <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
           <option value="無">無</option>
           <option value="發票">發票</option>
           <option value="收據">收據</option>
         </select>
       </td>
-      <td style="padding: 8px; border: 1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
-      <td style="padding: 8px; border: 1px solid #ddd;">
-        <div style="display: flex; gap: 4px; flex-direction: column;">
-          <select class="line-account-code" style="width:100%; padding:4px;"></select>
-          <input type="text" class="grid-desc" placeholder="例如：住宿費說明" style="width:96%; padding:4px;">
-        </div>
+      <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+      <td style="padding:8px; border:1px solid #ddd;">
+        <select class="grid-item-category" onchange="toggleCategoryNote(this)" style="width:100%; padding:4px;">
+          <option value="車馬費">車馬費</option>
+          <option value="住宿費">住宿費</option>
+          <option value="文具用品">文具用品</option>
+          <option value="餐飲交際">餐飲交際</option>
+          <option value="郵電通訊">郵電通訊</option>
+          <option value="其他">其他（請說明）</option>
+        </select>
+        <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
+        ${isAccounting ? `
+          <select class="line-account-code" style="width:100%; padding:4px; margin-top:4px;">
+            <option value="">（會計歸類科目）</option>
+          </select>
+        ` : ''}
       </td>
-      <td style="padding: 8px; border: 1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
-      <td style="padding: 8px; border: 1px solid #ddd;">
-        <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
+      <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
+      <td style="padding:8px; border:1px solid #ddd;">
+        <input type="text" class="grid-payee-id" placeholder="應付對象身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
         <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
+        <label style="font-size:11px; display:block; margin-top:4px;">
+          <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
+        </label>
+        <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:90%; padding:4px; margin-top:4px;" onblur="fetchProxyPayerName(this)">
+        <span class="grid-proxy-name" style="font-size:12px; color:#666; display:block;"></span>
       </td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align:center;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <div>
-            <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
-            <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="this.previousElementSibling.click()">📎 附件</button>
-            <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">未選擇</div>
-          </div>
-          <button type="button" class="danger" style="padding:4px 8px; font-size:12px;" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
-        </div>
+      <td style="padding:8px; border:1px solid #ddd; text-align:center;">
+        <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
+        <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="this.previousElementSibling.click()">📎 附件</button>
+        <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">未選擇</div>
+        <button type="button" class="danger" style="padding:4px 8px; font-size:12px; margin-top:4px;" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
       </td>
     `;
     tbody.appendChild(tr);
 
     const accountSelect = tr.querySelector('.line-account-code');
     if (accountSelect && window.__cachedAccounts) {
-      accountSelect.innerHTML = window.__cachedAccounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
-    }    
-
-    if (prefillFile) {
-      window.assignLineAttachment(rowId, prefillFile);
+      accountSelect.innerHTML = '<option value="">（會計歸類科目）</option>' +
+        window.__cachedAccounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
     }
+
+    if (prefillFile) window.assignLineAttachment(rowId, prefillFile);
+  };
+
+  window.toggleCategoryNote = (selectEl) => {
+    const note = selectEl.closest('td').querySelector('.grid-category-note');
+    note.style.display = selectEl.value === '其他' ? 'block' : 'none';
+  };
+
+  window.toggleProxyPayer = (checkboxEl) => {
+    const cell = checkboxEl.closest('td');
+    const proxyInput = cell.querySelector('.grid-proxy-id');
+    const proxyName = cell.querySelector('.grid-proxy-name');
+    proxyInput.style.display = checkboxEl.checked ? 'block' : 'none';
+    if (!checkboxEl.checked) { proxyInput.value = ''; proxyName.innerText = ''; }
+  };
+
+  window.fetchProxyPayerName = async (inputEl) => {
+    const identifier = inputEl.value.trim();
+    const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
+    if (!identifier) { nameSpan.innerText = ''; return; }
+    nameSpan.innerText = '查詢中...';
+    const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
+    nameSpan.innerText = data ? `代付人：${data.name}` : '（查無代付人資料）';
   };
 
   window.assignLineAttachment = (rowId, file) => {
@@ -1411,35 +1444,43 @@ const voucherLineAttachments = {}; // { rowId: File }
         let calculatedTotal = 0;
 
         rows.forEach((row, index) => {
-          const descInput = row.querySelector('.grid-desc');
+          const descInput = row.querySelector('.grid-category-note');
+          const categorySelect = row.querySelector('.grid-item-category');
           const amtInput = row.querySelector('.grid-amount');
           const invTypeInput = row.querySelector('.grid-inv-type');
           const invNumInput = row.querySelector('.grid-inv-num');
           const accountSelect = row.querySelector('.line-account-code');
+          const payeeIdInput = row.querySelector('.grid-payee-id');
+          const payeeNameSpan = row.querySelector('.grid-payee-name');
+          const proxyCheck = row.querySelector('.grid-proxy-check');
+          const proxyIdInput = row.querySelector('.grid-proxy-id');
+          const proxyNameSpan = row.querySelector('.grid-proxy-name');
 
-          if (!descInput || !amtInput) return;
+          const amt = Number(amtInput?.value || 0);
+          const category = categorySelect ? categorySelect.value : '';
+          const categoryNote = category === '其他' ? (descInput?.value.trim() || '') : '';
+          const description = category === '其他' ? categoryNote : category;
 
-          const desc = descInput.value.trim();
-          const amt = Number(amtInput.value || 0);
-          const invType = invTypeInput ? invTypeInput.value : '無';
-          const invNum = invNumInput ? invNumInput.value.trim() : '';
-          const accountCode = accountSelect ? accountSelect.value : '6100';
-
-          // 過濾空白列
-          if (!desc || amt <= 0) return;
-
-          calculatedTotal += amt;
+          if (!description || amt <= 0) return;
 
           detailLines.push({
-            description: desc,
-            account_code: accountCode,
-            amount: amt
+            description,
+            item_category: category,
+            item_category_note: categoryNote,
+            account_code: accountSelect ? (accountSelect.value || null) : null,
+            amount: amt,
+            payee_identifier: payeeIdInput?.value.trim() || null,
+            payee_name: payeeNameSpan?.innerText.includes('查無') ? null : (payeeNameSpan?.innerText || null),
+            is_proxy_payment: proxyCheck?.checked || false,
+            proxy_payer_identifier: proxyCheck?.checked ? (proxyIdInput?.value.trim() || null) : null,
+            proxy_payer_name: proxyCheck?.checked ? (proxyNameSpan?.innerText.replace('代付人：', '') || null) : null
           });
 
+          const invType = invTypeInput ? invTypeInput.value : '無';
           if (invType !== '無') {
             invoiceLines.push({
               invoice_type: invType,
-              invoice_number: invNum || null,
+              invoice_number: invNumInput?.value.trim() || null,
               amount: amt,
               tax_amount: 0
             });
@@ -1621,7 +1662,7 @@ async function populateVoucherFormOptions() {
     ]);
 
     window.__cachedAccounts = accounts;
-    
+
     // 控制會計專用區塊顯示
     const role = state.currentUser?.role;
     const acctGroup = document.getElementById('accountingFieldsGroup');
