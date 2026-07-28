@@ -1657,6 +1657,8 @@ if (document.readyState === 'loading') {
 
 async function populateVoucherFormOptions() {
   try {
+    const accounts = await fetchAccounts(); // 撈取所有會計科目
+    const banks = await fetchBankAccounts(); // 你原本應該有這行
     const [accounts, banks, departments] = await Promise.all([
       fetchAccounts(), fetchBankAccounts(), fetchDepartments()
     ]);
@@ -2361,8 +2363,10 @@ window.openAccountingReviewModal = async (voucherId) => {
           <h4 style="margin-top:20px;">歸帳設定</h4>
           <label>會計科目：</label>
           <select id="reviewAccountCode" style="width:100%; padding:8px; margin:8px 0;">
-            <option value="6100">6100 營業費用</option>
-            <option value="1601">1601 固定資產</option>
+            <option value="">請選擇歸帳科目...</option>
+            ${accounts.map(acc => `
+              <option value="${acc.code}">${acc.code} ${acc.name}</option>
+            `).join('')}
           </select>
 
           <label>付款銀行帳戶：</label>
