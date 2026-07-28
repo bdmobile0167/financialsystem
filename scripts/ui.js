@@ -1657,8 +1657,6 @@ if (document.readyState === 'loading') {
 
 async function populateVoucherFormOptions() {
   try {
-    const accounts = await fetchAccounts(); // 撈取所有會計科目
-    const banks = await fetchBankAccounts(); // 你原本應該有這行
     const [accounts, banks, departments] = await Promise.all([
       fetchAccounts(), fetchBankAccounts(), fetchDepartments()
     ]);
