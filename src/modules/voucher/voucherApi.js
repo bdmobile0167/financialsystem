@@ -41,10 +41,27 @@ export async function fetchWorkflowLogs(voucherId) {
 }
 
 async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason = null) {
-  const { data: { user } } = await supabase.auth.getUser();
+  // 1. 嚴格確認登入狀態
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError) throw authError;
+  if (!user) {
+    throw new Error('尚未登入或登入狀態已失效，無法紀錄送件人 (User is null)');
+  }
+
+  // 💡 關鍵偵錯：印出當前抓到的 User ID
+  console.log('🕵️ 準備寫入 Workflow Log 的 User ID:', user.id);
+
+  // 2. 寫入日誌
   const { error } = await supabase.from('voucher_workflow_logs').insert({
-    voucher_id: voucherId, actor_id: user.id, action, from_status: fromStatus, to_status: toStatus, reject_reason: rejectReason
+    voucher_id: voucherId,
+    actor_id: user.id,
+    action,
+    from_status: fromStatus,
+    to_status: toStatus,
+    reject_reason: rejectReason
   });
+  
   if (error) throw error;
 }
 
@@ -80,26 +97,37 @@ export async function createVoucher(payload) {
   if (error) throw error;
 
   if (detailLines && detailLines.length > 0) {
-    const missingAccountLineIndex = detailLines.findIndex(
-      l => !l.account_code || String(l.account_code).trim() === ''
-    );
-    // 如果找到任何一行的 account_code 是空的，立刻拋出錯誤中斷執行
-    if (missingAccountLineIndex !== -1) {
-      throw new Error(`報支單明細第 ${missingAccountLineIndex + 1} 行缺少「會計科目代碼 (account_code)」，請確認填寫完整後再送出。`);
+    // 💡 關鍵偵錯：把前端實際傳進來的資料印出來看（請按 F12 去 Console 查看）
+    console.log('🕵️ 前端傳進來的 detailLines 真面目：', JSON.stringify(detailLines, null, 2));
+
+    // 1. 組裝 finalLines，並使用「寬鬆比對」抓取科目代碼
+    const finalLines = detailLines.map(l => {
+      // 嘗試抓取各種可能的前端命名變數（account_code, accountCode, account...）
+      const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
+      // 確保轉為字串並去除空白
+      const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
+
+      return {
+        voucher_id: voucher.id,
+        description: l.description,
+        account_code: cleanCode !== '' ? cleanCode : null, // 確保完全空白會變成 null
+        amount: l.amount,
+        item_category: l.item_category || null,
+        item_category_note: l.item_category_note || null,
+        payee_identifier: l.payee_identifier || null,
+        payee_name: l.payee_name || null,
+        is_proxy_payment: l.is_proxy_payment || false,
+        proxy_payer_identifier: l.proxy_payer_identifier || null,
+        proxy_payer_name: l.proxy_payer_name || null
+      };
+    });
+    // 2. 嚴格檢查轉換後的結果，如果還是空的，代表前端真的沒把值傳過來
+    const missingIndex = finalLines.findIndex(x => !x.account_code);
+    if (missingIndex !== -1) {
+      throw new Error(`報支單明細第 ${missingIndex + 1} 行缺少「會計科目代碼」。(請工程師按 F12 查看 Console 檢查前端變數名稱是否綁定錯誤)`);
     }
-    const finalLines = detailLines.map(l => ({
-      voucher_id: voucher.id,
-      description: l.description,
-      account_code: l.account_code || null,
-      amount: l.amount,
-      item_category: l.item_category || null,
-      item_category_note: l.item_category_note || null,
-      payee_identifier: l.payee_identifier || null,
-      payee_name: l.payee_name || null,
-      is_proxy_payment: l.is_proxy_payment || false,
-      proxy_payer_identifier: l.proxy_payer_identifier || null,
-      proxy_payer_name: l.proxy_payer_name || null
-    }));
+
+    // 3. 寫入資料庫
     const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
     if (lineError) throw lineError;
   }
