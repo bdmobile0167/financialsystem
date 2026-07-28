@@ -2695,12 +2695,13 @@ window.processPayment = async (voucherId, totalAmount) => {
     // 4. 狀態改 closed
     await supabase
       .from('vouchers')
-      .update({
-        status: 'closed',
-        closed_at: new Date().toISOString(),
-        payment_date: today
+      .update({ 
+        status: 'closed', 
+        closed_at: new Date().toISOString() 
       })
       .eq('id', voucherId);
+
+    alert('付款結案成功！');
 
     // 5. 寫歷程
     await supabase.from('voucher_workflow_logs').insert({
@@ -2711,11 +2712,12 @@ window.processPayment = async (voucherId, totalAmount) => {
       to_status: 'closed'
     });
 
-    alert('付款完成');
+   // 重新渲染畫面
     if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
     if (typeof renderDashboard === 'function') renderDashboard();
+
   } catch (err) {
     console.error(err);
-    alert('付款失敗：' + err.message);
+    alert(`付款結案失敗：${err.message}`);
   }
-};
+}; // 確保函式有正確閉合
