@@ -218,6 +218,7 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 }
 
 // 會計執行歸帳並付款銷案
+// 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {
     const { data: voucher, error: vError } = await supabase
@@ -236,10 +237,37 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       .eq('id', bankAccountId);
     if (bankError) throw bankError;
 
+    // 💡 1. 自動判斷傳進來的是 UUID 還是 Code，並查出完整的科目資訊
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountCodeId);
+    
+    const { data: debitAcc, error: debitAccError } = await supabase
+      .from('accounts')
+      .select('id, code')
+      .filter(isUuid ? 'id' : 'code', 'eq', accountCodeId)
+      .single();
+
+    if (debitAccError || !debitAcc) {
+      throw new Error(`找不到對應的借方會計科目 (${accountCodeId})，請確認科目是否存在。`);
+    }
+
+    // 💡 2. 查詢貸方科目 (1102 銀行存款)
+    const { data: creditAcc, error: creditAccError } = await supabase
+      .from('accounts')
+      .select('id, code')
+      .eq('code', '1102')
+      .single();
+
+    if (creditAccError || !creditAcc) {
+      throw new Error('找不到貸方預設科目 (1102 銀行存款)，請確認 accounts 資料表是否有此代碼。');
+    }
+
+    // 💡 3. 寫入日記帳（同時帶入 id 與 code 確保相容性）
     const { error: jeError } = await supabase.from('journal_entries').insert([{
       voucher_id: voucherId,
-      debit_account_id: accountCodeId,
-      credit_account_id: (await supabase.from('accounts').select('id').eq('code', '1102').single()).data?.id,
+      debit_account_id: debitAcc.id,
+      debit_account_code: debitAcc.code,
+      credit_account_id: creditAcc.id,
+      credit_account_code: creditAcc.code,
       debit_amount: voucher.total_amount,
       credit_amount: voucher.total_amount,
       entry_date: paymentDate,
