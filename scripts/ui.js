@@ -1924,7 +1924,7 @@ async function renderVoucherWorkflowList() {
             <button class="btn-small danger cancel-voucher-btn" data-id="${row.id}">撤回</button>
           `;
         } else if (['manager_rejected', 'accounting_rejected'].includes(vStatus)) {
-          actionButtons = `<button class="btn-small secondary edit-voucher-btn" data-id="${row.id}">修改並重送</button>`;
+          actionButtons = `<button class="btn-small secondary" onclick="openResubmitModal('${row.id}')">修改並重送</button>`;
         } else {
           actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
@@ -3002,3 +3002,89 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// 1. 點擊「修改並重送」時，彈出帶有原資料的修改視窗
+window.openResubmitModal = async (voucherId) => {
+  try {
+    // 取得該張被退件的報支單詳細資料
+    const { data: vch, error } = await supabase
+      .from('vouchers')
+      .select('*')
+      .eq('id', voucherId)
+      .single();
+    
+    if (error || !vch) throw new Error('無法取得報支單資料');
+
+    // 建立或取得共用的修改 Modal
+    let modal = document.getElementById('resubmitModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'resubmitModal';
+      modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:9999;";
+      document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:500px; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+          <h3 style="margin:0;">修改並重送報支單 [${vch.voucher_no || '未編號'}]</h3>
+          <button onclick="document.getElementById('resubmitModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="font-weight:bold; font-size:14px;">摘要主旨：</label><br>
+          <input type="text" id="resubmit-summary" value="${vch.summary || ''}" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="font-weight:bold; font-size:14px;">總金額：</label><br>
+          <input type="number" id="resubmit-amount" value="${vch.total_amount || 0}" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+
+        <div style="text-align:right; display:flex; justify-content:flex-end; gap:10px;">
+          <button onclick="document.getElementById('resubmitModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">取消</button>
+          <button onclick="submitResubmission('${vch.id}')" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">確認修改並重送</button>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    alert('開啟修改視窗失敗：' + err.message);
+  }
+};
+
+// 2. 執行確認重送，呼叫您原本寫好的 resubmitVoucher API
+window.submitResubmission = async (voucherId) => {
+  const summaryInput = document.getElementById('resubmit-summary');
+  const amountInput = document.getElementById('resubmit-amount');
+
+  if (!summaryInput || !amountInput) return;
+
+  const summary = summaryInput.value.trim();
+  const amount = Number(amountInput.value);
+
+  if (!summary) {
+    alert('摘要主旨不能為空！');
+    return;
+  }
+  if (amount <= 0) {
+    alert('金額必須大於 0！');
+    return;
+  }
+
+  try {
+    // 呼叫您在 API 層定義好的 resubmitVoucher 函式
+    await resubmitVoucher({ id: voucherId }, { summary, amount });
+
+    alert('修改並重送成功！單據已重新送交主管審核。');
+    
+    // 關閉 Modal
+    document.getElementById('resubmitModal').style.display = 'none';
+    
+    // 重新整理列表與儀表板
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+    if (typeof renderDashboard === 'function') renderDashboard();
+  } catch (err) {
+    alert('重送失敗：' + err.message);
+  }
+};
