@@ -40,29 +40,32 @@ export async function fetchWorkflowLogs(voucherId) {
   return data;
 }
 
-async function logWorkflow(voucherId, action, fromStatus, toStatus, rejectReason = null) {
-  // 1. 嚴格確認登入狀態
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  
-  if (authError) throw authError;
-  if (!user) {
-    throw new Error('尚未登入或登入狀態已失效，無法紀錄送件人 (User is null)');
+// 修正後的 logWorkflow 範例
+async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = null) {
+  const user = state.currentUser;
+
+  // 💡 根據資料庫允許的 Check 條件，做統一轉換對應
+  let dbAction = action;
+  if (action === 'manager_approve' || action === 'accounting_approve') {
+    dbAction = 'approve'; // 確保資料庫接受此字串
+  } else if (action === 'manager_reject' || action === 'reject') {
+    dbAction = 'reject';
+  } else if (action === 'resubmit') {
+    dbAction = 'submit';
   }
 
-  // 💡 關鍵偵錯：印出當前抓到的 User ID
-  console.log('🕵️ 準備寫入 Workflow Log 的 User ID:', user.id);
-
-  // 2. 寫入日誌
   const { error } = await supabase.from('voucher_workflow_logs').insert({
     voucher_id: voucherId,
-    actor_id: user.id,
-    action,
+    actor_id: user?.id,
+    action: dbAction,        // 使用轉換後的安全字串
     from_status: fromStatus,
     to_status: toStatus,
-    reject_reason: rejectReason
+    reject_reason: reason
   });
-  
-  if (error) throw error;
+
+  if (error) {
+    console.error('寫入 Workflow Log 失敗:', error);
+  }
 }
 
 export async function createVoucher(payload) {
@@ -217,7 +220,6 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
   await logWorkflow(voucher.id, 'resubmit', voucher.status, 'pending_review');
 }
 
-// 會計執行歸帳並付款銷案
 // 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {
