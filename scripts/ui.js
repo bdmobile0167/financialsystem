@@ -1513,9 +1513,12 @@ const voucherLineAttachments = {}; // { rowId: File }
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
         
-        // 補上部門與主管 ID 的取得，避免後續傳入 payload 時發生 ReferenceError
         const departmentId = document.getElementById('vDepartment')?.value || null;
         const managerId = document.getElementById('vManagerPicker')?.value || null;
+        
+        // 👉 補上抓取行程起日與迄日
+        const tripStart = document.getElementById('vTripStart')?.value || null;
+        const tripEnd = document.getElementById('vTripEnd')?.value || null;
         
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
@@ -1572,7 +1575,6 @@ const voucherLineAttachments = {}; // { rowId: File }
           throw new Error('請至少填寫一筆有效的摘要與金額！');
         }
 
-        // 僅宣告一次 attachmentsMap
         const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
 
         // ==================== 整理成 Payload 包裹 ====================
@@ -1589,10 +1591,11 @@ const voucherLineAttachments = {}; // { rowId: File }
           detailLines: detailLines,
           invoiceLines: invoiceLines,
           attachmentsMap: attachmentsMap,
-          rows: rows
+          rows: rows,
+          tripStartDate: tripStart,  // 👉 確實傳遞時程起日
+          tripEndDate: tripEnd       // 👉 確實傳遞時程迄日
         };
 
-        // ==================== 呼叫獨立的 API ====================
         const result = await createVoucher(voucherPayload);
 
         if (!result || !result.success) {

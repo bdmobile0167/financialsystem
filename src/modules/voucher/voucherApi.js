@@ -40,45 +40,53 @@ export async function fetchWorkflowLogs(voucherId) {
   return data;
 }
 
-// 修正後的 logWorkflow 範例
+// 1. 修正後的 logWorkflow（避免 state 未定義導致崩潰）
 async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = null) {
-  const user = state.currentUser;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const actorId = user?.id || (typeof state !== 'undefined' ? state.currentUser?.id : null);
 
-  // 💡 根據資料庫允許的 Check 條件，做統一轉換對應
-  let dbAction = action;
-  if (action === 'manager_approve' || action === 'accounting_approve') {
-    dbAction = 'approve'; // 確保資料庫接受此字串
-  } else if (action === 'manager_reject' || action === 'reject') {
-    dbAction = 'reject';
-  } else if (action === 'resubmit') {
-    dbAction = 'submit';
-  }
+    let dbAction = action;
+    if (action === 'manager_approve' || action === 'accounting_approve') {
+      dbAction = 'approve';
+    } else if (action === 'manager_reject' || action === 'reject') {
+      dbAction = 'reject';
+    } else if (action === 'resubmit') {
+      dbAction = 'submit';
+    }
 
-  const { error } = await supabase.from('voucher_workflow_logs').insert({
-    voucher_id: voucherId,
-    actor_id: user?.id,
-    action: dbAction,        // 使用轉換後的安全字串
-    from_status: fromStatus,
-    to_status: toStatus,
-    reject_reason: reason
-  });
+    const { error } = await supabase.from('voucher_workflow_logs').insert({
+      voucher_id: voucherId,
+      actor_id: actorId,
+      action: dbAction,
+      from_status: fromStatus,
+      to_status: toStatus,
+      reject_reason: reason
+    });
 
-  if (error) {
-    console.error('寫入 Workflow Log 失敗:', error);
+    if (error) {
+      console.error('寫入 Workflow Log 失敗:', error);
+    }
+  } catch (err) {
+    console.error('logWorkflow 執行異常:', err);
   }
 }
 
+// 2. 修正後的 createVoucher（完整支援專案、時程、附件名稱、申請人 ID）
 export async function createVoucher(payload) {
   const {
     txDate, category = '營業', summary, departmentId, currentManagerId,
     projectId, totalAmount, status = 'pending_review',
     detailLines, invoiceLines, attachmentsMap, rows,
-    voucherType = '發票', manualNumber = ''
+    voucherType = '发票', manualNumber = '',
+    tripStartDate, tripEndDate, applicantId
   } = payload;
 
   const { data: { user } } = await supabase.auth.getUser();
+  const finalApplicantId = applicantId || user?.id;
   const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
+  // 1. 建立主檔（包含專案與時程）
   const { data: voucher, error } = await supabase
     .from('vouchers')
     .insert({
@@ -87,33 +95,33 @@ export async function createVoucher(payload) {
       category,
       summary,
       department_id: departmentId,
-      applicant_id: user.id,
+      applicant_id: finalApplicantId,
       current_manager_id: currentManagerId || null,
       total_amount: totalAmount,
       project_id: projectId && projectId !== 'all' ? projectId : null,
-      status: status
-      // ⛔ 不要在這裡放 bank_account_id，付款資訊只在會計「歸帳銷案」時才決定
+      status: status,
+      trip_start_date: tripStartDate || null,
+      trip_end_date: tripEndDate || null
     })
     .select()
     .single();
 
   if (error) throw error;
 
+  // 2. 建立明細行（包含附件檔名記錄）
   if (detailLines && detailLines.length > 0) {
-    // 💡 關鍵偵錯：把前端實際傳進來的資料印出來看（請按 F12 去 Console 查看）
-    console.log('🕵️ 前端傳進來的 detailLines 真面目：', JSON.stringify(detailLines, null, 2));
+    const finalLines = detailLines.map((l, index) => {
+      const row = rows ? rows[index] : null;
+      const rowId = row?.dataset?.rowId;
+      const file = rowId && attachmentsMap ? attachmentsMap[rowId] : null;
 
-    // 1. 組裝 finalLines，並使用「寬鬆比對」抓取科目代碼
-    const finalLines = detailLines.map(l => {
-      // 嘗試抓取各種可能的前端命名變數（account_code, accountCode, account...）
       const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
-      // 確保轉為字串並去除空白
       const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
 
       return {
         voucher_id: voucher.id,
         description: l.description,
-        account_code: cleanCode !== '' ? cleanCode : null, // 確保完全空白會變成 null
+        account_code: cleanCode !== '' ? cleanCode : null,
         amount: l.amount,
         item_category: l.item_category || null,
         item_category_note: l.item_category_note || null,
@@ -121,20 +129,16 @@ export async function createVoucher(payload) {
         payee_name: l.payee_name || null,
         is_proxy_payment: l.is_proxy_payment || false,
         proxy_payer_identifier: l.proxy_payer_identifier || null,
-        proxy_payer_name: l.proxy_payer_name || null
+        proxy_payer_name: l.proxy_payer_name || null,
+        attachment_name: file?.name || l.attachment_name || null
       };
     });
-    // 2. 嚴格檢查轉換後的結果，如果還是空的，代表前端真的沒把值傳過來
-    const missingIndex = finalLines.findIndex(x => !x.account_code);
-    //if (missingIndex !== -1) {
-    //  throw new Error(`報支單明細第 ${missingIndex + 1} 行缺少「會計科目代碼」。(請工程師按 F12 查看 Console 檢查前端變數名稱是否綁定錯誤)`);
-    //}
 
-    // 3. 寫入資料庫
     const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
     if (lineError) throw lineError;
   }
 
+  // 3. 建立發票明細（確保多筆發票完整存入）
   if (invoiceLines && invoiceLines.length > 0) {
     const finalInvoices = invoiceLines.map(i => ({
       voucher_id: voucher.id,
@@ -147,8 +151,9 @@ export async function createVoucher(payload) {
     if (invoiceError) throw invoiceError;
   }
 
+  // 4. 上傳實際實體檔案至儲存空間
   if (rows && attachmentsMap) {
-    const attachmentUploads = Array.from(rows).map(async (row) => {
+    const attachmentUploads = Array.from(rows).map(async (row, index) => {
       const rowId = row.dataset.rowId;
       const file = attachmentsMap[rowId];
       if (!file) return;
@@ -158,6 +163,7 @@ export async function createVoucher(payload) {
     await Promise.all(attachmentUploads);
   }
 
+  // 5. 寫入審批歷程
   await logWorkflow(voucher.id, 'submit', null, 'pending_review');
   return { success: true, data: voucher };
 }
