@@ -2001,35 +2001,108 @@ async function populateProjectDepartmentSelect() {
   }
 }
 
+// 1. 渲染專案列表（包含可修改名稱、預算即時連動剩餘金額）
 async function renderProjectList() {
   const container = document.getElementById('projectList');
   if (!container) return;
+
   try {
     const projects = await fetchProjects();
     const depts = await fetchDepartments();
     const deptOptions = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
 
-    container.innerHTML = projects.map(p => `
-      <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;" id="project-card-${p.id}">
-        <strong>${p.project_code || '無編號'} - ${p.name}</strong><br>
-        預算：<input type="number" id="edit-budget-${p.id}" value="${p.total_budget || 0}" style="width:100px;"> | 剩餘：${Number(p.remaining_budget || 0).toLocaleString()}<br>
-        部門：<select id="edit-dept-${p.id}">
-                <option value="">無部門</option>
-                ${deptOptions}
-             </select><br>
-        <div style="margin-top: 8px;">
-            <button onclick="updateProject('${p.id}')" class="primary-btn">儲存修改</button>
-            <button onclick="deleteProject('${p.id}')" class="danger">刪除</button>
+    container.innerHTML = projects.map(p => {
+      const totalBudget = Number(p.total_budget || 0);
+      const remainingBudget = Number(p.remaining_budget || 0);
+      
+      // 計算該專案已使用的金額 (已用 = 總預算 - 剩餘)
+      const usedBudget = totalBudget - remainingBudget;
+
+      return `
+        <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;" id="project-card-${p.id}">
+          <div style="margin-bottom: 6px;">
+            <strong>${p.project_code || '無編號'} - </strong>
+            <input type="text" id="edit-name-${p.id}" value="${p.name || ''}" placeholder="專案名稱" style="width: 180px; padding: 2px 6px;">
+          </div>
+          
+          <div style="margin-bottom: 6px;">
+            預算：<input type="number" id="edit-budget-${p.id}" value="${totalBudget}" style="width:110px;" oninput="calcRemainingPreview('${p.id}', ${usedBudget})"> 
+            | 剩餘：<span id="remaining-display-${p.id}">${remainingBudget.toLocaleString()}</span>
+          </div>
+
+          <div>
+            部門：<select id="edit-dept-${p.id}">
+                    <option value="">無部門</option>
+                    ${deptOptions}
+                 </select>
+          </div>
+
+          <div style="margin-top: 8px;">
+              <button onclick="updateProject('${p.id}')" class="primary-btn">儲存修改</button>
+              <button onclick="deleteProject('${p.id}')" class="danger">刪除</button>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+
     // 將各專案原本的部門選上
     projects.forEach(p => {
       const select = document.getElementById(`edit-dept-${p.id}`);
       if (select && p.department_id) select.value = p.department_id;
     });
   } catch (e) {
+    console.error('載入專案失敗:', e);
     container.innerHTML = '<p class="muted">載入專案失敗</p>';
+  }
+}
+
+// 2. 即時試算剩餘金額（當使用者在預算欄位輸入時觸發）
+function calcRemainingPreview(id, usedBudget) {
+  const budgetInput = document.getElementById(`edit-budget-${id}`);
+  const remainingDisplay = document.getElementById(`remaining-display-${id}`);
+  if (!budgetInput || !remainingDisplay) return;
+
+  const newBudget = Number(budgetInput.value) || 0;
+  // 新剩餘金額 = 新預算 - 已使用金額
+  const newRemaining = newBudget - usedBudget;
+  remainingDisplay.textContent = newRemaining.toLocaleString();
+}
+
+// 3. 儲存專案修改（更新 Name、Total Budget 與 Department）
+async function updateProject(id) {
+  const nameInput = document.getElementById(`edit-name-${id}`);
+  const budgetInput = document.getElementById(`edit-budget-${id}`);
+  const deptSelect = document.getElementById(`edit-dept-${id}`);
+
+  if (!nameInput || !budgetInput || !deptSelect) return;
+
+  const newName = nameInput.value.trim();
+  const newBudget = Number(budgetInput.value) || 0;
+  const newDeptId = deptSelect.value || null;
+
+  if (!newName) {
+    alert('專案名稱不能為空！');
+    return;
+  }
+
+  try {
+    // 呼叫 Supabase 更新資料庫（請確認資料庫 Table 欄位名稱是否為 name, total_budget, department_id）
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        name: newName,
+        total_budget: newBudget,
+        department_id: newDeptId
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    alert('專案更新成功！');
+    renderProjectList(); // 重新載入，同步資料庫最新計算狀態
+  } catch (e) {
+    console.error('更新專案失敗:', e);
+    alert('更新失敗：' + (e.message || '請稍後再試'));
   }
 }
 
