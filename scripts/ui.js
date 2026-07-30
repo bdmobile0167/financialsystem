@@ -3003,17 +3003,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// 1. 點擊「修改並重送」時，彈出帶有原資料的修改視窗
+// 1. 彈出包含全部欄位（日期、專案、摘要、明細、發票、金額）的完整修改視窗
 window.openResubmitModal = async (voucherId) => {
   try {
-    // 取得該張被退件的報支單詳細資料
-    const { data: vch, error } = await supabase
-      .from('vouchers')
-      .select('*')
-      .eq('id', voucherId)
-      .single();
-    
-    if (error || !vch) throw new Error('無法取得報支單資料');
+    // A. 抓取該張單據的主檔、明細、發票資料，以及所有專案列表（供專案下拉選單使用）
+    const [
+      { data: vch, error: vErr },
+      { data: lines, error: lErr },
+      { data: invoices, error: iErr },
+      { data: projects, error: pErr }
+    ] = await Promise.all([
+      supabase.from('vouchers').select('*').eq('id', voucherId).single(),
+      supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId),
+      supabase.from('invoices').select('*').eq('voucher_id', voucherId),
+      supabase.from('projects').select('id, name, project_code')
+    ]);
+
+    if (vErr || !vch) throw new Error('無法取得報支單主檔資料');
+
+    // 建立專案下拉選單選項
+    const projectOptions = (projects || []).map(p => 
+      `<option value="${p.id}" ${p.id === vch.project_id ? 'selected' : ''}>${p.project_code ? p.project_code + ' - ' : ''}${p.name}</option>`
+    ).join('');
+
+    const invoice = invoices?.[0] || { invoice_type: '發票', invoice_number: '' };
 
     // 建立或取得共用的修改 Modal
     let modal = document.getElementById('resubmitModal');
@@ -3026,25 +3039,72 @@ window.openResubmitModal = async (voucherId) => {
 
     modal.style.display = 'flex';
     modal.innerHTML = `
-      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:500px; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
           <h3 style="margin:0;">修改並重送報支單 [${vch.voucher_no || '未編號'}]</h3>
           <button onclick="document.getElementById('resubmitModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
         </div>
 
+        <!-- 主檔欄位：日期、專案、摘要 -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label style="font-weight:bold; font-size:13px;">申請日期：</label><br>
+            <input type="date" id="resubmit-date" value="${vch.tx_date || vch.created_at?.split('T')[0] || ''}" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+          </div>
+          <div>
+            <label style="font-weight:bold; font-size:13px;">專案名稱：</label><br>
+            <select id="resubmit-project" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+              <option value="">-- 無專案 --</option>
+              ${projectOptions}
+            </select>
+          </div>
+        </div>
+
         <div style="margin-bottom: 12px;">
-          <label style="font-weight:bold; font-size:14px;">摘要主旨：</label><br>
-          <input type="text" id="resubmit-summary" value="${vch.summary || ''}" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+          <label style="font-weight:bold; font-size:13px;">摘要主旨：</label><br>
+          <input type="text" id="resubmit-summary" value="${vch.summary || ''}" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
         </div>
 
-        <div style="margin-bottom: 15px;">
-          <label style="font-weight:bold; font-size:14px;">總金額：</label><br>
-          <input type="number" id="resubmit-amount" value="${vch.total_amount || 0}" style="width:100%; padding:8px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+        <!-- 發票 / 收據資訊 -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:15px; background:#f9f9f9; padding:10px; border-radius:4px;">
+          <div>
+            <label style="font-weight:bold; font-size:13px;">發票或收據：</label><br>
+            <select id="resubmit-inv-type" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+              <option value="發票" ${invoice.invoice_type === '發票' ? 'selected' : ''}>發票</option>
+              <option value="收據" ${invoice.invoice_type === '收據' ? 'selected' : ''}>收據</option>
+              <option value="其他" ${invoice.invoice_type === '其他' ? 'selected' : ''}>其他</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:bold; font-size:13px;">發票/收據號碼：</label><br>
+            <input type="text" id="resubmit-inv-num" value="${invoice.invoice_number || ''}" placeholder="例如: AB12345678" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
+          </div>
         </div>
 
-        <div style="text-align:right; display:flex; justify-content:flex-end; gap:10px;">
+        <!-- 項目說明與金額列表 -->
+        <h4 style="margin:15px 0 8px 0; border-left:4px solid #007bff; padding-left:8px; font-size:14px;">報支明細項目</h4>
+        <div id="resubmit-lines-container" style="margin-bottom:15px;">
+          ${(lines && lines.length > 0) ? lines.map((l, index) => `
+            <div class="resubmit-line-row" style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+              <input type="text" class="line-desc" value="${l.description || ''}" placeholder="項目說明" style="flex:2; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              <input type="number" class="line-amount" value="${l.amount || 0}" placeholder="金額" oninput="calcResubmitTotal()" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+          `).join('') : `
+            <div class="resubmit-line-row" style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+              <input type="text" class="line-desc" value="${vch.summary || ''}" placeholder="項目說明" style="flex:2; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              <input type="number" class="line-amount" value="${vch.total_amount || 0}" placeholder="金額" oninput="calcResubmitTotal()" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+          `}
+        </div>
+
+        <div style="text-align:right; margin-bottom:15px; font-size:15px; font-weight:bold; color:#d9534f;">
+          重新計算總金額：$ <span id="resubmit-total-display">${Number(vch.total_amount || 0).toLocaleString()}</span>
+        </div>
+
+        <!-- 按鈕區 -->
+        <div style="text-align:right; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #eee; padding-top:15px;">
           <button onclick="document.getElementById('resubmitModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">取消</button>
-          <button onclick="submitResubmission('${vch.id}')" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">確認修改並重送</button>
+          <button onclick="submitFullResubmission('${vch.id}')" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">確認修改並重送</button>
         </div>
       </div>
     `;
@@ -3053,38 +3113,112 @@ window.openResubmitModal = async (voucherId) => {
   }
 };
 
-// 2. 執行確認重送，呼叫您原本寫好的 resubmitVoucher API
-window.submitResubmission = async (voucherId) => {
-  const summaryInput = document.getElementById('resubmit-summary');
-  const amountInput = document.getElementById('resubmit-amount');
+// 2. 即時計算明細總金額
+window.calcResubmitTotal = () => {
+  const amountInputs = document.querySelectorAll('.resubmit-line-row .line-amount');
+  let total = 0;
+  amountInputs.forEach(input => {
+    total += Number(input.value) || 0;
+  });
+  const display = document.getElementById('resubmit-total-display');
+  if (display) display.textContent = total.toLocaleString();
+};
 
-  if (!summaryInput || !amountInput) return;
-
-  const summary = summaryInput.value.trim();
-  const amount = Number(amountInput.value);
+// 3. 提交全部修改資料至資料庫，並將狀態改回 pending_review 重新送審
+window.submitFullResubmission = async (voucherId) => {
+  const txDate = document.getElementById('resubmit-date').value;
+  const projectId = document.getElementById('resubmit-project').value || null;
+  const summary = document.getElementById('resubmit-summary').value.trim();
+  const invType = document.getElementById('resubmit-inv-type').value;
+  const invNum = document.getElementById('resubmit-inv-num').value.trim();
 
   if (!summary) {
     alert('摘要主旨不能為空！');
     return;
   }
-  if (amount <= 0) {
-    alert('金額必須大於 0！');
+
+  // 收集明細項目
+  const lineRows = document.querySelectorAll('.resubmit-line-row');
+  const newLines = [];
+  let totalAmount = 0;
+
+  lineRows.forEach(row => {
+    const desc = row.querySelector('.line-desc').value.trim();
+    const amt = Number(row.querySelector('.line-amount').value) || 0;
+    if (desc || amt > 0) {
+      newLines.push({
+        voucher_id: voucherId,
+        description: desc || summary,
+        amount: amt
+      });
+      totalAmount += amt;
+    }
+  });
+
+  if (newLines.length === 0) {
+    alert('至少需要有一筆有效的報支明細！');
     return;
   }
 
   try {
-    // 呼叫您在 API 層定義好的 resubmitVoucher 函式
-    await resubmitVoucher({ id: voucherId }, { summary, amount });
+    // 1. 更新主檔 (vouchers)：包含日期、專案、摘要、總金額，並將狀態改回 pending_review
+    const { error: vUpdateErr } = await supabase
+      .from('vouchers')
+      .update({
+        tx_date: txDate,
+        project_id: projectId,
+        summary: summary,
+        total_amount: totalAmount,
+        status: 'pending_review',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', voucherId);
+
+    if (vUpdateErr) throw vUpdateErr;
+
+    // 2. 更新明細檔 (voucher_lines)：先刪除舊明細，再重新插入修改後的明細
+    await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId);
+    const { error: lInsertErr } = await supabase.from('voucher_lines').insert(newLines);
+    if (lInsertErr) throw lInsertErr;
+
+    // 3. 更新發票檔 (invoices)：檢查原本有沒有發票，沒有則新增，有則更新
+    const { data: existingInvoices } = await supabase.from('invoices').select('id').eq('voucher_id', voucherId);
+    if (existingInvoices && existingInvoices.length > 0) {
+      await supabase.from('invoices').update({
+        invoice_type: invType,
+        invoice_number: invNum
+      }).eq('voucher_id', voucherId);
+    } else if (invNum) {
+      await supabase.from('invoices').insert({
+        voucher_id: voucherId,
+        invoice_type: invType,
+        invoice_number: invNum
+      });
+    }
+
+    // 4. 寫入工作流歷程紀錄 (Workflow Log)
+    // 依據您前面修正過的 logWorkflow 邏輯，寫入 submit 狀態
+    if (typeof logWorkflow === 'function') {
+      await logWorkflow(voucherId, 'resubmit', 'rejected', 'pending_review');
+    } else {
+      await supabase.from('voucher_workflow_logs').insert({
+        voucher_id: voucherId,
+        actor_id: state.currentUser?.id,
+        action: 'submit',
+        from_status: 'rejected',
+        to_status: 'pending_review'
+      });
+    }
 
     alert('修改並重送成功！單據已重新送交主管審核。');
     
-    // 關閉 Modal
+    // 關閉視窗並重新整理畫面列表
     document.getElementById('resubmitModal').style.display = 'none';
-    
-    // 重新整理列表與儀表板
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
+
   } catch (err) {
+    console.error(err);
     alert('重送失敗：' + err.message);
   }
 };
