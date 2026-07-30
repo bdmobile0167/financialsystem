@@ -1706,6 +1706,8 @@ async function populateVoucherFormOptions() {
           ? departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
           : '<option value="">尚未建立部門</option>';
       }
+      // 部門選好之後，主動載入該部門的人，不用等使用者手動觸發
+      await loadDepartmentPeople(deptSelect.value);
     }
 
     const projectSelect = document.getElementById('vProject');
@@ -1749,7 +1751,36 @@ async function populateVoucherFormOptions() {
     }
 
     // 部門下拉一改變，還是可以重新整理一次（保留原本互動）
-    document.getElementById('vDepartment')?.addEventListener('change', populateManagerPickerGrouped);
+    async function loadDepartmentPeople(deptId) {
+      const managerSelect = document.getElementById('vManagerPicker');
+      if (!managerSelect) return;
+
+      if (!deptId) {
+        managerSelect.innerHTML = '<option value="">請先選擇部門</option>';
+        return;
+      }
+
+      const { data: people, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .eq('department_id', deptId);
+
+      if (error || !people || people.length === 0) {
+        managerSelect.innerHTML = '<option value="">此部門尚無人員資料</option>';
+        return;
+      }
+
+      const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
+      const sorted = [...people].sort((a, b) => strokeSort.compare(a.full_name || '', b.full_name || ''));
+
+      const ROLE_LABEL = { manager: '主管', accounting: '會計', admin: '管理員', employee: '專員' };
+      managerSelect.innerHTML = '<option value="">不指定（整個部門主管都能審）</option>' +
+        sorted.map(p => `<option value="${p.id}">${p.full_name}${p.role === 'manager' ? '（主管）' : ` (${ROLE_LABEL[p.role] || p.role})`}</option>`).join('');
+    }
+
+    document.getElementById('vDepartment')?.addEventListener('change', (e) => {
+      loadDepartmentPeople(e.target.value);
+    });
 
   } catch (error) {
     console.error(error);
