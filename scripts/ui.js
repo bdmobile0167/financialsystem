@@ -801,10 +801,6 @@ async function renderEquityTab() {
     try {
 
         const rows = await buildEquityStatement(
-            state.transactions || []
-        );
-
-        const rows = await buildEquityStatement(
             state.transactions
         );
 
