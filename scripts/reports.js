@@ -45,9 +45,15 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
     let query = supabase
       .from('journal_entries')
       .select(`
-        *,
-        debit_account:accounts!debit_account_id(code, name),
-        credit_account:accounts!credit_account_id(code, name)
+          *,
+          debit_account:accounts!journal_entries_debit_account_id_fkey(
+              code,
+              name
+          ),
+          credit_account:accounts!journal_entries_credit_account_id_fkey(
+              code,
+              name
+          )
       `)
       .order('entry_date', { ascending: false });
       

@@ -187,7 +187,7 @@ function render() {
   renderBankAccounts();
   renderVoucherCenter();
   renderBudget();
-  renderEquityTab();
+  await renderEquityTab();
   renderTabs();
   populateProjectDepartmentSelect();
   renderProjectList();
@@ -637,12 +637,38 @@ function renderVoucherSummary() {
 
 function renderTable(id, rows) {
   const table = document.getElementById(id);
-  table.innerHTML = '<thead><tr><th>項目</th><th>金額</th></tr></thead><tbody></tbody>';
+  if (!table) return;
+
+  table.innerHTML =
+    '<thead><tr><th>項目</th><th>金額</th></tr></thead><tbody></tbody>';
+
   const body = table.querySelector('tbody');
-  rows.forEach(([label, amount]) => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${label}</td><td>${Number(amount).toLocaleString()}</td>`;
-    body.appendChild(row);
+
+  // ===== 防呆 =====
+  if (!Array.isArray(rows)) {
+    console.error("renderTable() 接收到的不是陣列：", rows);
+
+    body.innerHTML = `
+      <tr>
+        <td colspan="2" style="color:red">
+          資料格式錯誤
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  rows.forEach(item => {
+    if (!Array.isArray(item)) return;
+
+    const [label, amount] = item;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${label}</td>
+      <td>${Number(amount || 0).toLocaleString()}</td>
+    `;
+    body.appendChild(tr);
   });
 }
 
@@ -765,15 +791,49 @@ function renderBudget() {
   renderProjectList();
 }
 
-function renderEquityTab() {
-  const table = document.getElementById('equityDetailTable');
-  const note = document.getElementById('fundraisingNoteDetail');
-  if (!table) return;
-  renderTable('equityDetailTable', buildEquityStatement(state.transactions));
-  if (note) {
-    const analysis = getEquityAnalysis(state.transactions);
-    note.textContent = `現金水位：${analysis.cashBalance.toLocaleString()}｜可撐月數：${analysis.cashRunwayMonths ? analysis.cashRunwayMonths.toFixed(1) + ' 個月' : '尚無支出紀錄'}｜建議：${analysis.fundraisingSuggestion}`;
-  }
+async function renderEquityTab() {
+
+    const table = document.getElementById("equityDetailTable");
+    const note = document.getElementById("fundraisingNoteDetail");
+
+    if (!table) return;
+
+    try {
+
+        const rows = await buildEquityStatement(
+            state.transactions || []
+        );
+
+        const rows = await buildEquityStatement(
+            state.transactions
+        );
+
+        renderTable(
+            "equityDetailTable",
+            rows
+        );
+
+        if (note) {
+
+            const analysis = getEquityAnalysis(
+                state.transactions || []
+            );
+
+            note.textContent =
+                `現金水位：${analysis.cashBalance.toLocaleString()}｜` +
+                `可撐月數：${
+                    analysis.cashRunwayMonths
+                    ? analysis.cashRunwayMonths.toFixed(1) + " 個月"
+                    : "尚無支出紀錄"
+                }｜建議：${analysis.fundraisingSuggestion}`;
+        }
+
+    } catch(err){
+
+        console.error(err);
+
+    }
+
 }
 
 async function renderJournalFiltered() {
@@ -841,6 +901,7 @@ function showApp() {
   renderTabs();
   updateAdminNavVisibility();
   applyRoleBasedTabVisibility();
+  await render();
 }
 
 function showForcePasswordView() {
@@ -1665,7 +1726,7 @@ async function initialize() {
         if(user.mustChangePassword){
             showForcePasswordView();
         }else{
-            showApp();
+            await showApp();
         }
     }
 }
