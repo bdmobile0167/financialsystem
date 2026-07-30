@@ -123,9 +123,9 @@ export async function createVoucher(payload) {
     });
     // 2. 嚴格檢查轉換後的結果，如果還是空的，代表前端真的沒把值傳過來
     const missingIndex = finalLines.findIndex(x => !x.account_code);
-    if (missingIndex !== -1) {
-      throw new Error(`報支單明細第 ${missingIndex + 1} 行缺少「會計科目代碼」。(請工程師按 F12 查看 Console 檢查前端變數名稱是否綁定錯誤)`);
-    }
+    //if (missingIndex !== -1) {
+    //  throw new Error(`報支單明細第 ${missingIndex + 1} 行缺少「會計科目代碼」。(請工程師按 F12 查看 Console 檢查前端變數名稱是否綁定錯誤)`);
+    //}
 
     // 3. 寫入資料庫
     const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);

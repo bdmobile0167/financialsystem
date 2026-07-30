@@ -1463,6 +1463,8 @@ const voucherLineAttachments = {}; // { rowId: File }
 
           if (!description || amt <= 0) return;
 
+          calculatedTotal += amt;
+
           detailLines.push({
             description,
             item_category: category,
@@ -1690,7 +1692,8 @@ async function populateVoucherFormOptions() {
       bankSelect.innerHTML = '<option value="">（現金支付免選）</option>' + 
         banks.map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('');
     }
-
+    
+    await populateManagerPickerGrouped();
     // 部門 - 避免重複宣告
     const deptSelect = document.getElementById('vDepartment');
     if (deptSelect) {
@@ -1712,16 +1715,41 @@ async function populateVoucherFormOptions() {
         projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name}</option>`).join('');
     }
 
-    document.getElementById('vDepartment')?.addEventListener('change', async (e) => {
-      const deptId = e.target.value;
+    async function populateManagerPickerGrouped() {
       const managerSelect = document.getElementById('vManagerPicker');
       if (!managerSelect) return;
-      managerSelect.innerHTML = '<option value="">不指定</option>';
-      if (!deptId) return;
-      const { data: managers } = await supabase
-        .from('profiles').select('id, full_name').eq('department_id', deptId).eq('role', 'manager');
-      managerSelect.innerHTML += (managers || []).map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
-    });
+
+      const { data: managers, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, department_id, departments(name)')
+        .eq('role', 'manager');
+
+      if (error || !managers) {
+        managerSelect.innerHTML = '<option value="">不指定</option>';
+        return;
+      }
+
+      const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
+      const grouped = {};
+      managers.forEach(m => {
+        const deptName = m.departments?.name || '未分配部門';
+        if (!grouped[deptName]) grouped[deptName] = [];
+        grouped[deptName].push(m);
+      });
+
+      let html = '<option value="">不指定（整個部門主管都能審）</option>';
+      Object.keys(grouped).sort(strokeSort.compare).forEach(deptName => {
+        const people = grouped[deptName].sort((a, b) => strokeSort.compare(a.full_name, b.full_name));
+        html += `<optgroup label="${deptName}">`;
+        html += people.map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
+        html += `</optgroup>`;
+      });
+
+      managerSelect.innerHTML = html;
+    }
+
+    // 部門下拉一改變，還是可以重新整理一次（保留原本互動）
+    document.getElementById('vDepartment')?.addEventListener('change', populateManagerPickerGrouped);
 
   } catch (error) {
     console.error(error);
@@ -2334,8 +2362,10 @@ window.openAccountingReviewModal = async (voucherId) => {
 
     if (!voucher) return alert('找不到單據');
 
-    // 取得銀行帳戶
+    // 取得銀行帳戶與會計科目
     const { data: banks } = await supabase.from('bank_accounts').select('*');
+    const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+    // 或者使用: const accounts = window.__cachedAccounts || [];
 
     let html = `
       <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
