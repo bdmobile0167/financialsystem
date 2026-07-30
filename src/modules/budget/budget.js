@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient.js';
+import { supabase } from '../../../scripts/supabaseClient.js';
 
 // 建立專案
 export async function createProject(projectData) {
