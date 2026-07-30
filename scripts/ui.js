@@ -146,20 +146,22 @@ function showMessage(text, isError = false) {
   el.textContent = text;
 }
 
-function render() {
-  function updateAdminNavVisibility() {
-    const btn = document.getElementById('adminUsersNavBtn');
-    if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
-  }
+// 1. 將這兩個函式獨立移到外面（全域範圍）
+function updateAdminNavVisibility() {
+  const btn = document.getElementById('adminUsersNavBtn');
+  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
+}
 
-  function applyRoleBasedTabVisibility() {
-    const role = state.currentUser?.role;
-    const financialOnly = ['accounting', 'admin'];
-    const reportsBtn = document.querySelector('[data-tab="reports"]');
-    const equityBtn = document.querySelector('[data-tab="equity"]');
-    if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-    if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  }
+function applyRoleBasedTabVisibility() {
+  const role = state.currentUser?.role;
+  const financialOnly = ['accounting', 'admin'];
+  const reportsBtn = document.querySelector('[data-tab="reports"]');
+  const equityBtn = document.querySelector('[data-tab="equity"]');
+  if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+}
+
+function render() {
   // 只給 Admin 顯示的區塊
   const adminOnlyElements = ['departmentForm', 'inviteUserForm', /* 其他 Admin 專屬 ID */];
   adminOnlyElements.forEach(id => {
@@ -177,6 +179,7 @@ function render() {
   document.title = `${state.systemName} | Netlify Demo`;
 
   updateAdminNavVisibility();
+  applyRoleBasedTabVisibility();
   renderDashboard();
   renderTransactionTable();
   renderReports();
@@ -2056,8 +2059,8 @@ async function renderProjectList() {
   }
 }
 
-// 2. 即時試算剩餘金額（當使用者在預算欄位輸入時觸發）
-function calcRemainingPreview(id, usedBudget) {
+// 將函式掛載到 window 上，確保 HTML 內的 oninput 呼叫得到
+window.calcRemainingPreview = function(id, usedBudget) {
   const budgetInput = document.getElementById(`edit-budget-${id}`);
   const remainingDisplay = document.getElementById(`remaining-display-${id}`);
   if (!budgetInput || !remainingDisplay) return;
@@ -2066,7 +2069,7 @@ function calcRemainingPreview(id, usedBudget) {
   // 新剩餘金額 = 新預算 - 已使用金額
   const newRemaining = newBudget - usedBudget;
   remainingDisplay.textContent = newRemaining.toLocaleString();
-}
+};
 
 // 3. 儲存專案修改（更新 Name、Total Budget 與 Department）
 async function updateProject(id) {
