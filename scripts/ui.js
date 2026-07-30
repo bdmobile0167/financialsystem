@@ -3003,32 +3003,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// 1. 彈出包含全部欄位（日期、專案、摘要、明細、發票、金額）的完整修改視窗
+// 1. 點擊「修改並重送」時，彈出包含您指定完整表單結構的 Modal，並帶入原資料
 window.openResubmitModal = async (voucherId) => {
   try {
-    // A. 抓取該張單據的主檔、明細、發票資料，以及所有專案列表（供專案下拉選單使用）
+    // A. 同步抓取該張單據的主檔、明細、發票，以及專案與部門清單
     const [
       { data: vch, error: vErr },
       { data: lines, error: lErr },
       { data: invoices, error: iErr },
-      { data: projects, error: pErr }
+      { data: projects, error: pErr },
+      { data: depts, error: dErr }
     ] = await Promise.all([
       supabase.from('vouchers').select('*').eq('id', voucherId).single(),
       supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId),
       supabase.from('invoices').select('*').eq('voucher_id', voucherId),
-      supabase.from('projects').select('id, name, project_code')
+      supabase.from('projects').select('id, name, project_code'),
+      supabase.from('departments').select('id, name')
     ]);
 
-    if (vErr || !vch) throw new Error('無法取得報支單主檔資料');
+    if (vErr || !vch) throw new Error('無法取得報支單資料');
 
-    // 建立專案下拉選單選項
-    const projectOptions = (projects || []).map(p => 
-      `<option value="${p.id}" ${p.id === vch.project_id ? 'selected' : ''}>${p.project_code ? p.project_code + ' - ' : ''}${p.name}</option>`
-    ).join('');
-
-    const invoice = invoices?.[0] || { invoice_type: '發票', invoice_number: '' };
-
-    // 建立或取得共用的修改 Modal
+    // 建立或取得 Modal 容器
     let modal = document.getElementById('resubmitModal');
     if (!modal) {
       modal = document.createElement('div');
@@ -3038,74 +3033,147 @@ window.openResubmitModal = async (voucherId) => {
     }
 
     modal.style.display = 'flex';
+
+    // B. 組裝您提供的完整表單 HTML 結構進去
     modal.innerHTML = `
-      <div style="background:#fff; padding:24px; border-radius:8px; width:90%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+      <div style="background:#fff; padding:24px; border-radius:8px; width:95%; max-width:900px; max-height:90vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.25);">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
           <h3 style="margin:0;">修改並重送報支單 [${vch.voucher_no || '未編號'}]</h3>
-          <button onclick="document.getElementById('resubmitModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
+          <button type="button" onclick="document.getElementById('resubmitModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
         </div>
 
-        <!-- 主檔欄位：日期、專案、摘要 -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-          <div>
-            <label style="font-weight:bold; font-size:13px;">申請日期：</label><br>
-            <input type="date" id="resubmit-date" value="${vch.tx_date || vch.created_at?.split('T')[0] || ''}" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
-          </div>
-          <div>
-            <label style="font-weight:bold; font-size:13px;">專案名稱：</label><br>
-            <select id="resubmit-project" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
-              <option value="">-- 無專案 --</option>
-              ${projectOptions}
-            </select>
-          </div>
-        </div>
+        <form id="resubmitFormElement" onsubmit="submitFullResubmission(event, '${vch.id}')" class="form-container">
+          <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+            <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
+            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+              <div style="flex: 1;">
+                <label>報支主旨 (必填)：</label>
+                <input type="text" id="resub-vTitle" value="${vch.summary || ''}" required style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+                
+                <label style="margin-top:8px; display:block;">所屬部門：</label>
+                <select id="resub-vDepartment" required style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+                  ${(depts || []).map(d => `<option value="${d.id}" ${d.id === vch.department_id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                </select>
 
-        <div style="margin-bottom: 12px;">
-          <label style="font-weight:bold; font-size:13px;">摘要主旨：</label><br>
-          <input type="text" id="resubmit-summary" value="${vch.summary || ''}" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
-        </div>
-
-        <!-- 發票 / 收據資訊 -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:15px; background:#f9f9f9; padding:10px; border-radius:4px;">
-          <div>
-            <label style="font-weight:bold; font-size:13px;">發票或收據：</label><br>
-            <select id="resubmit-inv-type" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
-              <option value="發票" ${invoice.invoice_type === '發票' ? 'selected' : ''}>發票</option>
-              <option value="收據" ${invoice.invoice_type === '收據' ? 'selected' : ''}>收據</option>
-              <option value="其他" ${invoice.invoice_type === '其他' ? 'selected' : ''}>其他</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-weight:bold; font-size:13px;">發票/收據號碼：</label><br>
-            <input type="text" id="resubmit-inv-num" value="${invoice.invoice_number || ''}" placeholder="例如: AB12345678" style="width:100%; padding:6px; margin-top:4px; border:1px solid #ddd; border-radius:4px;">
-          </div>
-        </div>
-
-        <!-- 項目說明與金額列表 -->
-        <h4 style="margin:15px 0 8px 0; border-left:4px solid #007bff; padding-left:8px; font-size:14px;">報支明細項目</h4>
-        <div id="resubmit-lines-container" style="margin-bottom:15px;">
-          ${(lines && lines.length > 0) ? lines.map((l, index) => `
-            <div class="resubmit-line-row" style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
-              <input type="text" class="line-desc" value="${l.description || ''}" placeholder="項目說明" style="flex:2; padding:6px; border:1px solid #ddd; border-radius:4px;">
-              <input type="number" class="line-amount" value="${l.amount || 0}" placeholder="金額" oninput="calcResubmitTotal()" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:4px;">
+                <label style="margin-top:8px; display:block;">指定審核主管：</label>
+                <select id="resub-vManagerPicker" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+                  <option value="">不指定（整個部門主管都能審）</option>
+                </select>
+              </div>
             </div>
-          `).join('') : `
-            <div class="resubmit-line-row" style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
-              <input type="text" class="line-desc" value="${vch.summary || ''}" placeholder="項目說明" style="flex:2; padding:6px; border:1px solid #ddd; border-radius:4px;">
-              <input type="number" class="line-amount" value="${vch.total_amount || 0}" placeholder="金額" oninput="calcResubmitTotal()" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:4px;">
+
+            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+              <div style="flex: 1;">
+                <label>專案：</label>
+                <select id="resub-vProject" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+                  <option value="">無專案</option>
+                  ${(projects || []).map(p => `<option value="${p.id}" ${p.id === vch.project_id ? 'selected' : ''}>${p.project_code ? p.project_code + ' - ' : ''}${p.name}</option>`).join('')}
+                </select>
+              </div>
+              <div style="flex: 1;">
+                <label>行程起日：</label>
+                <input type="date" id="resub-vTripStart" value="${vch.trip_start_date || ''}" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              </div>
+              <div style="flex: 1;">
+                <label>行程迄日：</label>
+                <input type="date" id="resub-vTripEnd" value="${vch.trip_end_date || ''}" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              </div>
             </div>
-          `}
-        </div>
+          </div>
 
-        <div style="text-align:right; margin-bottom:15px; font-size:15px; font-weight:bold; color:#d9534f;">
-          重新計算總金額：$ <span id="resubmit-total-display">${Number(vch.total_amount || 0).toLocaleString()}</span>
-        </div>
+          <div class="panel" style="background:#fff; border:1px solid #eee; padding:15px; border-radius:8px;">
+            <h4 style="margin-top:0;">核銷明細</h4>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+              <thead>
+                <tr style="background: #f1f5f9;">
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">單據年月</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">憑證類型</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">發票號碼</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 22%;">會計科目 / 項目說明</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">金額</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">付款人(身分證/統編)</th>
+                  <th style="padding: 8px; border: 1px solid #ddd; width: 20%;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="resubExcelLinesBody">
+                <!-- 動態帶入原本的明細列 -->
+                ${(lines && lines.length > 0) ? lines.map((l, index) => {
+                  const inv = invoices?.[index] || invoices?.[0] || {};
+                  return `
+                    <tr data-row-id="resub-row-${index}">
+                      <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" value="${l.voucher_month || ''}" style="width:96%; padding:4px;"></td>
+                      <td style="padding:8px; border:1px solid #ddd;">
+                        <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
+                          <option value="無" ${inv.invoice_type === '無' ? 'selected' : ''}>無</option>
+                          <option value="發票" ${inv.invoice_type === '發票' ? 'selected' : ''}>發票</option>
+                          <option value="收據" ${inv.invoice_type === '收據' ? 'selected' : ''}>收據</option>
+                        </select>
+                      </td>
+                      <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" value="${inv.invoice_number || ''}" placeholder="可留空" style="width:90%; padding:4px;" ${!inv.invoice_type || inv.invoice_type === '無' ? 'disabled' : ''}></td>
+                      <td style="padding:8px; border:1px solid #ddd;">
+                        <select class="grid-item-category" onchange="toggleCategoryNote(this)" style="width:100%; padding:4px;">
+                          <option value="車馬費" ${l.description === '車馬費' ? 'selected' : ''}>車馬費</option>
+                          <option value="住宿費" ${l.description === '住宿費' ? 'selected' : ''}>住宿費</option>
+                          <option value="文具用品" ${l.description === '文具用品' ? 'selected' : ''}>文具用品</option>
+                          <option value="餐飲交際" ${l.description === '餐飲交際' ? 'selected' : ''}>餐飲交際</option>
+                          <option value="郵電通訊" ${l.description === '郵電通訊' ? 'selected' : ''}>郵電通訊</option>
+                          <option value="其他" style="background:#eee;">其他（請說明）</option>
+                        </select>
+                        <input type="text" class="grid-category-note" value="${l.description}" placeholder="請說明項目內容" style="width:96%; padding:4px; margin-top:4px;">
+                      </td>
+                      <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${l.amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
+                      <td style="padding:8px; border:1px solid #ddd;">
+                        <input type="text" class="grid-payee-id" value="${l.payee_id || ''}" placeholder="身分證/統編" style="width:90%; padding:4px;">
+                      </td>
+                      <td style="padding:8px; border:1px solid #ddd; text-align:center;">
+                        <button type="button" class="danger" style="padding:4px 8px; font-size:12px;" onclick="this.closest('tr').remove(); calculateResubTotal();">刪除</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('') : `
+                  <tr data-row-id="resub-row-0">
+                    <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
+                    <td style="padding:8px; border:1px solid #ddd;">
+                      <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
+                        <option value="無">無</option>
+                        <option value="發票">發票</option>
+                        <option value="收據">收據</option>
+                      </select>
+                    </td>
+                    <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+                    <td style="padding:8px; border:1px solid #ddd;">
+                      <select class="grid-item-category" onchange="toggleCategoryNote(this)" style="width:100%; padding:4px;">
+                        <option value="車馬費">車馬費</option>
+                        <option value="住宿費">住宿費</option>
+                        <option value="文具用品">文具用品</option>
+                        <option value="餐飲交際">餐飲交際</option>
+                        <option value="郵電通訊">郵電通訊</option>
+                        <option value="其他">其他（請說明）</option>
+                      </select>
+                      <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
+                    </td>
+                    <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${vch.total_amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
+                    <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
+                    <td style="padding:8px; border:1px solid #ddd; text-align:center;"><button type="button" class="danger" style="padding:4px 8px; font-size:12px;" onclick="this.closest('tr').remove(); calculateResubTotal();">刪除</button></td>
+                  </tr>
+                `}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold; border: 1px solid #ddd;">總計金額：</td>
+                  <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="resubTotalDisplay">$${Number(vch.total_amount || 0).toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            </table>
 
-        <!-- 按鈕區 -->
-        <div style="text-align:right; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #eee; padding-top:15px;">
-          <button onclick="document.getElementById('resubmitModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">取消</button>
-          <button onclick="submitFullResubmission('${vch.id}')" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">確認修改並重送</button>
-        </div>
+            <button type="button" class="secondary" onclick="addResubExcelRow()">+ 新增一列</button>
+            
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+              <button type="button" class="secondary" onclick="document.getElementById('resubmitModal').style.display='none'" style="padding:8px 16px;">取消</button>
+              <button type="submit" class="primary-btn" style="padding:8px 16px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer;">確認修改並重送</button>
+            </div>
+          </div>
+        </form>
       </div>
     `;
   } catch (err) {
@@ -3113,91 +3181,129 @@ window.openResubmitModal = async (voucherId) => {
   }
 };
 
-// 2. 即時計算明細總金額
-window.calcResubmitTotal = () => {
-  const amountInputs = document.querySelectorAll('.resubmit-line-row .line-amount');
-  let total = 0;
-  amountInputs.forEach(input => {
-    total += Number(input.value) || 0;
-  });
-  const display = document.getElementById('resubmit-total-display');
-  if (display) display.textContent = total.toLocaleString();
+// 2. 於修改表單中新增一列
+window.addResubExcelRow = () => {
+  const tbody = document.getElementById('resubExcelLinesBody');
+  if (!tbody) return;
+  const rowId = 'resub-row-' + Date.now();
+  const tr = document.createElement('tr');
+  tr.setAttribute('data-row-id', rowId);
+  tr.innerHTML = `
+    <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
+    <td style="padding:8px; border:1px solid #ddd;">
+      <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
+        <option value="無">無</option>
+        <option value="發票">發票</option>
+        <option value="收據">收據</option>
+      </select>
+    </td>
+    <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
+    <td style="padding:8px; border:1px solid #ddd;">
+      <select class="grid-item-category" onchange="toggleCategoryNote(this)" style="width:100%; padding:4px;">
+        <option value="車馬費">車馬費</option>
+        <option value="住宿費">住宿費</option>
+        <option value="文具用品">文具用品</option>
+        <option value="餐飲交際">餐飲交際</option>
+        <option value="郵電通訊">郵電通訊</option>
+        <option value="其他">其他（請說明）</option>
+      </select>
+      <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
+    </td>
+    <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
+    <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;"></td>
+    <td style="padding:8px; border:1px solid #ddd; text-align:center;"><button type="button" class="danger" style="padding:4px 8px; font-size:12px;" onclick="this.closest('tr').remove(); calculateResubTotal();">刪除</button></td>
+  `;
+  tbody.appendChild(tr);
 };
 
-// 3. 提交全部修改資料至資料庫，並將狀態改回 pending_review 重新送審
-window.submitFullResubmission = async (voucherId) => {
-  const txDate = document.getElementById('resubmit-date').value;
-  const projectId = document.getElementById('resubmit-project').value || null;
-  const summary = document.getElementById('resubmit-summary').value.trim();
-  const invType = document.getElementById('resubmit-inv-type').value;
-  const invNum = document.getElementById('resubmit-inv-num').value.trim();
+// 3. 即時計算修改表單總金額
+window.calculateResubTotal = () => {
+  const amounts = document.querySelectorAll('#resubExcelLinesBody .grid-amount');
+  let total = 0;
+  amounts.forEach(input => {
+    total += Number(input.value) || 0;
+  });
+  const display = document.getElementById('resubTotalDisplay');
+  if (display) display.textContent = '$' + total.toLocaleString();
+};
 
-  if (!summary) {
-    alert('摘要主旨不能為空！');
-    return;
-  }
+// 4. 提交全部修改資料並將單據重新送審
+window.submitFullResubmission = async (e, voucherId) => {
+  e.preventDefault();
 
-  // 收集明細項目
-  const lineRows = document.querySelectorAll('.resubmit-line-row');
+  const title = document.getElementById('resub-vTitle').value.trim();
+  const departmentId = document.getElementById('resub-vDepartment').value;
+  const projectId = document.getElementById('resub-vProject').value || null;
+  const tripStart = document.getElementById('resub-vTripStart').value || null;
+  const tripEnd = document.getElementById('resub-vTripEnd').value || null;
+
+  const rows = document.querySelectorAll('#resubExcelLinesBody tr');
   const newLines = [];
+  const newInvoices = [];
   let totalAmount = 0;
 
-  lineRows.forEach(row => {
-    const desc = row.querySelector('.line-desc').value.trim();
-    const amt = Number(row.querySelector('.line-amount').value) || 0;
-    if (desc || amt > 0) {
-      newLines.push({
+  rows.forEach(row => {
+    const month = row.querySelector('.grid-month').value;
+    const invType = row.querySelector('.grid-inv-type').value;
+    const invNum = row.querySelector('.grid-inv-num').value.trim();
+    const categorySelect = row.querySelector('.grid-item-category').value;
+    const categoryNote = row.querySelector('.grid-category-note').value.trim();
+    const description = categorySelect === 'Other' || categorySelect === '其他' ? (categoryNote || '其他') : categorySelect;
+    const amount = Number(row.querySelector('.grid-amount').value) || 0;
+    const payeeId = row.querySelector('.grid-payee-id').value.trim();
+
+    totalAmount += amount;
+
+    newLines.push({
+      voucher_id: voucherId,
+      voucher_month: month,
+      description: description,
+      amount: amount,
+      payee_id: payeeId
+    });
+
+    if (invType && invType !== '無') {
+      newInvoices.push({
         voucher_id: voucherId,
-        description: desc || summary,
-        amount: amt
+        invoice_type: invType,
+        invoice_number: invNum
       });
-      totalAmount += amt;
     }
   });
 
   if (newLines.length === 0) {
-    alert('至少需要有一筆有效的報支明細！');
+    alert('請至少填寫一筆報支明細！');
     return;
   }
 
   try {
-    // 1. 更新主檔 (vouchers)：包含日期、專案、摘要、總金額，並將狀態改回 pending_review
-    const { error: vUpdateErr } = await supabase
+    // 1. 更新 vouchers 主檔，狀態改回 pending_review
+    const { error: vErr } = await supabase
       .from('vouchers')
       .update({
-        tx_date: txDate,
+        summary: title,
+        department_id: departmentId,
         project_id: projectId,
-        summary: summary,
+        trip_start_date: tripStart,
+        trip_end_date: tripEnd,
         total_amount: totalAmount,
         status: 'pending_review',
         updated_at: new Date().toISOString()
       })
       .eq('id', voucherId);
 
-    if (vUpdateErr) throw vUpdateErr;
+    if (vErr) throw vErr;
 
-    // 2. 更新明細檔 (voucher_lines)：先刪除舊明細，再重新插入修改後的明細
+    // 2. 替換舊明細與舊發票
     await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId);
-    const { error: lInsertErr } = await supabase.from('voucher_lines').insert(newLines);
-    if (lInsertErr) throw lInsertErr;
+    await supabase.from('voucher_lines').insert(newLines);
 
-    // 3. 更新發票檔 (invoices)：檢查原本有沒有發票，沒有則新增，有則更新
-    const { data: existingInvoices } = await supabase.from('invoices').select('id').eq('voucher_id', voucherId);
-    if (existingInvoices && existingInvoices.length > 0) {
-      await supabase.from('invoices').update({
-        invoice_type: invType,
-        invoice_number: invNum
-      }).eq('voucher_id', voucherId);
-    } else if (invNum) {
-      await supabase.from('invoices').insert({
-        voucher_id: voucherId,
-        invoice_type: invType,
-        invoice_number: invNum
-      });
+    await supabase.from('invoices').delete().eq('voucher_id', voucherId);
+    if (newInvoices.length > 0) {
+      await supabase.from('invoices').insert(newInvoices);
     }
 
-    // 4. 寫入工作流歷程紀錄 (Workflow Log)
-    // 依據您前面修正過的 logWorkflow 邏輯，寫入 submit 狀態
+    // 3. 寫入 Workflow Log 歷程
     if (typeof logWorkflow === 'function') {
       await logWorkflow(voucherId, 'resubmit', 'rejected', 'pending_review');
     } else {
@@ -3211,14 +3317,13 @@ window.submitFullResubmission = async (voucherId) => {
     }
 
     alert('修改並重送成功！單據已重新送交主管審核。');
-    
-    // 關閉視窗並重新整理畫面列表
     document.getElementById('resubmitModal').style.display = 'none';
+
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
 
   } catch (err) {
     console.error(err);
-    alert('重送失敗：' + err.message);
+    alert('修改失敗：' + err.message);
   }
 };
