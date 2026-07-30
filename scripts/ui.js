@@ -7,7 +7,7 @@ import { saveAttachment, openAttachment } from '../src/modules/voucher/attachmen
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
-import { loadBudgetTargets, setBudgetTarget, buildBudgetReport } from '../src/modules/budget/budget.js';
+import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 
@@ -150,6 +150,15 @@ function render() {
   function updateAdminNavVisibility() {
     const btn = document.getElementById('adminUsersNavBtn');
     if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
+  }
+
+  function applyRoleBasedTabVisibility() {
+    const role = state.currentUser?.role;
+    const financialOnly = ['accounting', 'admin'];
+    const reportsBtn = document.querySelector('[data-tab="reports"]');
+    const equityBtn = document.querySelector('[data-tab="equity"]');
+    if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+    if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
   }
   // 只給 Admin 顯示的區塊
   const adminOnlyElements = ['departmentForm', 'inviteUserForm', /* 其他 Admin 專屬 ID */];
@@ -717,7 +726,14 @@ function renderVoucherCenter() {
   if (!body) return;
   const keyword = (document.getElementById('voucherSearchInput')?.value || '').trim().toLowerCase();
   const txs = state.transactions || []; // 加上預設空陣列
+  // 👇 加上專案權限過濾與關鍵字搜尋
   const filtered = txs.filter(tx => {
+    // 1. 權限與專案過濾：如果不是管理者 (admin) 或 會計 (accounting)，只能看當前專案的憑證
+    if (state.currentUser?.role !== 'admin' && state.currentUser?.role !== 'accounting') {
+      if (tx.project_id && tx.project_id !== (state.currentProjectId === 'all' ? tx.project_id : state.currentProjectId)) {
+        return false;
+      }
+    }
     if (!keyword) return true;
     return [tx.detail, tx.customer, tx.voucher, getBankNickname(tx.bankAccountId)]
       .some(field => (field || '').toLowerCase().includes(keyword));
@@ -823,6 +839,8 @@ function showApp() {
   render();
   state.activeTab = 'dashboard';
   renderTabs();
+  updateAdminNavVisibility();
+  applyRoleBasedTabVisibility();
 }
 
 function showForcePasswordView() {
@@ -904,8 +922,9 @@ function initializeEventsInternal() {
           stage === 'manager' ? await managerApprove(voucher) : await accountingApprove(voucher);
           showMessage('已核准。');
         } else {
-          const reason = prompt('請輸入退件原因（必填）：');
-          if (!reason || !reason.trim()) {
+          const reason = await promptRejectReason();
+
+          if (!reason) { 
             showMessage('已取消，退件必須填寫原因。', true);
             return;
           }
@@ -2387,7 +2406,7 @@ window.openAccountingReviewModal = async (voucherId) => {
   try {
     const { data: voucher } = await supabase
       .from('vouchers')
-      .select('*, voucher_lines(*), invoices(*)')
+      .select('*, voucher_lines(*), invoices(*), profiles!applicant_id(full_name), projects(name, project_code), departments(name)')
       .eq('id', voucherId)
       .single();
 
@@ -2402,6 +2421,11 @@ window.openAccountingReviewModal = async (voucherId) => {
       <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
         <div style="background:white; padding:25px; border-radius:12px; width:90%; max-width:700px; max-height:90vh; overflow:auto;">
           <h3>會計審核 - ${voucher.voucher_no}</h3>
+          <p style="color:#666; font-size:14px;">
+            申請人：${voucher.profiles?.full_name || '未知'}｜
+            部門：${voucher.departments?.name || '-'}｜
+            專案：${voucher.projects ? `${voucher.projects.project_code} ${voucher.projects.name}` : '無專案'}
+          </p>
           <p><strong>摘要：</strong>${voucher.summary}</p>
           <p><strong>總金額：</strong>$${Number(voucher.total_amount).toLocaleString()}</p>
           
@@ -2490,9 +2514,9 @@ window.approveVoucher = async (voucherId, stage = 'manager') => {
  * 狀態轉為 rejected，強制填寫退件原因，並寫入歷程
  */
 window.rejectVoucher = async (voucherId, stage = 'manager') => {
-  const reason = prompt('請輸入退件原因（必填）：');
+  const reason = await promptRejectReason();
   if (reason === null) return;
-  if (!reason.trim()) {
+  if (!reason) { // 因為上面的函式已經做過 trim() 了，這裡直接判斷即可
     alert('退件必須填寫原因');
     return;
   }
@@ -2782,3 +2806,66 @@ window.processPayment = async (voucherId, totalAmount) => {
     alert(`付款結案失敗：${err.message}`);
   }
 }; // 確保函式有正確閉合
+
+async function promptRejectReason() {
+  const preset = prompt(
+    '請輸入退件原因，或直接輸入代碼快速選擇：\n' +
+    '1 = 單據不齊全，請補充憑證\n' +
+    '2 = 金額有誤，請確認後重新送出\n' +
+    '3 = 已電話告知申請人，請依說明修改\n' +
+    '4 = 科目分類需調整\n' +
+    '（也可以直接輸入其他原因文字）'
+  );
+  if (!preset) return null;
+  const presets = {
+    '1': '單據不齊全，請補充憑證',
+    '2': '金額有誤，請確認後重新送出',
+    '3': '已電話告知申請人，請依說明修改',
+    '4': '科目分類需調整'
+  };
+  return presets[preset.trim()] || preset.trim();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const projectForm = document.getElementById('projectForm');
+  
+  if (projectForm) {
+    projectForm.addEventListener('submit', async (e) => {
+      e.preventDefault(); // 防止網頁重新整理
+
+      // 取得表單欄位數值
+      const name = document.getElementById('projectName').value.trim();
+      const startDate = document.getElementById('projectStart').value;
+      const endDate = document.getElementById('projectEnd').value;
+      const departmentId = document.getElementById('projectDepartment').value;
+      const totalBudget = parseFloat(document.getElementById('projectTotalBudget').value);
+
+      if (!name || isNaN(totalBudget)) {
+        alert('請填寫完整的專案名稱與總預算！');
+        return;
+      }
+
+      try {
+        // 呼叫 budget.js 的建立專案 API
+        await createProject({
+          name: name,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          department_id: departmentId || null,
+          total_budget: totalBudget
+        });
+
+        alert('專案建立成功！');
+        projectForm.reset(); // 清空表單輸入框
+        
+        // 重新渲染專案列表（更新右側清單）
+        if (typeof window.renderProjectList === 'function') {
+          window.renderProjectList();
+        }
+      } catch (error) {
+        console.error('建立專案失敗：', error);
+        alert('建立專案失敗：' + (error.message || '未知錯誤'));
+      }
+    });
+  }
+});

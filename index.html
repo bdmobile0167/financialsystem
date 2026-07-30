@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
@@ -88,7 +88,6 @@
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
                   <label style="font-size:14px; color:#666;">目前專案：</label>
                   <select id="globalProjectSelect" style="padding:6px 10px; border-radius:6px;"></select>
-                </select>
                 </div>
             </div>
         </header>
@@ -323,44 +322,102 @@
           </div>
         </section>
 
+        <!-- 將原本的 section 替換為以下內容 -->
         <section id="budget" class="tab-panel" style="display:none;">
+          <div class="panel-header" style="margin-bottom: 20px;">
+            <h2>專案與預算管理</h2>
+            <p class="muted">由會計部門統一設定與控管各專案總預算。所有的預算增減都會留下完整紀錄與原因。</p>
+          </div>
+
           <div class="grid grid-2">
+            <!-- 左側：新增專案 -->
             <div class="panel">
-              <h3>專案管理</h3>
-              <form id="projectForm">
-                 <input type="text" id="projectName" placeholder="專案名稱" required />
-                 <input type="date" id="projectStart" />
-                 <input type="date" id="projectEnd" />
-                 <input type="number" id="projectTotalBudget" placeholder="總預算" required />
-                 <select id="projectDepartment"></select>
-                 <button type="submit">建立專案</button>
+              <h3>新增專案</h3>
+              <form id="projectForm" class="form-container">
+                <div style="margin-bottom: 12px;">
+                  <label>專案名稱</label>
+                  <input type="text" id="projectName" placeholder="例如：2026 AI 應用開發案" required style="width: 100%;" />
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                  <div style="flex: 1;">
+                    <label>起始日期</label>
+                    <input type="date" id="projectStart" style="width: 100%;" />
+                  </div>
+                  <div style="flex: 1;">
+                    <label>結束日期</label>
+                    <input type="date" id="projectEnd" style="width: 100%;" />
+                  </div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <label>所屬部門</label>
+                  <select id="projectDepartment" style="width: 100%;"></select>
+                </div>
+                <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                  <label style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
+                  <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
+                  <input type="number" id="projectTotalBudget" placeholder="例如：500000" required style="width: 100%; font-size: 16px; margin-top: 8px;" />
+                </div>
+                <button type="submit" class="primary-btn" style="width: 100%;">建立專案</button>
               </form>
-              <div id="projectList"></div>
             </div>
+
+            <!-- 右側：專案列表 -->
             <div class="panel">
-                <label>月份</label>
-                <input type="month" id="budgetPeriod" required />
-                <label>會計科目</label>
-                <select id="budgetAccountCode">
-                  <option value="6100">6100 營業費用</option>
-                  <option value="4111">4111 營業收入</option>
-                </select>
-                <label>預算金額</label>
-                <input type="number" id="budgetAmount" min="0" required />
-                <button type="submit" class="primary-btn" style="margin-top:10px;">儲存預算目標</button>
-              </form>
-            </div>
-            <div class="panel">
-              <h3>預算 vs 實際（自動計算）</h3>
-              <label>查看月份</label>
-              <input type="month" id="budgetViewPeriod" />
-              <table style="margin-top:12px;">
-                <thead><tr><th>科目</th><th>預算</th><th>實際</th><th>差異</th><th>差異%</th></tr></thead>
-                <tbody id="budgetTableBody"></tbody>
-              </table>
+              <h3>執行中專案總覽</h3>
+              <div id="projectList" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- 這裡將由 JS 動態生成專案卡片 -->
+              </div>
             </div>
           </div>
         </section>
+
+        <!-- 預算變更 Modal (放在 body 標籤結尾前) -->
+        <div id="editBudgetModal" class="login-shell" style="display:none; z-index: 9999;">
+          <div class="card" style="max-width: 600px; width: 90%;">
+            <h2>調整專案預算</h2>
+            <p id="editBudgetProjectName" style="font-weight: bold; margin-bottom: 16px;"></p>
+            
+            <form id="editBudgetForm" onsubmit="event.preventDefault(); submitBudgetChange();">
+              <input type="hidden" id="edit_budget_project_id" />
+              <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <div style="flex: 1; padding: 10px; background: #f1f5f9; border-radius: 8px;">
+                  <label>目前總預算</label>
+                  <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: #475569;">$0</div>
+                  <input type="hidden" id="current_budget_val" />
+                </div>
+                <div style="flex: 1;">
+                  <label>更新後總預算</label>
+                  <input type="number" id="new_budget_val" required style="width: 100%; font-size: 16px;" />
+                </div>
+              </div>
+              
+              <label>變更原因 (必填，供日後稽核)</label>
+              <input type="text" id="budget_change_reason" placeholder="例如：董事會決議追加行銷預算" required style="width: 100%; margin-bottom: 15px;" />
+              
+              <div style="display: flex; gap: 10px;">
+                <button type="submit" class="primary-btn">確認變更</button>
+                <button type="button" class="secondary" onclick="document.getElementById('editBudgetModal').style.display='none'">取消</button>
+              </div>
+            </form>
+
+            <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+              <h4>預算異動紀錄</h4>
+              <table style="width: 100%; font-size: 13px; margin-top: 8px;">
+                <thead>
+                  <tr style="background: #f8fafc;">
+                    <th style="padding: 6px;">時間</th>
+                    <th style="padding: 6px;">變更人</th>
+                    <th style="padding: 6px;">金額異動</th>
+                    <th style="padding: 6px;">原因</th>
+                  </tr>
+                </thead>
+                <tbody id="budgetLogTableBody">
+                  <!-- JS 動態載入異動紀錄 -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
         <section id="equity" class="tab-panel" style="display:none;">
           <div class="panel">
