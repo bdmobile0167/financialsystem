@@ -187,7 +187,7 @@ function render() {
   renderBankAccounts();
   renderVoucherCenter();
   renderBudget();
-  await renderEquityTab();
+  renderEquityTab();
   renderTabs();
   populateProjectDepartmentSelect();
   renderProjectList();
