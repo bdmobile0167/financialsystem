@@ -897,7 +897,7 @@ function showApp() {
   renderTabs();
   updateAdminNavVisibility();
   applyRoleBasedTabVisibility();
-  await render();
+  render();
 }
 
 function showForcePasswordView() {
