@@ -45,15 +45,15 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
     let query = supabase
       .from('journal_entries')
       .select(`
-          *,
-          debit_account:accounts!journal_entries_debit_account_id_fkey(
-              code,
-              name
-          ),
-          credit_account:accounts!journal_entries_credit_account_id_fkey(
-              code,
-              name
-          )
+          id,
+          entry_date,
+          memo,
+          debit_amount,
+          credit_amount,
+          voucher_id,
+          debit_account:accounts!journal_entries_debit_account_id_fkey(code, name),
+          credit_account:accounts!journal_entries_credit_account_id_fkey(code, name),
+          vouchers(voucher_no) 
       `)
       .order('entry_date', { ascending: false });
       
@@ -63,17 +63,26 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
     const { data: journalEntries, error } = await query;
     if (error) throw error;
 
-    return journalEntries.map(entry => ({
-      date: entry.entry_date,
-      summary: entry.memo || '未註明',
-      bank: '-',
-      debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
-      debitAmount: Number(entry.debit_amount || 0),
-      creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
-      creditAmount: Number(entry.credit_amount || 0),
-      voucher: entry.voucher_id || '-',
-      status: '已入帳'
-    }));
+    // 💡 修復重複出現問題：利用 Map 以 id 作為 key 進行去重
+    const uniqueEntries = Array.from(new Map(journalEntries.map(e => [e.id, e])).values());
+
+    return uniqueEntries.map(entry => {
+      // 💡 修復憑證號碼顯示：優先讀取關聯表 vouchers 的 voucher_no，沒有則顯示 id 或 '-'
+      const displayVoucher = entry.vouchers?.voucher_no || entry.voucher_id || '-';
+
+      return {
+        id: entry.id,
+        date: entry.entry_date,
+        summary: entry.memo || '未註明',
+        bank: '-',
+        debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
+        debitAmount: Number(entry.debit_amount || 0),
+        creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
+        creditAmount: Number(entry.credit_amount || 0),
+        voucher: displayVoucher,
+        status: '已入帳'
+      };
+    });
   } catch (err) {
     console.warn('日記帳讀取 Supabase 失敗，降級使用本地計算:', err.message);
     const { journalEntries: localEntries } = runAccountingPipeline(transactions);
@@ -209,6 +218,40 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
       ['本期損益（保留盈餘）', retainedEarnings],
       ['期末權益合計', endingEquity]
     ];
+  }
+}
+
+/**
+ * 💡 新增：檢查銀行餘額是否足夠支付專案預算
+ * @param {number} projectCost - 即將發生的專案預算或支出
+ * @returns {object} { isSufficient: boolean, currentCash: number, shortage: number, message: string }
+ */
+export async function checkBudgetSufficiency(projectCost = 0) {
+  try {
+    // 取得當前總資產(試算表)，只抓銀行存款 '1102'
+    const { rows } = await fetchSupabaseTrialBalance();
+    const bankRow = rows.find(r => r.code === '1102');
+    const currentCash = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
+
+    const isSufficient = currentCash >= projectCost;
+    const shortage = isSufficient ? 0 : projectCost - currentCash;
+
+    return {
+      isSufficient,
+      currentCash,
+      projectCost,
+      shortage,
+      message: isSufficient 
+        ? `資金充足 (目前銀行餘額: $${currentCash.toLocaleString()})，足以支付本次專案。`
+        : `⚠️ 資金預警：銀行餘額不足以支付專案！尚缺 $${shortage.toLocaleString()}，請考慮排程募資或跟催應收帳款。`
+    };
+  } catch (error) {
+    console.error('預算檢查失敗:', error);
+    return { 
+      isSufficient: false, 
+      error: true, 
+      message: '無法取得目前銀行餘額以進行評估' 
+    };
   }
 }
 

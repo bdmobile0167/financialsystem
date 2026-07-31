@@ -1979,6 +1979,7 @@ async function renderVoucherWorkflowList() {
           <tr>
             <th>單號</th>
             <th>摘要</th>
+            <th>筆數</th>
             <th>金額</th>
             <th>狀態</th>
             <th>操作</th>
@@ -2731,22 +2732,48 @@ window.rejectVoucher = async (voucherId, stage = 'manager') => {
   }
 };
 
+/**
+ * 3. 執行付款銷案 (Close Voucher)
+ * 將狀態轉為 closed，寫入審批歷程，並重新渲染畫面
+ */
 window.closeVoucher = async (voucherId) => {
-  if (!confirm('確定要執行付款銷案嗎？')) return;
+  if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
 
   try {
-    const { error } = await supabase
+    // 1. 更新單據狀態為已結案 (closed)
+    const { error: updateError } = await supabase
       .from('vouchers')
-      .update({ status: 'closed', closed_at: new Date().toISOString() })
+      .update({ 
+        status: 'closed',
+        closed_at: new Date().toISOString()
+      })
       .eq('id', voucherId);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
 
-    alert('銷案成功！');
-    renderVoucherWorkflowList();
-    renderDashboard();
+    // 2. 寫入審批流歷程檔案日誌
+    await supabase.from('voucher_workflow_logs').insert([{
+      voucher_id: voucherId,
+      actor_id: state.currentUser?.id,
+      action: 'close',
+      from_status: 'approved',
+      to_status: 'closed',
+      reject_reason: '執行付款銷案'
+    }]);
+
+    alert('單據已成功付款並銷案！');
+    
+    // 3. 重新更新 Dashboard 和工作流列表
+    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
+    if (typeof renderDashboard === 'function') renderDashboard();
+    
+    // 隱藏可能開啟的 Modal
+    const modal = document.getElementById('voucherDetailModal');
+    if (modal) modal.style.display = 'none';
+
   } catch (err) {
-    alert('銷案失敗：' + err.message);
+    console.error(err);
+    alert(`銷案操作失敗：${err.message}`);
   }
 };
 
@@ -3492,19 +3519,45 @@ window.submitFullResubmission = async (e, voucherId) => {
 };
 
 window.approveFromDetail = async (voucherId) => {
-  const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
-  await managerApprove(voucher);
-  showMessage('已核准，送至會計審核。');
-  document.querySelector('.modal-backdrop')?.remove();
-  renderVoucherWorkflowList();
+  try {
+    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
+    
+    // 根據角色決定呼叫哪個核准邏輯
+    if (state.currentUser?.role === 'accounting') {
+      await accountingApprove(voucher); // 假設有這個函式
+      showMessage('會計審核完成。');
+    } else {
+      await managerApprove(voucher);
+      showMessage('已核准，送至會計審核。');
+    }
+    
+    document.querySelector('.modal-backdrop')?.remove();
+    renderVoucherWorkflowList();
+  } catch (error) {
+    console.error('Approve Error:', error);
+    showMessage('核准發生錯誤');
+  }
 };
 
 window.rejectFromDetail = async (voucherId) => {
   const reason = await promptRejectReason();
   if (!reason) return;
-  const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
-  await managerReject(voucher, reason);
-  showMessage('已退件。');
-  document.querySelector('.modal-backdrop')?.remove();
-  renderVoucherWorkflowList();
+  
+  try {
+    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
+    
+    // 根據角色決定呼叫哪個退件邏輯
+    if (state.currentUser?.role === 'accounting') {
+      await accountingReject(voucher, reason); // 假設有這個函式
+    } else {
+      await managerReject(voucher, reason);
+    }
+    
+    showMessage('已退件。');
+    document.querySelector('.modal-backdrop')?.remove();
+    renderVoucherWorkflowList();
+  } catch (error) {
+    console.error('Reject Error:', error);
+    showMessage('退件發生錯誤');
+  }
 };
