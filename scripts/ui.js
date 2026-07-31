@@ -2739,8 +2739,52 @@ window.rejectVoucher = async (voucherId, stage = 'manager') => {
 window.closeVoucher = async (voucherId) => {
   if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
 
+  // ⚠️ 請確保你有辦法在這裡取得「付款銀行帳戶的 ID」
+  // 假設你的畫面上也有一個下拉選單讓使用者選擇付款銀行，或者從單據本身的資料讀取
+  const bankAccountId = document.getElementById('reviewBankAccount')?.value; 
+  
+  if (!bankAccountId) {
+    alert('無法執行付款：請先選擇或確認付款的銀行帳戶！');
+    return;
+  }
+
   try {
-    // 1. 更新單據狀態為已結案 (closed)
+    // 1. 先取得單據資料（為了獲取 total_amount 來扣款）
+    const { data: voucher, error: vErr } = await supabase
+      .from('vouchers')
+      .select('*')
+      .eq('id', voucherId)
+      .single();
+    if (vErr) throw vErr;
+
+    // 2. 查詢並扣除銀行餘額
+    const { data: bank, error: bankErr } = await supabase
+      .from('bank_accounts')
+      .select('balance, opening_balance')
+      .eq('id', bankAccountId)
+      .single();
+    if (bankErr) throw bankErr;
+
+    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
+    const { error: updateBankError } = await supabase
+      .from('bank_accounts')
+      .update({ balance: Number(currentBalance) - Number(voucher.total_amount) })
+      .eq('id', bankAccountId);
+    if (updateBankError) throw updateBankError;
+
+    // 3. 寫入 voucher_payments 付款紀錄
+    const { error: paymentError } = await supabase
+      .from('voucher_payments')
+      .insert({
+        voucher_id: voucherId, 
+        payment_type: 'bank_transfer', 
+        bank_account_id: bankAccountId,
+        amount: voucher.total_amount, 
+        paid_at: new Date().toISOString().slice(0, 10)
+      });
+    if (paymentError) throw paymentError;
+
+    // 4. 更新單據狀態為已結案 (closed)
     const { error: updateError } = await supabase
       .from('vouchers')
       .update({ 
@@ -2748,10 +2792,9 @@ window.closeVoucher = async (voucherId) => {
         closed_at: new Date().toISOString()
       })
       .eq('id', voucherId);
-
     if (updateError) throw updateError;
 
-    // 2. 寫入審批流歷程檔案日誌
+    // 5. 寫入審批流歷程檔案日誌
     await supabase.from('voucher_workflow_logs').insert([{
       voucher_id: voucherId,
       actor_id: state.currentUser?.id,
@@ -2761,9 +2804,9 @@ window.closeVoucher = async (voucherId) => {
       reject_reason: '執行付款銷案'
     }]);
 
-    alert('單據已成功付款並銷案！');
+    alert('單據已成功付款並銷案！銀行餘額已成功扣除。');
     
-    // 3. 重新更新 Dashboard 和工作流列表
+    // 6. 重新更新 Dashboard 和工作流列表
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
     
@@ -2773,7 +2816,7 @@ window.closeVoucher = async (voucherId) => {
 
   } catch (err) {
     console.error(err);
-    alert(`銷案操作失敗：${err.message}`);
+    alert(`銷案與付款操作失敗：${err.message}`);
   }
 };
 
