@@ -2357,8 +2357,9 @@ window.viewVoucherDetail = async (voucherId) => {
           <button type="button" class="secondary" onclick="openAttachment('${a.file_url || a.url}')" style="margin:2px;">📎 附件 ${i + 1}</button>
         `).join('') : '<p class="muted">尚無附件</p>'}
         <div style="margin-top:20px; text-align:right; gap:10px; display:flex; justify-content:flex-end;">
-          ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
-            <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
+          ${(vch.status === 'pending_review' && ['manager','admin'].includes(state.currentUser?.role)) ? `
+            <button onclick="window.approveFromDetail('${vch.id}')" style="background:#10b981; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">核准</button>
+            <button onclick="window.rejectFromDetail('${vch.id}')" style="background:#ef4444; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">退件</button>
           ` : ''}
           ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
             <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
