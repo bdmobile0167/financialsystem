@@ -1,3 +1,6 @@
+/* =========================================
+   1. 核心變數與基礎設定
+   ========================================= */
 :root {
   --bg: #f1f5f9;
   --surface: #ffffff;
@@ -11,9 +14,11 @@
   --border: #e2e8f0;
   --shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
 }
+
 * {
   box-sizing: border-box;
 }
+
 html,
 body {
   margin: 0;
@@ -22,42 +27,54 @@ body {
   background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
   color: var(--text);
 }
+
 button,
 input,
 select,
 textarea {
   font-family: inherit;
 }
+
 button {
   border: none;
   border-radius: 14px;
   padding: 12px 16px;
   font-weight: 700;
+  cursor: pointer;
 }
+
 button.primary-btn {
   width: 100%;
   background: linear-gradient(135deg, var(--primary), #3b82f6);
   color: white;
 }
+
 button.secondary {
   background: #0f766e;
   color: white;
 }
+
 button.danger {
   background: #dc2626;
   color: white;
 }
+
+/* =========================================
+   2. 版面佈局與元件
+   ========================================= */
 .container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
 }
+
 .login-shell {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px;
 }
+
 .login-card {
   width: min(520px, calc(100% - 32px));
   background: rgba(255, 255, 255, 0.95);
@@ -66,17 +83,21 @@ button.danger {
   box-shadow: var(--shadow);
   padding: 36px;
 }
+
 .app-shell {
   display: none;
 }
+
 .app-shell.active {
   display: block;
 }
+
 .app-layout {
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 24px;
 }
+
 .sidebar {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -87,18 +108,35 @@ button.danger {
   flex-direction: column;
   gap: 24px;
 }
+
 .sidebar-brand h2 {
   margin: 0;
   font-size: 24px;
 }
+
 .sidebar-brand p {
   margin: 8px 0 0;
   font-size: 14px;
 }
+
+.nav-group {
+  margin-bottom: 4px;
+}
+
+.nav-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 16px 6px;
+}
+
 .side-nav {
   display: grid;
   gap: 10px;
 }
+
 .side-nav button {
   width: 100%;
   background: transparent;
@@ -108,18 +146,22 @@ button.danger {
   border-radius: 16px;
   transition: background 0.2s ease, color 0.2s ease;
 }
+
 .side-nav button.active {
   background: rgba(37, 99, 235, 0.12);
   color: var(--primary-strong);
 }
+
 .sidebar-footer {
   margin-top: auto;
 }
+
 .main-content {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
+
 .main-header {
   display: flex;
   justify-content: space-between;
@@ -131,14 +173,17 @@ button.danger {
   padding: 24px;
   box-shadow: var(--shadow);
 }
+
 .main-header h2 {
   margin: 0;
 }
+
 .summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
+
 .summary-item {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -146,16 +191,19 @@ button.danger {
   padding: 20px;
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
 }
+
 .summary-item span {
   display: block;
   color: var(--muted);
   font-size: 14px;
 }
+
 .summary-item strong {
   display: block;
   margin-top: 12px;
   font-size: 28px;
 }
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -163,26 +211,31 @@ button.danger {
   box-shadow: var(--shadow);
   padding: 24px;
 }
+
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+
 .form-grid .full-width {
   grid-column: 1 / -1;
 }
+
 label {
   display: block;
   margin-bottom: 8px;
   color: var(--muted);
   font-size: 14px;
 }
+
 input,
 select,
 textarea {
@@ -193,40 +246,83 @@ textarea {
   font-size: 14px;
   background: #fcfcfd;
 }
+
 textarea {
   min-height: 108px;
   resize: vertical;
 }
+
+.search-row {
+  margin-bottom: 16px;
+}
+
+.search-row input {
+  max-width: 360px;
+}
+
+/* =========================================
+   3. 表格與響應式捲軸樣式
+   ========================================= */
 .table-responsive {
   overflow-x: auto;
 }
+
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
+
 th,
 td {
   text-align: left;
   padding: 16px;
   border-bottom: 1px solid var(--border);
 }
+
 th {
   background: var(--surface-strong);
   color: var(--text);
 }
+
 td button {
   min-width: 80px;
 }
+
+/* 報表區塊專屬響應式捲軸與留白設定 */
+#reportsContent {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
+}
+
+#reportsContent table {
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+#reportsContent th, 
+#reportsContent td {
+  padding: 10px 16px;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+/* =========================================
+   4. 訊息提示與憑證小卡
+   ========================================= */
 .button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 18px;
 }
+
 .muted {
   color: var(--muted);
 }
+
 .message {
   padding: 14px 16px;
   border-radius: 18px;
@@ -235,16 +331,134 @@ td button {
   background: #eff6ff;
   color: #1d4ed8;
 }
+
 .message.error {
   background: #fee2e2;
   color: #b91c1c;
 }
+
 .message.success {
   background: #ecfdf5;
   color: #166534;
 }
 
-/* 漢堡選單按鈕（預設隱藏，小螢幕才出現） */
+.voucher-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.voucher-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Toast 訊息 */
+#toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast-message {
+  background-color: #4caf50;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  font-size: 14px;
+  animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+  opacity: 0.9;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 0.9; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 0.9; }
+  to { opacity: 0; }
+}
+
+/* =========================================
+   5. 財報頁首、簽核欄與公司資訊樣式
+   ========================================= */
+.report-letterhead {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--text);
+}
+
+.report-company {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.report-meta, .report-period, .report-printdate {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.report-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+/* 簽核欄位排版與防擠壓設定 */
+.report-signature-row,
+#reportsContent .report-signature-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 24px !important;
+  margin-top: 36px !important;
+  box-sizing: border-box !important;
+}
+
+.report-signature-row .sign-box,
+.report-signature-row > div,
+.report-signature-row > span,
+#reportsContent .sign-box {
+  flex: 1 1 0% !important;
+  min-width: 150px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  text-align: center !important;
+  border-top: 1px solid #94a3b8 !important;
+  padding-top: 8px !important;
+  font-size: 13px !important;
+  color: var(--muted);
+}
+
+.report-signature-row *,
+.sign-box * {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+#reportsContent div[style*="text-align: center"],
+#reportsContent .company-footer {
+  width: 100% !important;
+  text-align: center !important;
+  margin-top: 24px !important;
+  white-space: nowrap !important;
+}
+
+/* =========================================
+   6. 漢堡選單與行動裝置響應式 (Media Queries)
+   ========================================= */
 .menu-toggle {
   display: none;
   flex-direction: column;
@@ -260,6 +474,7 @@ td button {
   cursor: pointer;
   flex-shrink: 0;
 }
+
 .menu-toggle span {
   display: block;
   width: 20px;
@@ -268,11 +483,11 @@ td button {
   border-radius: 2px;
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
+
 .menu-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
 .menu-toggle.open span:nth-child(2) { opacity: 0; }
 .menu-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-/* 開啟選單時的背景遮罩 */
 .sidebar-overlay {
   display: none;
   position: fixed;
@@ -280,6 +495,7 @@ td button {
   background: rgba(15, 23, 42, 0.45);
   z-index: 40;
 }
+
 .sidebar-overlay.open {
   display: block;
 }
@@ -337,13 +553,16 @@ td button {
   }
 }
 
+/* =========================================
+   7. 列印專屬設定 (Print Media Query)
+   ========================================= */
 @media print {
-  /* 1. 預設隱藏全部元素 */
+  /* 預設隱藏全部元素 */
   body * {
     visibility: hidden !important;
   }
   
-  /* 2. 僅開放報表區域顯示 */
+  /* 僅開放報表區域顯示 */
   #reports,
   #reports * {
     visibility: visible !important;
@@ -359,7 +578,8 @@ td button {
     background: #fff !important;
   }
 
-  /* 3. 隱藏所有按鈕、導覽列、搜尋列以及日期篩選欄位與標籤 */
+  /* 隱藏不必要的按鈕、導覽列、搜尋列與表單篩選 */
+  .no-print,
   .button-row,
   button,
   .side-nav,
@@ -374,15 +594,13 @@ td button {
     display: none !important;
   }
 
-  /* 4. 關鍵修正：取消固定高度避免內容重疊，改用「強制換頁 (page-break-before)」讓每一個報表獨立一頁 */
+  /* 報表 Panel 排版與強制換頁 */
   .panel {
     border: none !important;
     box-shadow: none !important;
     background: #fff !important;
     padding: 15mm 15mm 20mm 15mm !important;
     margin: 0 !important;
-    
-    /* 移除會導致重疊的固定高度，改由內容自動撐開，並在每個 panel 之前強制分頁 */
     height: auto !important;
     min-height: 250mm !important;
     
@@ -396,36 +614,37 @@ td button {
     box-sizing: border-box !important;
   }
   
-  /* 第一個報表不需要在上方強制換頁，從第一頁開始即可 */
   .panel:first-of-type {
     page-break-before: avoid !important;
     break-before: avoid !important;
   }
 
-  /* 5. 確保表頭正常顯示 */
+  /* 確保表頭與簽名欄正常顯示 */
   .report-letterhead {
     display: block !important;
     margin-bottom: 15px !important;
   }
 
-  /* 6. 簽名欄樣式：自動推到頁面下方 */
   .report-signature-row {
     display: flex !important;
+    width: 100% !important;
     justify-content: space-between !important;
+    page-break-inside: avoid !important;
     margin-top: 40px !important;
     padding-top: 15px !important;
     border-top: 1px solid #333 !important;
   }
 
   .sign-box {
-    flex: 1;
-    text-align: center;
-    font-size: 12px;
+    flex: 1 !important;
+    text-align: center !important;
+    font-size: 12px !important;
     color: #000 !important;
-    margin: 0 5px;
+    margin: 0 5px !important;
+    white-space: nowrap !important;
   }
 
-  /* 7. 表格樣式優化 */
+  /* 表格列印優化 */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
@@ -447,142 +666,9 @@ td button {
     padding: 7px 6px !important;
     font-size: 12px !important;
   }
-}
 
-.nav-group {
-  margin-bottom: 4px;
-}
-.nav-group-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 8px 16px 6px;
-}
-.search-row {
-  margin-bottom: 16px;
-}
-.search-row input {
-  max-width: 360px;
-}
-
-.report-letterhead {
-  text-align: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid var(--text);
-}
-.report-company {
-  font-size: 18px;
-  font-weight: 700;
-}
-.report-meta, .report-period, .report-printdate {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.report-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-top: 8px;
-}
-.report-signature-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 28px;
-}
-.sign-box {
-  flex: 1;
-  text-align: center;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-@media print {
-  .report-letterhead,
-  .report-signature-row {
-    display: block !important;
+  #reportsContent {
+    width: 100% !important;
+    overflow: visible !important;
   }
-  .report-signature-row {
-    display: flex !important;
-  }
-}
-
-/* 列印時隱藏特定元素 */
-@media print {
-  .no-print {
-    display: none !important;
-  }
-}
-
-.voucher-card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
-}
-.voucher-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-#toast-container {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.toast-message {
-  background-color: #4caf50; /* 成功為綠色，可依狀態調整 */
-  color: white;
-  padding: 12px 20px;
-  border-radius: 6px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  font-size: 14px;
-  animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
-  opacity: 0.9;
-}
-
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 0.9; }
-}
-
-@keyframes fadeOut {
-  from { opacity: 0.9; }
-  to { opacity: 0; }
-}
-/* =========================================
-   解決表格與內容擠在一起的問題（響應式表格）
-   ========================================= */
-
-/* 1. 讓包住報表的區塊在視窗太小時，產生左右滑動軸 */
-#reportsContent {
-  width: 100%;
-  overflow-x: auto; /* 視窗不夠寬時，允許左右滑動 */
-  -webkit-overflow-scrolling: touch; /* 讓手機版滑動更順暢 */
-  padding-bottom: 16px; /* 避免底部捲軸貼太緊 */
-}
-
-/* 2. 確保表格本身有足夠的伸展空間，不被強制擠壓 */
-#reportsContent table {
-  min-width: 100%; /* 表格至少要撐滿畫面，如果有更多內容就往右長 */
-  border-collapse: collapse;
-}
-
-/* 3. 增加儲存格（欄位）的留白，避免字體黏在一起 */
-#reportsContent th, 
-#reportsContent td {
-  padding: 10px 16px; /* 增加上下 10px、左右 16px 的呼吸空間 */
-  white-space: nowrap; /* 關鍵：強制文字不換行，保持報表數字整齊 */
-  word-break: keep-all; 
 }
