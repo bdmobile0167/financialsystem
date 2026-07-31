@@ -1269,6 +1269,8 @@ function initializeEventsInternal() {
     }
   });
 
+  safeListener('parseStatementBtn', 'click', handleParseStatement);
+
   safeListener('changePasswordForm', 'submit', async (e) => {
     e.preventDefault();
     const newPassword = document.getElementById('newPassword').value;
@@ -1312,9 +1314,10 @@ function initializeEventsInternal() {
     e.target.value = '';
   });
 
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
+  // 在 initializeEventsInternal() 裡面尋找這段：
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
 
       if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('僅會計部門與 Admin 可使用', true);
@@ -1324,6 +1327,11 @@ function initializeEventsInternal() {
       state.activeTab = tab;
       renderTabs();
       closeSidebar();
+
+      // ======== 把呼叫補在這裡 ========
+      if (tab === 'bankReconcile') {
+        populateStatementBankAccountSelect();
+      }
 
       if (tab === 'voucherWorkflow') {
         populateVoucherFormOptions();
@@ -3749,4 +3757,153 @@ function initCompanyInfoForm() {
   setVal('companyBoardCount', company.boardCount);
   setVal('companyTotalCapital', company.totalCapital);
   setVal('companyOpenDate', company.plannedOpenDate);
+}
+
+let parsedStatementRecords = [];
+let availableBankAccounts = []; // 用來暫存從 DB 抓取的銀行清單
+
+// 1. 動態生成下拉選單
+async function populateStatementBankAccountSelect() {
+  const select = document.getElementById('statementBankAccountId');
+  if (!select) return;
+  
+  // 呼叫你系統既有的 API 抓取 DB 裡的銀行帳戶
+  availableBankAccounts = await fetchBankAccounts();
+  
+  select.innerHTML = '<option value="">請選擇銀行帳戶...</option>' + 
+    availableBankAccounts.map(b => 
+      `<option value="${b.id}">${b.bank_name} - ${b.account_number.slice(-4)} (${b.nickname || ''})</option>`
+    ).join('');
+
+  // 監聽選擇改變，提示使用者對應的解析規則
+  select.addEventListener('change', (e) => {
+    const bankCode = detectParserCode(e.target.value);
+    const hintEl = document.getElementById('detectedParserText');
+    if (bankCode) {
+      hintEl.innerHTML = `✅ 已自動對應解析規則：<strong>${bankCode}</strong>`;
+      hintEl.style.color = 'green';
+    } else if (e.target.value) {
+      hintEl.innerHTML = `⚠️ 系統目前沒有此銀行帳戶的 PDF 解析規則`;
+      hintEl.style.color = 'red';
+    } else {
+      hintEl.innerHTML = '';
+    }
+  });
+}
+
+// 2. 自動判斷對應的 Parser 規則 (玉山187, 兆豐347...等)
+function detectParserCode(bankId) {
+  const bank = availableBankAccounts.find(b => b.id === bankId);
+  if (!bank) return null;
+
+  const bankName = bank.bank_name || '';
+  const accNum = bank.account_number || '';
+  const last3 = accNum.slice(-3); // 取帳號末三碼
+
+  if (bankName.includes('玉山')) return `玉山${last3}`;
+  if (bankName.includes('兆豐')) return `兆豐${last3}`;
+  
+  return null; 
+}
+
+// 3. 修改解析按鈕邏輯
+async function handleParseStatement() {
+  const fileInput = document.getElementById('statementFileInput');
+  const bankAccountId = document.getElementById('statementBankAccountId').value;
+  const previewArea = document.getElementById('statementPreviewArea');
+  const file = fileInput?.files[0];
+
+  if (!bankAccountId) { showMessage('請先選擇對應的銀行帳戶。', true); return; }
+  if (!file) { showMessage('請先選擇 PDF 檔案。', true); return; }
+
+  // 動態取得 bankCode
+  const bankCode = detectParserCode(bankAccountId);
+  if (!bankCode) {
+    showMessage('系統目前無法解析此銀行的對帳單，請確認是否為支援的帳戶。', true);
+    return;
+  }
+
+  previewArea.innerHTML = '<p class="muted">解析中，請稍候…</p>';
+
+  try {
+    const fileBase64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const response = await fetch('/api/parse-bank-statement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileBase64, bankCode }) // 送出動態產生的 bankCode
+    });
+    
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || '解析失敗');
+
+    parsedStatementRecords = result.records;
+
+    if (!parsedStatementRecords.length) {
+      previewArea.innerHTML = '<p class="muted">沒有解析到任何交易紀錄，請確認 PDF 格式或銀行別是否正確。</p>';
+      return;
+    }
+
+    previewArea.innerHTML = `
+      <p>解析到 <strong>${parsedStatementRecords.length}</strong> 筆交易，請確認後匯入：</p>
+      <table>
+        <thead><tr><th>日期</th><th>摘要</th><th>對象</th><th>支出</th><th>收入</th><th>餘額</th></tr></thead>
+        <tbody>
+          ${parsedStatementRecords.map(r => `
+            <tr>
+              <td>${r.date || '-'}</td><td>${r.detail || '-'}</td><td>${r.counterparty || '-'}</td>
+              <td>${r.expense ? Number(r.expense).toLocaleString() : '-'}</td>
+              <td>${r.income ? Number(r.income).toLocaleString() : '-'}</td>
+              <td>${r.balance != null ? Number(r.balance).toLocaleString() : '-'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <button id="confirmImportStatementBtn" class="primary-btn" style="margin-top:12px;">確認匯入帳單庫</button>
+    `;
+
+    document.getElementById('confirmImportStatementBtn')?.addEventListener('click', handleConfirmImportStatement);
+  } catch (error) {
+    previewArea.innerHTML = `<p class="muted">解析失敗：${error.message}</p>`;
+  }
+}
+
+// 4. 修改確認匯入邏輯
+async function handleConfirmImportStatement() {
+  const bankAccountId = document.getElementById('statementBankAccountId').value;
+  // 匯入資料庫時，一併把解析規則(bankCode)存進去備查
+  const bankCode = detectParserCode(bankAccountId); 
+  const fileName = document.getElementById('statementFileInput')?.files[0]?.name || '';
+  const { data: { user } } = await supabase.auth.getUser();
+
+  try {
+    const rows = parsedStatementRecords
+      .filter(r => r.date)
+      .map(r => ({
+        bank_account_id: bankAccountId || null,
+        bank_code: bankCode,
+        tx_date: r.date.replace(/\//g, '-'),
+        detail: r.detail,
+        counterparty: r.counterparty,
+        expense: r.expense || 0,
+        income: r.income || 0,
+        balance: r.balance,
+        source_file_name: fileName,
+        uploaded_by: user.id
+      }));
+
+    const { error } = await supabase.from('bank_statement_transactions').insert(rows);
+    if (error) throw error;
+
+    showMessage(`已匯入 ${rows.length} 筆對帳資料。`);
+    document.getElementById('statementPreviewArea').innerHTML = '';
+    document.getElementById('statementFileInput').value = '';
+    document.getElementById('detectedParserText').innerHTML = '';
+  } catch (error) {
+    showMessage(`匯入失敗：${error.message}`, true);
+  }
 }

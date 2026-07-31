@@ -58,6 +58,7 @@
           </div>
           <div class="nav-group">
             <div class="nav-group-title">財務報表</div>
+            <button class="tab-btn" data-tab="bankReconcile">銀行對帳</button>
             <button class="tab-btn" data-tab="reports">四大財報</button>
             <button class="tab-btn" data-tab="voucherCenter">憑證中心</button>
           </div>
@@ -428,6 +429,29 @@
           </div>
         </section>
 
+        <section id="bankReconcile" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <h3>銀行對帳單匯入</h3>
+            <p class="muted">上傳銀行 PDF 對帳單，系統會自動解析並存入帳單庫，用於核對，跟報支核銷資料分開。</p>
+            <div class="form-grid">
+              <div>
+                <label>選擇對應銀行帳戶（系統內）</label>
+                <select id="statementBankAccountId">
+                  <option value="">載入中...</option>
+                </select>
+                <!-- 顯示自動偵測到的解析規則，讓使用者安心 -->
+                <small id="detectedParserText" style="color: #666; display: block; margin-top: 4px;"></small>
+              </div>
+              <div>
+                <label>PDF 對帳單檔案</label>
+                <input type="file" id="statementFileInput" accept="application/pdf" />
+              </div>
+            </div>
+            <button id="parseStatementBtn" class="primary-btn" style="margin-top:12px;">解析 PDF</button>
+            <div id="statementPreviewArea" style="margin-top:16px;"></div>
+          </div>
+        </section>
+        
         <section id="reports" class="tab-panel" style="display:none;">
           <div class="panel">
             <div class="panel-header">
