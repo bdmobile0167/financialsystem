@@ -1125,6 +1125,32 @@ function initializeEventsInternal() {
     }
   });
 
+  // 密碼變更表單送出事件
+  safeListener('changePasswordForm', 'submit', async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (newPassword !== confirmPassword) {
+      showMessage('兩次輸入的新密碼不一致！', true);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showMessage('新密碼長度至少需要 6 個字元！', true);
+      return;
+    }
+
+    const result = await changeMyPassword(newPassword);
+    if (!result.ok) {
+      showMessage(`密碼修改失敗：${result.message}`, true);
+      return;
+    }
+
+    showMessage('密碼修改成功！');
+    e.target.reset(); // 清空輸入框
+  });
+
   safeListener('bulkVoucherUpload', 'change', (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -3713,4 +3739,15 @@ function initCompanyInfoForm() {
   setVal('companyBoardCount', company.boardCount);
   setVal('companyTotalCapital', company.totalCapital);
   setVal('companyOpenDate', company.plannedOpenDate);
+}
+
+// 在 Tab 切換事件內加入這一段：
+if (tab === 'settings') {
+  initCompanyInfoForm(); // 確保每次切過來時，輸入框都有最新資料
+  
+  // 同步帶入密碼設定區塊的登入帳號
+  const emailInput = document.getElementById('passwordUserEmail');
+  if (emailInput && state.currentUser) {
+    emailInput.value = state.currentUser.email || '';
+  }
 }

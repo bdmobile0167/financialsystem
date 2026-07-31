@@ -545,12 +545,16 @@
         </section>
 
         <section id="settings" class="tab-panel" style="display:none;">
+          
+          <!-- 1. 系統設定 -->
           <div class="panel">
             <h3>系統設定</h3>
             <label>系統名稱</label>
             <input id="systemName" value="財務管理系統" />
-            <button id="saveSettingsBtn" style="margin-top: 10px;">儲存設定</button>
+            <button id="saveSettingsBtn" style="margin-top: 10px;" class="secondary">儲存設定</button>
           </div>
+
+          <!-- 2. 公司基本資料（可編輯表單） -->
           <div class="panel" style="margin-top:16px;">
             <h3>公司基本資料</h3>
             <p class="muted">這裡的資料會套用到四大財報抬頭、公司登記文件產出。</p>
@@ -596,25 +600,29 @@
               <button type="submit" class="primary-btn" style="margin-top:14px;">儲存公司資料</button>
             </form>
           </div>
-          <div class="panel" id="passwordCard">
+
+          <!-- 3. 密碼設定（已優化為 Form） -->
+          <div class="panel" id="passwordCard" style="margin-top: 16px;">
             <h3>密碼設定</h3>
-            <p class="muted">管理者登入後，可設定帳號密碼登入。</p>
-            <label>登入帳號</label>
-            <input id="passwordUserEmail" type="email" readonly />
-            <label>新密碼</label>
-            <input id="newPassword" type="password" placeholder="輸入新密碼" />
-            <label>確認密碼</label>
-            <input id="confirmPassword" type="password" placeholder="再次輸入密碼" />
-            <button id="setPasswordBtn" class="secondary" style="margin-top: 10px;">儲存密碼</button>
+            <p class="muted">您可以隨時變更您的登入密碼。</p>
+            <form id="changePasswordForm">
+              <label>登入帳號</label>
+              <input id="passwordUserEmail" type="email" readonly />
+              <label>新密碼</label>
+              <input id="newPassword" type="password" placeholder="輸入新密碼" required />
+              <label>確認密碼</label>
+              <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required />
+              <button type="submit" class="secondary" style="margin-top: 10px;">儲存密碼</button>
+            </form>
           </div>
-          <div class="panel" style="margin-top: 16px;">
-            <h3>公司資料</h3>
-            <div id="companyInfoContent"></div>
-          </div>
+
+          <!-- 4. 事業項目與董監名單 -->
           <div class="panel" style="margin-top: 16px;">
             <h3>事業項目與董監名單</h3>
             <div id="businessInfoContent"></div>
           </div>
+
+          <!-- 5. 使用者核准 -->
           <div class="panel" style="margin-top: 16px;">
             <h3>使用者核准</h3>
             <p class="muted">管理者可查看其他帳號的登入申請並核准。</p>
@@ -625,6 +633,8 @@
               <tbody id="approvalTableBody"></tbody>
             </table>
           </div>
+
+          <!-- 6. 匯出資料 -->
           <div class="panel" style="margin-top: 16px;">
             <h3>匯出資料</h3>
             <p class="muted">可把交易資料匯出為 JSON。</p>
