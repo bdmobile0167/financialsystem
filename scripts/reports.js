@@ -98,52 +98,134 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
 export async function buildIncomeStatement(transactions, startDate = null, endDate = null) {
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const revenueRow = rows.find(r => r.code === '4111');
-    const expenseRow = rows.find(r => r.code === '6100');
-    const revenue = revenueRow ? revenueRow.creditTotal - revenueRow.debitTotal : 0;
-    const expense = expenseRow ? expenseRow.debitTotal - expenseRow.creditTotal : 0;
-    const netProfit = revenue - expense;
-    return [['營業收入', revenue], ['營業費用', -expense], ['本期淨利', netProfit]];
+    
+    // 依會計代碼開頭自動歸類：4開頭為營業收入，5/6開頭為營業費用
+    const revenueRows = rows.filter(r => r.code.startsWith('4'));
+    const expenseRows = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6'));
+
+    const totalRevenue = revenueRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = expenseRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const netProfit = totalRevenue - totalExpense;
+
+    return {
+      type: 'structured',
+      sections: [
+        {
+          title: '一、營業收入',
+          items: revenueRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]),
+          subtotal: totalRevenue
+        },
+        {
+          title: '二、營業費用',
+          items: expenseRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]),
+          subtotal: totalExpense
+        }
+      ],
+      netProfit
+    };
   } catch (err) {
     console.warn('損益表讀取 Supabase 失敗，降級使用本地計算:', err.message);
     const { trialBalance } = runAccountingPipeline(transactions);
-    const revenueRow = trialBalance.rows.find(r => r.code === '4111');
-    const expenseRow = trialBalance.rows.find(r => r.code === '6100');
-    const revenue = revenueRow ? revenueRow.creditTotal - revenueRow.debitTotal : 0;
-    const expense = expenseRow ? expenseRow.debitTotal - expenseRow.creditTotal : 0;
-    const netProfit = revenue - expense;
-    return [['營業收入', revenue], ['營業費用', -expense], ['本期淨利', netProfit]];
+    const revenueRows = trialBalance.rows.filter(r => r.code.startsWith('4'));
+    const expenseRows = trialBalance.rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6'));
+    const totalRevenue = revenueRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = expenseRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const netProfit = totalRevenue - totalExpense;
+
+    return {
+      type: 'structured',
+      sections: [
+        { title: '一、營業收入', items: revenueRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: totalRevenue },
+        { title: '二、營業費用', items: expenseRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: totalExpense }
+      ],
+      netProfit
+    };
   }
 }
 
 export async function buildBalanceSheet(transactions, startDate = null, endDate = null) {
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const bankRow = rows.find(r => r.code === '1102');
-    const cash = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
-    const revenueRow = rows.find(r => r.code === '4111');
-    const expenseRow = rows.find(r => r.code === '6100');
-    const revenue = revenueRow ? revenueRow.creditTotal - revenueRow.debitTotal : 0;
-    const expense = expenseRow ? expenseRow.debitTotal - expenseRow.creditTotal : 0;
-    const netProfit = revenue - expense;
-    return [
-      ['現金及銀行存款', Math.max(0, cash)],
-      ['流動資產合計', Math.max(0, cash)],
-      ['本期淨利(權益)', netProfit],
-      ['權益合計', netProfit]
-    ];
+    
+    // 依資產負債表代碼規範進行階層篩選
+    const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
+    const nonCurrentAssetsRows = rows.filter(r => r.code.startsWith('15') || r.code.startsWith('16'));
+    const currentLiabilitiesRows = rows.filter(r => r.code.startsWith('2'));
+    const equityRows = rows.filter(r => r.code.startsWith('3'));
+
+    const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const nonCurrentAssetsTotal = nonCurrentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const totalAssets = currentAssetsTotal + nonCurrentAssetsTotal;
+
+    const currentLiabilitiesTotal = currentLiabilitiesRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const capitalTotal = equityRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+
+    // 計算本期淨利以併入保留盈餘
+    const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const netProfit = totalRevenue - totalExpense;
+
+    const totalEquity = capitalTotal + netProfit;
+    const totalLiabilitiesAndEquity = currentLiabilitiesTotal + totalEquity;
+
+    return {
+      type: 'structured',
+      sections: [
+        {
+          title: '資產 (Assets)',
+          subsections: [
+            { title: '流動資產', items: currentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: currentAssetsTotal },
+            { title: '非流動資產', items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
+          ],
+          total: totalAssets
+        },
+        {
+          title: '負債及權益 (Liabilities & Equity)',
+          subsections: [
+            { title: '流動負債', items: currentLiabilitiesRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: currentLiabilitiesTotal },
+            { 
+              title: '權益', 
+              items: [
+                ...equityRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]),
+                ['本期淨利（保留盈餘）', netProfit, '3310']
+              ], 
+              subtotal: totalEquity 
+            }
+          ],
+          total: totalLiabilitiesAndEquity
+        }
+      ]
+    };
   } catch (err) {
     console.warn('資產負債表讀取 Supabase 失敗，降級使用本地計算:', err.message);
     const { trialBalance } = runAccountingPipeline(transactions);
-    const bankRow = trialBalance.rows.find(r => r.code === '1102');
-    const cash = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
     const { netProfit } = summarizeTransactions(transactions);
-    return [
-      ['現金及銀行存款', Math.max(0, cash)],
-      ['流動資產合計', Math.max(0, cash)],
-      ['本期淨利(權益)', netProfit],
-      ['權益合計', netProfit]
-    ];
+    const cashRow = trialBalance.rows.find(r => r.code === '1102');
+    const cash = cashRow ? cashRow.debitTotal - cashRow.creditTotal : 0;
+    const capitalRow = trialBalance.rows.find(r => r.code === '3110');
+    const capital = capitalRow ? capitalRow.creditTotal - capitalRow.debitTotal : 0;
+
+    return {
+      type: 'structured',
+      sections: [
+        {
+          title: '資產 (Assets)',
+          subsections: [
+            { title: '流動資產', items: [['現金及銀行存款', Math.max(0, cash), '1102']], subtotal: Math.max(0, cash) },
+            { title: '非流動資產', items: [], subtotal: 0 }
+          ],
+          total: Math.max(0, cash)
+        },
+        {
+          title: '負債及權益 (Liabilities & Equity)',
+          subsections: [
+            { title: '流動負債', items: [], subtotal: 0 },
+            { title: '權益', items: [['股本', capital, '3110'], ['本期淨利', netProfit, '3310']], subtotal: capital + netProfit }
+          ],
+          total: capital + netProfit
+        }
+      ]
+    };
   }
 }
 
