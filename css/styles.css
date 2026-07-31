@@ -561,3 +561,28 @@ td button {
   from { opacity: 0.9; }
   to { opacity: 0; }
 }
+/* =========================================
+   解決表格與內容擠在一起的問題（響應式表格）
+   ========================================= */
+
+/* 1. 讓包住報表的區塊在視窗太小時，產生左右滑動軸 */
+#reportsContent {
+  width: 100%;
+  overflow-x: auto; /* 視窗不夠寬時，允許左右滑動 */
+  -webkit-overflow-scrolling: touch; /* 讓手機版滑動更順暢 */
+  padding-bottom: 16px; /* 避免底部捲軸貼太緊 */
+}
+
+/* 2. 確保表格本身有足夠的伸展空間，不被強制擠壓 */
+#reportsContent table {
+  min-width: 100%; /* 表格至少要撐滿畫面，如果有更多內容就往右長 */
+  border-collapse: collapse;
+}
+
+/* 3. 增加儲存格（欄位）的留白，避免字體黏在一起 */
+#reportsContent th, 
+#reportsContent td {
+  padding: 10px 16px; /* 增加上下 10px、左右 16px 的呼吸空間 */
+  white-space: nowrap; /* 關鍵：強制文字不換行，保持報表數字整齊 */
+  word-break: keep-all; 
+}
