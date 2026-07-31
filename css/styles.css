@@ -414,6 +414,7 @@ td button {
   margin-top: 8px;
 }
 
+/* 簽核欄位排版與防擠壓設定 */
 .report-signature-row,
 #reportsContent .report-signature-row {
   display: flex !important;
@@ -422,7 +423,7 @@ td button {
   width: 100% !important;
   max-width: 100% !important;
   gap: 24px !important;
-  margin-top: auto !important; /* 關鍵：自動將簽名推到區塊最下方 */
+  margin-top: 36px !important;
   box-sizing: border-box !important;
 }
 
@@ -435,8 +436,8 @@ td button {
   white-space: nowrap !important;
   word-break: keep-all !important;
   text-align: center !important;
-  border-top: none !important; /* 移除上方線條 */
-  padding-top: 0 !important;
+  border-top: 1px solid #94a3b8 !important;
+  padding-top: 8px !important;
   font-size: 13px !important;
   color: var(--muted);
 }
@@ -451,7 +452,7 @@ td button {
 #reportsContent .company-footer {
   width: 100% !important;
   text-align: center !important;
-  margin-top: 16px !important;
+  margin-top: 24px !important;
   white-space: nowrap !important;
 }
 
@@ -556,10 +557,12 @@ td button {
    7. 列印專屬設定 (Print Media Query)
    ========================================= */
 @media print {
+  /* 預設隱藏全部元素 */
   body * {
     visibility: hidden !important;
   }
   
+  /* 僅開放報表區域顯示 */
   #reports,
   #reports * {
     visibility: visible !important;
@@ -575,7 +578,7 @@ td button {
     background: #fff !important;
   }
 
-  /* 隱藏不需要列印的按鈕與篩選列 */
+  /* 隱藏不必要的按鈕、導覽列、搜尋列與表單篩選 */
   .no-print,
   .button-row,
   button,
@@ -591,17 +594,15 @@ td button {
     display: none !important;
   }
 
-  /* 讓每一個財報 Panel 剛好等於一張 A4 高度，並上下撐開 */
+  /* 報表 Panel 排版與強制換頁 */
   .panel {
     border: none !important;
     box-shadow: none !important;
     background: #fff !important;
-    padding: 15mm !important;
+    padding: 15mm 15mm 20mm 15mm !important;
     margin: 0 !important;
-    
-    /* 鎖定 A4 高度 (直式約 267mm 可視範圍)，讓內容上下分散 */
-    height: 267mm !important;
-    max-height: 267mm !important;
+    height: auto !important;
+    min-height: 250mm !important;
     
     page-break-before: always !important;
     break-before: page !important;
@@ -618,20 +619,20 @@ td button {
     break-before: avoid !important;
   }
 
+  /* 確保表頭與簽名欄正常顯示 */
   .report-letterhead {
     display: block !important;
-    margin-bottom: 10px !important;
+    margin-bottom: 15px !important;
   }
 
-  /* 列印時的簽名欄：確保無上方線條、固定在底部 */
   .report-signature-row {
     display: flex !important;
     width: 100% !important;
     justify-content: space-between !important;
     page-break-inside: avoid !important;
-    margin-top: auto !important; /* 確保推到 A4 頁面最下方 */
-    border-top: none !important;  /* 確保沒有上方線條 */
-    padding-top: 0 !important;
+    margin-top: 40px !important;
+    padding-top: 15px !important;
+    border-top: 1px solid #333 !important;
   }
 
   .sign-box {
@@ -641,14 +642,14 @@ td button {
     color: #000 !important;
     margin: 0 5px !important;
     white-space: nowrap !important;
-    border-top: none !important; /* 確保沒有上方線條 */
   }
 
+  /* 表格列印優化 */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
     border: none !important;
-    margin-bottom: 10px !important;
+    margin-bottom: 20px !important;
   }
   
   th {
