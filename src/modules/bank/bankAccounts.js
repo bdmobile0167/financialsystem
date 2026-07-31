@@ -30,14 +30,28 @@ export async function deleteBankAccount(id) {
   if (error) throw error;
 }
 
-export function getBankBalance(id, transactions = []) {
-  if (!id) return 0;
-  return transactions
-    .filter(tx => tx.bankAccountId === id)
+/**
+ * 計算銀行帳戶的即時餘額
+ * 邏輯：期初餘額 + 收入總額 - 支出總額
+ * @param {Object} bankAccount - 銀行帳戶物件（需包含 opening_balance）
+ * @param {Array} transactions - 該帳戶的所有交易流水陣列
+ */
+export function getBankBalance(bankAccount, transactions = []) {
+  if (!bankAccount) return 0;
+  
+  // 1. 取得期初餘額 (若無則預設為 0)
+  const openingBalance = Number(bankAccount.opening_balance || 0);
+  
+  // 2. 計算該帳戶歷年/當期所有交易的淨額 (收入加、支出減)
+  const netTransactions = transactions
+    .filter(tx => tx.bank_account_id === bankAccount.id || tx.bankAccountId === bankAccount.id)
     .reduce((sum, tx) => {
       const amt = Number(tx.amount || 0);
       return tx.type === '收入' ? sum + amt : sum - amt;
     }, 0);
+
+  // 3. 期初 + 異動數 = 最終剩餘金額
+  return openingBalance + netTransactions;
 }
 
 // 交易新增（移到 ui.js 初始化時呼叫，避免 DOM 未 ready）
