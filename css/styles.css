@@ -343,7 +343,7 @@ td button {
     visibility: hidden !important;
   }
   
-  /* 2. 僅開放報表區域與表頭/簽名欄顯示 */
+  /* 2. 僅開放報表區域顯示 */
   #reports,
   #reports * {
     visibility: visible !important;
@@ -359,28 +359,7 @@ td button {
     background: #fff !important;
   }
 
-  /* 3. 確保表頭與簽名欄在列印時正常顯示區塊與彈性佈局 */
-  .report-letterhead,
-  .report-signature-row {
-    display: block !important;
-  }
-  .report-signature-row {
-    display: flex !important;
-  }
-
-  /* 4. 移除外圍的框、卡片背景、陰影與多餘留白 */
-  .panel, 
-  .card, 
-  .financial-statement-sheet,
-  .report-container {
-    border: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  /* 5. 隱藏所有按鈕、導覽列、標頭、以及日期篩選欄位 */
+  /* 3. 隱藏所有按鈕、導覽列、搜尋列以及日期篩選欄位 */
   .button-row,
   button,
   .side-nav,
@@ -395,50 +374,77 @@ td button {
     display: none !important;
   }
 
-  /* 6. 確保每個報表（包含 panel 與表格）都強制獨立分頁成新的一頁 */
-  .report-section, 
-  .report-card,
-  .report-table-wrapper,
-  .panel,
-  table {
+  /* 4. 強制每一個報表面板（.panel）獨立成為一張 A4 紙高，並使用彈性盒模型將簽名欄撐到最底部 */
+  .panel {
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 10mm 15mm !important; /* A4 頁面邊距 */
+    margin: 0 !important;
+    
+    /* 關鍵：強制每一頁高度為滿版 A4，並上下分散對齊 */
+    height: 275mm !important; /* 接近 A4 高度 (297mm 減去上下邊距) */
+    max-height: 275mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    
+    /* 強制分頁 */
     page-break-after: always !important;
     break-after: page !important;
+    box-sizing: border-box !important;
   }
   
   /* 防止最後一個報表多出空白頁 */
-  .report-section:last-child,
-  .report-card:last-child,
-  .panel:last-child,
-  table:last-of-type {
+  .panel:last-child {
     page-break-after: avoid !important;
     break-after: avoid !important;
   }
 
-  /* 7. 表格樣式極簡化：移除外圍大框，保留乾淨的內線 */
+  /* 5. 確保表頭與簽名欄正常顯示 */
+  .report-letterhead {
+    display: block !important;
+    margin-bottom: 10px !important;
+  }
+
+  /* 關鍵：將簽名欄強制推到 A4 頁面的最底部 */
+  .report-signature-row {
+    display: flex !important;
+    justify-content: space-between !important;
+    margin-top: auto !important; /* 自動推至底部 */
+    padding-top: 20px !important;
+    border-top: 1px solid #ccc;
+  }
+
+  .sign-box {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: #000 !important;
+    margin: 0 8px;
+  }
+
+  /* 6. 表格樣式極簡化與排版優化 */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
     border: none !important;
-    margin-bottom: 0 !important;
+    flex-grow: 1 !important; /* 讓表格自動填滿中間空間 */
   }
   
   th {
     background-color: #f8fafc !important;
     color: #000 !important;
     border-bottom: 2px solid #333 !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
-    padding: 8px 6px !important;
+    padding: 6px 4px !important;
+    font-size: 12px !important;
   }
 
   td {
     border-bottom: 1px solid #e2e8f0 !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
     color: #000 !important;
-    padding: 8px 6px !important;
+    padding: 5px 4px !important;
+    font-size: 12px !important;
   }
 }
 

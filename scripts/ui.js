@@ -460,15 +460,21 @@ function renderTransactionTable() {
 }
 
 function getReportPeriodTransactions() {
-  const start = document.getElementById('reportPeriodStart')?.value;
-  const end = document.getElementById('reportPeriodEnd')?.value;
-  const txs = state.transactions || []; // 加上預設空陣列
-  if (!start && !end) return txs;
-  return txs.filter(tx => {
-    if (start && tx.date < start) return false;
-    if (end && tx.date > end) return false;
-    return true;
-  });
+  const startDate = document.getElementById('reportPeriodStart')?.value;
+  const endDate = document.getElementById('reportPeriodEnd')?.value;
+  
+  // 如果 state.transactions 存在，預設直接抓全部
+  let txs = state.transactions || [];
+  
+  // 只有當使用者有填寫日期時才做篩選；沒填寫就保留全部歷史資料
+  if (startDate) {
+    txs = txs.filter(tx => tx.date >= startDate);
+  }
+  if (endDate) {
+    txs = txs.filter(tx => tx.date <= endDate);
+  }
+  
+  return txs;
 }
 
 function renderReportLetterhead(elementId, reportTitle) {
