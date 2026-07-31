@@ -3726,6 +3726,16 @@ function initCompanyInfoForm() {
   const company = state.companyInfo || {};
   
   const setVal = (id, val) => {
+  // 在 Tab 切換事件內加入這一段：
+  if (tab === 'settings') {
+    initCompanyInfoForm(); // 確保每次切過來時，輸入框都有最新資料
+    
+    // 同步帶入密碼設定區塊的登入帳號
+    const emailInput = document.getElementById('passwordUserEmail');
+    if (emailInput && state.currentUser) {
+      emailInput.value = state.currentUser.email || '';
+    }
+  }  
     const el = document.getElementById(id);
     if (el) el.value = val !== undefined && val !== null ? val : '';
   };
@@ -3739,15 +3749,4 @@ function initCompanyInfoForm() {
   setVal('companyBoardCount', company.boardCount);
   setVal('companyTotalCapital', company.totalCapital);
   setVal('companyOpenDate', company.plannedOpenDate);
-}
-
-// 在 Tab 切換事件內加入這一段：
-if (tab === 'settings') {
-  initCompanyInfoForm(); // 確保每次切過來時，輸入框都有最新資料
-  
-  // 同步帶入密碼設定區塊的登入帳號
-  const emailInput = document.getElementById('passwordUserEmail');
-  if (emailInput && state.currentUser) {
-    emailInput.value = state.currentUser.email || '';
-  }
 }
