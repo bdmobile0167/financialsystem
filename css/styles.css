@@ -359,7 +359,7 @@ td button {
     background: #fff !important;
   }
 
-  /* 3. 隱藏所有按鈕、導覽列、搜尋列以及日期篩選欄位 */
+  /* 3. 隱藏所有按鈕、導覽列、搜尋列以及日期篩選欄位與標籤 */
   .button-row,
   button,
   .side-nav,
@@ -374,46 +374,47 @@ td button {
     display: none !important;
   }
 
-  /* 4. 強制每一個報表面板（.panel）獨立成為一張 A4 紙高，並使用彈性盒模型將簽名欄撐到最底部 */
+  /* 4. 關鍵修正：取消固定高度避免內容重疊，改用「強制換頁 (page-break-before)」讓每一個報表獨立一頁 */
   .panel {
     border: none !important;
     box-shadow: none !important;
     background: #fff !important;
-    padding: 10mm 15mm !important; /* A4 頁面邊距 */
+    padding: 15mm 15mm 20mm 15mm !important;
     margin: 0 !important;
     
-    /* 關鍵：強制每一頁高度為滿版 A4，並上下分散對齊 */
-    height: 275mm !important; /* 接近 A4 高度 (297mm 減去上下邊距) */
-    max-height: 275mm !important;
+    /* 移除會導致重疊的固定高度，改由內容自動撐開，並在每個 panel 之前強制分頁 */
+    height: auto !important;
+    min-height: 250mm !important;
+    
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-inside: avoid !important;
+    
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    
-    /* 強制分頁 */
-    page-break-after: always !important;
-    break-after: page !important;
     box-sizing: border-box !important;
   }
   
-  /* 防止最後一個報表多出空白頁 */
-  .panel:last-child {
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+  /* 第一個報表不需要在上方強制換頁，從第一頁開始即可 */
+  .panel:first-of-type {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
 
-  /* 5. 確保表頭與簽名欄正常顯示 */
+  /* 5. 確保表頭正常顯示 */
   .report-letterhead {
     display: block !important;
-    margin-bottom: 10px !important;
+    margin-bottom: 15px !important;
   }
 
-  /* 關鍵：將簽名欄強制推到 A4 頁面的最底部 */
+  /* 6. 簽名欄樣式：自動推到頁面下方 */
   .report-signature-row {
     display: flex !important;
     justify-content: space-between !important;
-    margin-top: auto !important; /* 自動推至底部 */
-    padding-top: 20px !important;
-    border-top: 1px solid #ccc;
+    margin-top: 40px !important;
+    padding-top: 15px !important;
+    border-top: 1px solid #333 !important;
   }
 
   .sign-box {
@@ -421,29 +422,29 @@ td button {
     text-align: center;
     font-size: 12px;
     color: #000 !important;
-    margin: 0 8px;
+    margin: 0 5px;
   }
 
-  /* 6. 表格樣式極簡化與排版優化 */
+  /* 7. 表格樣式優化 */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
     border: none !important;
-    flex-grow: 1 !important; /* 讓表格自動填滿中間空間 */
+    margin-bottom: 20px !important;
   }
   
   th {
     background-color: #f8fafc !important;
     color: #000 !important;
     border-bottom: 2px solid #333 !important;
-    padding: 6px 4px !important;
-    font-size: 12px !important;
+    padding: 8px 6px !important;
+    font-size: 13px !important;
   }
 
   td {
-    border-bottom: 1px solid #e2e8f0 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
     color: #000 !important;
-    padding: 5px 4px !important;
+    padding: 7px 6px !important;
     font-size: 12px !important;
   }
 }

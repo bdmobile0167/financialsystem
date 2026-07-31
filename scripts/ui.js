@@ -460,17 +460,21 @@ function renderTransactionTable() {
 }
 
 function getReportPeriodTransactions() {
-  const startDate = document.getElementById('reportPeriodStart')?.value;
-  const endDate = document.getElementById('reportPeriodEnd')?.value;
+  const startDateInput = document.getElementById('reportPeriodStart');
+  const endDateInput = document.getElementById('reportPeriodEnd');
   
-  // 如果 state.transactions 存在，預設直接抓全部
+  const startDate = startDateInput ? startDateInput.value : '';
+  const endDate = endDateInput ? endDateInput.value : '';
+  
+  // 取得系統內所有的歷史交易
   let txs = state.transactions || [];
   
-  // 只有當使用者有填寫日期時才做篩選；沒填寫就保留全部歷史資料
-  if (startDate) {
+  // 嚴格檢查：只有當使用者「確實有輸入日期」時，才進行過濾
+  // 如果沒有填寫，直接回傳全部歷史資料加總
+  if (startDate && startDate.trim() !== '') {
     txs = txs.filter(tx => tx.date >= startDate);
   }
-  if (endDate) {
+  if (endDate && endDate.trim() !== '') {
     txs = txs.filter(tx => tx.date <= endDate);
   }
   
@@ -495,12 +499,27 @@ function renderReportLetterhead(elementId, reportTitle) {
 }
 
 function renderReportSignature(elementId) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  el.innerHTML = `
-    <div class="sign-box">製表</div>
-    <div class="sign-box">會計</div>
-    <div class="sign-box">主管</div>
+  const container = document.getElementById(elementId);
+  if (!container) return;
+
+  // 抓取報表期間的結束日期，若沒填則用今天日期
+  const customDate = document.getElementById('reportPeriodEnd')?.value || new Date().toISOString().split('T')[0];
+
+  container.innerHTML = `
+    <div class="report-signature-row">
+      <div class="sign-box">
+        製表人：經辦
+      </div>
+      <div class="sign-box">
+        會計主管：黃超明
+      </div>
+      <div class="sign-box">
+        單位主管：黃超明
+      </div>
+      <div class="sign-box">
+        日期：${customDate}
+      </div>
+    </div>
   `;
 }
 
