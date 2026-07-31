@@ -1179,7 +1179,6 @@ function initializeEvents() {
 }
 
 function initializeEventsInternal() {
-  // 1. Define it first
   const safeListener = (id, event, handler) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, handler);
@@ -1211,21 +1210,11 @@ function initializeEventsInternal() {
 
   document.addEventListener('click', async (e) => {
     const approveBtn = e.target.closest('.approve-voucher-btn');
-    if (approveBtn) {
-      e.preventDefault();
-      await window.approveVoucher(approveBtn.dataset.id, approveBtn.dataset.stage || 'manager');
-      return;
-    }
     const rejectBtn = e.target.closest('.reject-voucher-btn');
-    if (rejectBtn) {
-      e.preventDefault();
-      await window.rejectVoucher(rejectBtn.dataset.id, rejectBtn.dataset.stage || 'manager');
-      return;
-    }
-
     const historyBtn = e.target.closest('.view-history-btn');
 
     if (approveBtn || rejectBtn) {
+      e.preventDefault();
       const btn = approveBtn || rejectBtn;
       const id = btn.dataset.id;
       const stage = btn.dataset.stage;
@@ -1239,7 +1228,6 @@ function initializeEventsInternal() {
           showMessage('已核准。');
         } else {
           const reason = await promptRejectReason();
-
           if (!reason) { 
             showMessage('已取消，退件必須填寫原因。', true);
             return;
@@ -1281,7 +1269,6 @@ function initializeEventsInternal() {
     }
   });
 
-  // 密碼變更表單送出事件
   safeListener('changePasswordForm', 'submit', async (e) => {
     e.preventDefault();
     const newPassword = document.getElementById('newPassword').value;
@@ -1304,7 +1291,7 @@ function initializeEventsInternal() {
     }
 
     showMessage('密碼修改成功！');
-    e.target.reset(); // 清空輸入框
+    e.target.reset();
   });
 
   safeListener('bulkVoucherUpload', 'change', (e) => {
@@ -1325,7 +1312,6 @@ function initializeEventsInternal() {
     e.target.value = '';
   });
 
-  // Tab 切換（關鍵）
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
@@ -1370,17 +1356,14 @@ function initializeEventsInternal() {
     showMessage('預算目標已儲存。');
   });
   safeListener('budgetViewPeriod', 'change', renderBudget);
-  // 在 initializeEventsInternal() 裡面加入/替換
+
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       if (confirm('確定要登出嗎？')) {
         try {
           await signOutSupabase();
-          
-          // 👉 修正：登出後直接重整頁面，釋放所有 JavaScript 記憶體變數
           window.location.reload();
-          
         } catch (err) {
           console.error(err);
           showMessage('登出失敗', true);
@@ -1389,42 +1372,39 @@ function initializeEventsInternal() {
     });
   }
 
-  // 🔥 新增判斷式：確保 addTransactionForm 存在時才綁定事件
   const addTransactionForm = document.getElementById('addTransactionForm');
   if (addTransactionForm) {
     addTransactionForm.addEventListener('submit', async (e) => {
-      e.preventDefault(); // 阻止表單預設重整行為
+      e.preventDefault();
 
       const bankAccountId = document.getElementById('trans_bank_account_id').value;
-      const transType = document.getElementById('trans_type').value; // 'income' 或 'expense'
+      const transType = document.getElementById('trans_type').value;
       const amount = parseFloat(document.getElementById('trans_amount').value);
       const transDate = document.getElementById('trans_date').value;
       const description = document.getElementById('trans_description').value;
 
-      // 簡單防呆
       if (!bankAccountId || !transType || !amount || !transDate) {
         return alert('請填寫所有必填欄位！');
       }
 
       try {
-        const { data, error } = await supabase
-          .from('bank_transactions') // 確保這是你的交易資料表名稱
+        const { error } = await supabase
+          .from('bank_transactions')
           .insert([{
             bank_account_id: bankAccountId,
             type: transType,
             amount: amount,
             transaction_date: transDate,
             description: description,
-            created_by: state.currentUser?.id // 記錄是誰新增的 (如果有此欄位)
+            created_by: state.currentUser?.id
           }]);
 
         if (error) throw error;
 
         alert('交易新增成功！');
         document.getElementById('addTransactionModal').style.display = 'none';
-        e.target.reset(); // 清空表單
+        e.target.reset();
         
-        // 寫入 Supabase 成功後，同步更新本地狀態並重新渲染
         state.transactions.unshift({
           date: transDate,
           bankAccountId: bankAccountId,
@@ -1450,9 +1430,9 @@ function initializeEventsInternal() {
         const index = parseInt(deleteBtn.dataset.index, 10);
         if (!isNaN(index)) {
           if (confirm('確定要刪除這筆交易紀錄嗎？')) {
-            state.transactions.splice(index, 1); // 從陣列中移除
-            saveState(state);                    // 儲存至 localStorage
-            render();                            // 重新渲染畫面
+            state.transactions.splice(index, 1);
+            saveState(state);
+            render();
             showMessage('交易已成功刪除。');
           }
         }
@@ -1479,7 +1459,9 @@ function initializeEventsInternal() {
     }
     state.currentUser.mustChangePassword = false;
     document.getElementById('forcePasswordView').style.display = 'none';
-    showApp();});
+    showApp();
+  });
+
   safeListener('loginForm', 'submit', async (e) => { 
     e.preventDefault();
     const email = document.getElementById('username').value.trim().toLowerCase();
@@ -1494,7 +1476,9 @@ function initializeEventsInternal() {
       showForcePasswordView();
       return;
     }
-    showApp();});
+    showApp();
+  });
+
   safeListener('companyInfoForm', 'submit', (e) => {
     e.preventDefault();
     state.companyInfo = {
@@ -1512,7 +1496,6 @@ function initializeEventsInternal() {
     saveState(state);
     render();
       
-    // 👉 確保儲存公司資料時，四大財報抬頭會立刻同步更新
     if (typeof renderReports === 'function') {
       renderReports();
     }
@@ -1533,7 +1516,6 @@ function initializeEventsInternal() {
       };
 
       if (state.editingBankId) {
-        // 執行更新 (Update)
         const { error } = await supabase
           .from('bank_accounts')
           .update(bankData)
@@ -1543,11 +1525,10 @@ function initializeEventsInternal() {
           alert('更新失敗：' + error.message);
         } else {
           alert('銀行帳戶已成功更新！');
-          window.resetBankForm(); // 恢復新增狀態
-          renderBankAccounts();   // 重新整理列表與餘額
+          window.resetBankForm();
+          renderBankAccounts();
         }
       } else {
-        // 執行新增 (Insert)
         const { error } = await supabase
           .from('bank_accounts')
           .insert([bankData]);
@@ -1564,7 +1545,6 @@ function initializeEventsInternal() {
   }
 
   document.getElementById('bankAccountTableBody')?.addEventListener('click', async (e) => {
-    // 1. 處理刪除按鈕
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
       if (confirm('確定刪除此銀行帳戶？')) {
@@ -1575,7 +1555,6 @@ function initializeEventsInternal() {
       return;
     }
 
-    // 2. 處理編輯按鈕（補上這段讓編輯功能正常運作）
     const editBtn = e.target.closest('.edit-bank-btn');
     if (editBtn) {
       const accountId = editBtn.dataset.id;
@@ -1586,9 +1565,8 @@ function initializeEventsInternal() {
     }
   });
 
-  // 其他重要 listener
-  safeListener('transactionForm', 'submit', async (e) => { e.preventDefault();
-
+  safeListener('transactionForm', 'submit', async (e) => { 
+    e.preventDefault();
     let attachmentId = '';
     const file = document.getElementById('txAttachment').files[0];
     if (file) {
@@ -1623,6 +1601,7 @@ function initializeEventsInternal() {
     e.target.reset();
     showMessage('交易已新增並已儲存。');
   });
+
   safeListener('printReportBtn', 'click', () => {
     state.activeTab = 'reports';
     renderTabs();
@@ -1639,7 +1618,8 @@ function initializeEventsInternal() {
     exportReportsToExcel().catch(err => showMessage(`匯出失敗：${err.message}`, true));
   });
 
-  safeListener('inviteUserForm', 'submit', async (e) => { e.preventDefault();
+  safeListener('inviteUserForm', 'submit', async (e) => { 
+    e.preventDefault();
     const resultBox = document.getElementById('inviteResultBox');
     try {
       const result = await inviteNewUser({
@@ -1660,138 +1640,7 @@ function initializeEventsInternal() {
       resultBox.textContent = `開通失敗：${error.message}`;
     }
   });
-  // 全域函式：點擊按鈕動態往 Table 追加一列
-let excelRowCounter = 0;
-const voucherLineAttachments = {}; // { rowId: File }
-  window.toggleInvoiceRequired = (selectEl) => {
-    const input = selectEl.closest('tr').querySelector('.grid-inv-num');
-    if (selectEl.value === '發票') {
-      input.disabled = false;
-      input.required = true;
-      input.placeholder = '必填發票號碼';
-    } else {
-      input.disabled = true;
-      input.required = false;
-      input.value = '';
-      input.placeholder = '可留空';
-    }
-  };
 
-  window.calculateVoucherTotal = () => {
-    const amounts = Array.from(document.querySelectorAll('.grid-amount')).map(el => Number(el.value) || 0);
-    const total = amounts.reduce((a, b) => a + b, 0);
-    const display = document.getElementById('voucherTotalDisplay');
-    if (display) display.innerText = `$${total.toLocaleString()}`;
-  };
-
-  window.fetchPayeeName = async (inputEl) => {
-    const identifier = inputEl.value.trim();
-    const nameSpan = inputEl.closest('td, div').querySelector('.grid-payee-name');
-    if (!nameSpan) return;
-    if (!identifier) { nameSpan.innerText = ''; return; }
-
-    nameSpan.innerText = '查詢中...';
-    const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
-    if (error || !data) {
-      nameSpan.innerText = '（查無資料，請洽會計新增）';
-      return;
-    }
-    nameSpan.innerText = data.name;
-  };
-
-  window.addExcelRow = (prefillFile = null) => {
-    const tbody = document.getElementById('excelLinesBody');
-    if (!tbody) return;
-    const isAccounting = ['accounting', 'admin'].includes(state.currentUser?.role);
-
-    const rowId = `row-${excelRowCounter++}`;
-    const tr = document.createElement('tr');
-    tr.dataset.rowId = rowId;
-    tr.innerHTML = `
-      <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" style="width:96%; padding:4px;"></td>
-      <td style="padding:8px; border:1px solid #ddd;">
-        <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
-          <option value="無">無</option>
-          <option value="發票">發票</option>
-          <option value="收據">收據</option>
-        </select>
-      </td>
-      <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
-      <td style="padding:8px; border:1px solid #ddd;">
-        <select class="grid-item-category" onchange="toggleCategoryNote(this)" style="width:100%; padding:4px;">
-          <option value="車馬費">車馬費</option>
-          <option value="住宿費">住宿費</option>
-          <option value="文具用品">文具用品</option>
-          <option value="餐飲交際">餐飲交際</option>
-          <option value="郵電通訊">郵電通訊</option>
-          <option value="其他">其他（請說明）</option>
-        </select>
-        <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
-        ${isAccounting ? `
-          <select class="line-account-code" style="width:100%; padding:4px; margin-top:4px;">
-            <option value="">（會計歸類科目）</option>
-          </select>
-        ` : ''}
-      </td>
-      <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
-      <td style="padding:8px; border:1px solid #ddd;">
-        <input type="text" class="grid-payee-id" placeholder="應付對象身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
-        <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
-        <label style="font-size:11px; display:block; margin-top:4px;">
-          <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
-        </label>
-        <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:90%; padding:4px; margin-top:4px;" onblur="fetchProxyPayerName(this)">
-        <span class="grid-proxy-name" style="font-size:12px; color:#666; display:block;"></span>
-      </td>
-      <td style="padding:8px; border:1px solid #ddd; text-align:center;">
-        <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignLineAttachment('${rowId}', this.files[0])">
-        <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="this.previousElementSibling.click()">📎 附件</button>
-        <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">未選擇</div>
-        <button type="button" class="danger" style="padding:4px 8px; font-size:12px; margin-top:4px;" onclick="this.closest('tr').remove(); calculateVoucherTotal();">刪除</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-
-    const accountSelect = tr.querySelector('.line-account-code');
-    if (accountSelect && window.__cachedAccounts) {
-      accountSelect.innerHTML = '<option value="">（會計歸類科目）</option>' +
-        window.__cachedAccounts.map(a => `<option value="${a.code}">${a.code} ${a.name}</option>`).join('');
-    }
-
-    if (prefillFile) window.assignLineAttachment(rowId, prefillFile);
-  };
-
-  window.toggleCategoryNote = (selectEl) => {
-    const note = selectEl.closest('td').querySelector('.grid-category-note');
-    note.style.display = selectEl.value === '其他' ? 'block' : 'none';
-  };
-
-  window.toggleProxyPayer = (checkboxEl) => {
-    const cell = checkboxEl.closest('td');
-    const proxyInput = cell.querySelector('.grid-proxy-id');
-    const proxyName = cell.querySelector('.grid-proxy-name');
-    proxyInput.style.display = checkboxEl.checked ? 'block' : 'none';
-    if (!checkboxEl.checked) { proxyInput.value = ''; proxyName.innerText = ''; }
-  };
-
-  window.fetchProxyPayerName = async (inputEl) => {
-    const identifier = inputEl.value.trim();
-    const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
-    if (!identifier) { nameSpan.innerText = ''; return; }
-    nameSpan.innerText = '查詢中...';
-    const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
-    nameSpan.innerText = data ? `代付人：${data.name}` : '（查無代付人資料）';
-  };
-
-  window.assignLineAttachment = (rowId, file) => {
-    if (!file) return;
-    voucherLineAttachments[rowId] = file;
-    const row = document.querySelector(`tr[data-row-id="${rowId}"]`);
-    const label = row?.querySelector('.attachment-label');
-    if (label) label.textContent = `已選擇：${file.name}`;
-  };
-
-  // 表單提交封包邏輯
   const excelVoucherForm = document.getElementById('voucherCreateForm');
   if (excelVoucherForm) {
     excelVoucherForm.addEventListener('submit', async (e) => {
@@ -1801,11 +1650,8 @@ const voucherLineAttachments = {}; // { rowId: File }
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
-        
         const departmentId = document.getElementById('vDepartment')?.value || null;
         const managerId = document.getElementById('vManagerPicker')?.value || null;
-        
-        // 👉 補上抓取行程起日與迄日
         const tripStart = document.getElementById('vTripStart')?.value || null;
         const tripEnd = document.getElementById('vTripEnd')?.value || null;
         
@@ -1814,7 +1660,7 @@ const voucherLineAttachments = {}; // { rowId: File }
         let invoiceLines = [];
         let calculatedTotal = 0;
 
-        rows.forEach((row, index) => {
+        rows.forEach((row) => {
           const descInput = row.querySelector('.grid-category-note');
           const categorySelect = row.querySelector('.grid-item-category');
           const amtInput = row.querySelector('.grid-amount');
@@ -1866,7 +1712,6 @@ const voucherLineAttachments = {}; // { rowId: File }
 
         const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
 
-        // ==================== 整理成 Payload 包裹 ====================
         const voucherPayload = {
           txDate: txDate,
           projectId: projectId && projectId !== 'all' ? projectId : null,
@@ -1881,8 +1726,8 @@ const voucherLineAttachments = {}; // { rowId: File }
           invoiceLines: invoiceLines,
           attachmentsMap: attachmentsMap,
           rows: rows,
-          tripStartDate: tripStart,  // 👉 確實傳遞時程起日
-          tripEndDate: tripEnd       // 👉 確實傳遞時程迄日
+          tripStartDate: tripStart,
+          tripEndDate: tripEnd
         };
 
         const result = await createVoucher(voucherPayload);
@@ -1914,7 +1759,7 @@ const voucherLineAttachments = {}; // { rowId: File }
       }
     });
   }
-  // 新增的專案與部門
+
   safeListener('projectForm', 'submit', async (e) => {
     e.preventDefault();
     if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
@@ -1946,7 +1791,6 @@ const voucherLineAttachments = {}; // { rowId: File }
 
       if (projError) throw projError;
 
-      // 2. 建立預算分類項目
       if (totalBudget > 0) {
         const budgetItems = [
           { project_id: newProject.id, category: '人事費用', amount: Math.round(totalBudget * 0.4) },
@@ -2001,7 +1845,7 @@ const voucherLineAttachments = {}; // { rowId: File }
       showMessage('新增部門失敗：' + err.message, true);
     }
   });
-  // 交易表單
+
   setupTransactionForm();
 }
 
