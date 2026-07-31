@@ -1022,8 +1022,6 @@ function initializeEvents() {
   initializeEventsInternal();
 }
 
-
-
 function initializeEventsInternal() {
   // 1. Define it first
   const safeListener = (id, event, handler) => {
@@ -1315,7 +1313,8 @@ function initializeEventsInternal() {
       return;
     }
     showApp();});
-  safeListener('companyInfoForm', 'submit', (e) => {e.preventDefault();
+  safeListener('companyInfoForm', 'submit', (e) => {
+    e.preventDefault();
     state.companyInfo = {
       ...state.companyInfo,
       companyNameZh: document.getElementById('companyNameZh').value.trim(),
@@ -1330,7 +1329,13 @@ function initializeEventsInternal() {
     };
     saveState(state);
     render();
-    showMessage('公司資料已儲存。');
+      
+    // 👉 確保儲存公司資料時，四大財報抬頭會立刻同步更新
+    if (typeof renderReports === 'function') {
+      renderReports();
+    }
+      
+    showMessage('公司資料已儲存並同步至財報！');
   });
 
   const bankForm = document.getElementById('bankAccountForm');
@@ -3689,3 +3694,23 @@ window.rejectFromDetail = async (voucherId) => {
     showMessage('退件發生錯誤');
   }
 };
+
+// 初始化時將 state.companyInfo 填入畫面的輸入框中
+function initCompanyInfoForm() {
+  const company = state.companyInfo || {};
+  
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val !== undefined && val !== null ? val : '';
+  };
+
+  setVal('companyNameZh', company.companyNameZh);
+  setVal('companyNameEn', company.companyNameEn);
+  setVal('companyTaxId', company.taxId);
+  setVal('companyPhone', company.phone);
+  setVal('companyAddress', company.address);
+  setVal('companyRepresentative', company.representativeName);
+  setVal('companyBoardCount', company.boardCount);
+  setVal('companyTotalCapital', company.totalCapital);
+  setVal('companyOpenDate', company.plannedOpenDate);
+}
