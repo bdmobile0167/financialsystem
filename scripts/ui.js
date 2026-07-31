@@ -10,6 +10,7 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
+import { getAttachmentsByVoucherId, openAttachment } from '../src/modules/voucher/attachments.js';
 
 const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
 
@@ -1879,7 +1880,7 @@ function renderVoucherCard(v) {
     actions += `<span class="muted" style="font-size:12px;">可修改後重送（下一階段補上編輯介面）</span>`;
   }
   if (['manager', 'admin'].includes(role) && v.status === 'pending_review') {
-    actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="manager">核准</button>
+    actions += `<button class="primary-btn" onclick="viewVoucherDetail('${v.id}')">查看並審核</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
   }
   if (['accounting', 'admin'].includes(role) && v.status === 'pending_accounting') {
@@ -2288,6 +2289,7 @@ window.viewVoucherDetail = async (voucherId) => {
 
     const { data: lines } = await supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId);
     const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId);
+    const attachments = await getAttachmentsByVoucherId(voucherId);
     
     // 💡 關鍵新增：取得該單據的審核與異動歷程 (Audit Logs)
     const { data: logs } = await supabase
@@ -2336,7 +2338,9 @@ window.viewVoucherDetail = async (voucherId) => {
           </tbody>
         </table>
 
-        ${invoices?.length ? `<p><strong>憑證關聯：</strong>${invoices[0].invoice_type} - 號碼：${invoices[0].invoice_number || '未填'}</p>` : ''}
+        ${invoices?.length ? invoices.map(inv => `
+          <p><strong>憑證：</strong>${inv.invoice_type} - 號碼：${inv.invoice_number || '未填'}｜金額：$${Number(inv.amount || 0).toLocaleString()}</p>
+        `).join('') : '<p class="muted">尚無憑證資料</p>'}
         
         <!-- 💡 關鍵新增：歷程清單區塊 -->
         <h4 style="margin-top:20px; border-left:4px solid #10b981; padding-left:8px;">審核與異動歷程 (Audit Logs)</h4>
@@ -2349,8 +2353,14 @@ window.viewVoucherDetail = async (voucherId) => {
             </li>
           `).join('') || '<li>尚無歷程紀錄</li>'}
         </ul>
-
+        <h4>附件</h4>
+        ${attachments?.length ? attachments.map((a, i) => `
+          <button type="button" class="secondary" onclick="openAttachment('${a.file_url || a.url}')" style="margin:2px;">📎 附件 ${i + 1}</button>
+        `).join('') : '<p class="muted">尚無附件</p>'}
         <div style="margin-top:20px; text-align:right; gap:10px; display:flex; justify-content:flex-end;">
+          ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
+            <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
+          ` : ''}
           ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
             <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
           ` : ''}
@@ -2537,6 +2547,53 @@ window.saveBankEdit = async () => {
   }
 };
 
+window.accountingApproveAndClose = async (voucherId) => {
+  const accountCode = document.getElementById('reviewAccountCode')?.value;
+  const bankAccountId = document.getElementById('reviewBankAccount')?.value;
+  const note = document.getElementById('reviewNote')?.value.trim();
+
+  if (!accountCode) { alert('請選擇歸帳科目'); return; }
+  if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
+
+  try {
+    // 補上還沒被歸類科目的明細列
+    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
+
+    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
+    if (vErr) throw vErr;
+
+    // 核准（觸發資料庫自動產生總帳分錄 + 扣除專案預算）
+    await accountingApprove(voucher);
+
+    // 扣除銀行餘額、記錄付款
+    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
+    if (bankErr) throw bankErr;
+    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
+    await supabase.from('bank_accounts').update({ balance: Number(currentBalance) - Number(voucher.total_amount) }).eq('id', bankAccountId);
+
+    await supabase.from('voucher_payments').insert({
+      voucher_id: voucherId, payment_type: 'bank_transfer', bank_account_id: bankAccountId,
+      amount: voucher.total_amount, paid_at: new Date().toISOString().slice(0, 10)
+    });
+
+    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId);
+
+    if (note) {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('voucher_workflow_logs').insert({
+        voucher_id: voucherId, actor_id: user.id, action: 'close', from_status: 'approved', to_status: 'closed', reject_reason: note
+      });
+    }
+
+    showMessage('已核准並完成歸帳。');
+    document.querySelector('.modal-backdrop')?.remove();
+    renderVoucherWorkflowList();
+    renderDashboard();
+  } catch (err) {
+    alert('歸帳失敗：' + err.message);
+  }
+};
+
 // 會計詳細審核 Modal
 window.openAccountingReviewModal = async (voucherId) => {
   try {
@@ -2554,7 +2611,7 @@ window.openAccountingReviewModal = async (voucherId) => {
     // 或者使用: const accounts = window.__cachedAccounts || [];
 
     let html = `
-      <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
+      <div class="modal-backdrop" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
         <div style="background:white; padding:25px; border-radius:12px; width:90%; max-width:700px; max-height:90vh; overflow:auto;">
           <h3>會計審核 - ${voucher.voucher_no}</h3>
           <p style="color:#666; font-size:14px;">
@@ -3432,4 +3489,22 @@ window.submitFullResubmission = async (e, voucherId) => {
     console.error(err);
     alert('修改失敗：' + err.message);
   }
+};
+
+window.approveFromDetail = async (voucherId) => {
+  const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
+  await managerApprove(voucher);
+  showMessage('已核准，送至會計審核。');
+  document.querySelector('.modal-backdrop')?.remove();
+  renderVoucherWorkflowList();
+};
+
+window.rejectFromDetail = async (voucherId) => {
+  const reason = await promptRejectReason();
+  if (!reason) return;
+  const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
+  await managerReject(voucher, reason);
+  showMessage('已退件。');
+  document.querySelector('.modal-backdrop')?.remove();
+  renderVoucherWorkflowList();
 };
