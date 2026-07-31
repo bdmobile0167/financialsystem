@@ -643,19 +643,99 @@ function renderTable(id, rows) {
   if (!table) return;
 
   table.innerHTML =
-    '<thead><tr><th>項目</th><th>金額</th></tr></thead><tbody></tbody>';
+    '<thead><tr><th>會計科目 / 項目</th><th>金額</th><th>代碼</th></tr></thead><tbody></tbody>';
 
   const body = table.querySelector('tbody');
 
-  // ===== 防呆 =====
+  // ===== 支援結構化財報物件 (Structured Financial Statements) =====
+  if (rows && !Array.isArray(rows) && rows.type === 'structured') {
+    let htmlContent = '';
+
+    rows.sections.forEach(section => {
+      // 渲染大項標題 (例如：一、營業收入 / 資產 / 負債及權益)
+      htmlContent += `
+        <tr class="section-header">
+          <td colspan="3" style="font-weight: bold; background-color: #f8fafc; padding-top: 10px;">${section.title}</td>
+        </tr>
+      `;
+
+      // 檢查是否有子分類 (針對資產負債表有 subsections 的情況)
+      if (section.subsections) {
+        section.subsections.forEach(sub => {
+          htmlContent += `
+            <tr class="sub-header">
+              <td colspan="3" style="font-weight: 600; padding-left: 15px; color: #475569;">↳ ${sub.title}</td>
+            </tr>
+          `;
+          sub.items.forEach(([label, amount, code = '-']) => {
+            htmlContent += `
+              <tr>
+                <td style="padding-left: 30px;">${label}</td>
+                <td style="text-align: right;">${Number(amount || 0).toLocaleString()}</td>
+                <td style="color: #64748b; font-size: 12px;">${code}</td>
+              </tr>
+            `;
+          });
+          // 子分類小計
+          htmlContent += `
+            <tr style="border-bottom: 1px dashed #cbd5e1;">
+              <td style="padding-left: 15px; font-weight: 600;">${sub.title}小計</td>
+              <td style="text-align: right; font-weight: 600;">${Number(sub.subtotal || 0).toLocaleString()}</td>
+              <td>-</td>
+            </tr>
+          `;
+        });
+        // 總計列
+        htmlContent += `
+          <tr style="border-top: 2px solid #0f172a; font-weight: bold;">
+            <td>${section.title}總計</td>
+            <td style="text-align: right;">${Number(section.total || 0).toLocaleString()}</td>
+            <td>-</td>
+          </tr>
+        `;
+      } 
+      // 針對一般損益表直接帶 items 的情況
+      else if (section.items) {
+        section.items.forEach(([label, amount, code = '-']) => {
+          htmlContent += `
+            <tr>
+              <td style="padding-left: 20px;">${label}</td>
+              <td style="text-align: right;">${Number(amount || 0).toLocaleString()}</td>
+              <td style="color: #64748b; font-size: 12px;">${code}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `
+          <tr style="border-top: 1px solid #cbd5e1; font-weight: bold;">
+            <td style="padding-left: 10px;">${section.title}小計</td>
+            <td style="text-align: right;">${Number(section.subtotal || 0).toLocaleString()}</td>
+            <td>-</td>
+          </tr>
+        `;
+      }
+    });
+
+    // 如果有本期淨利（損益表專用結算）
+    if (rows.netProfit !== undefined) {
+      htmlContent += `
+        <tr style="border-top: 2px double #0f172a; font-weight: bold; background-color: #f1f5f9;">
+          <td>本期淨利 (Net Profit)</td>
+          <td style="text-align: right; color: ${rows.netProfit >= 0 ? '#16a34a' : '#dc2626'};">${Number(rows.netProfit || 0).toLocaleString()}</td>
+          <td>-</td>
+        </tr>
+      `;
+    }
+
+    body.innerHTML = htmlContent;
+    return;
+  }
+
+  // ===== 原有的純陣列防呆與舊表格相容邏輯 =====
   if (!Array.isArray(rows)) {
     console.error("renderTable() 接收到的不是陣列：", rows);
-
     body.innerHTML = `
       <tr>
-        <td colspan="2" style="color:red">
-          資料格式錯誤
-        </td>
+        <td colspan="3" style="color:red">資料格式錯誤</td>
       </tr>
     `;
     return;
@@ -663,13 +743,12 @@ function renderTable(id, rows) {
 
   rows.forEach(item => {
     if (!Array.isArray(item)) return;
-
     const [label, amount] = item;
-
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${label}</td>
-      <td>${Number(amount || 0).toLocaleString()}</td>
+      <td style="text-align: right;">${Number(amount || 0).toLocaleString()}</td>
+      <td>-</td>
     `;
     body.appendChild(tr);
   });
@@ -884,8 +963,6 @@ function renderTabs() {
   const currentPanel = document.getElementById(state.activeTab);
   if (currentPanel) currentPanel.style.display = 'block';
 }
-
-
 
 function showApp() {
   if (!state.currentUser) {
@@ -2739,78 +2816,61 @@ window.rejectVoucher = async (voucherId, stage = 'manager') => {
 window.closeVoucher = async (voucherId) => {
   if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
 
-  // ⚠️ 請確保你有辦法在這裡取得「付款銀行帳戶的 ID」
-  // 假設你的畫面上也有一個下拉選單讓使用者選擇付款銀行，或者從單據本身的資料讀取
+  // ⚠️ 請確保能取得付款的銀行帳戶 ID (假設你有一個下拉選單)
   const bankAccountId = document.getElementById('reviewBankAccount')?.value; 
-  
   if (!bankAccountId) {
-    alert('無法執行付款：請先選擇或確認付款的銀行帳戶！');
+    alert('無法執行付款：請先選擇付款的銀行帳戶！');
     return;
   }
 
   try {
-    // 1. 先取得單據資料（為了獲取 total_amount 來扣款）
-    const { data: voucher, error: vErr } = await supabase
-      .from('vouchers')
-      .select('*')
-      .eq('id', voucherId)
-      .single();
+    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
 
-    // 2. 查詢並扣除銀行餘額
-    const { data: bank, error: bankErr } = await supabase
-      .from('bank_accounts')
-      .select('balance, opening_balance')
-      .eq('id', bankAccountId)
-      .single();
+    // 1. 查詢銀行餘額並扣款
+    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
     if (bankErr) throw bankErr;
 
     const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
-    const { error: updateBankError } = await supabase
-      .from('bank_accounts')
-      .update({ balance: Number(currentBalance) - Number(voucher.total_amount) })
-      .eq('id', bankAccountId);
-    if (updateBankError) throw updateBankError;
+    await supabase.from('bank_accounts').update({ 
+      balance: Number(currentBalance) - Number(voucher.total_amount) 
+    }).eq('id', bankAccountId);
 
-    // 3. 寫入 voucher_payments 付款紀錄
-    const { error: paymentError } = await supabase
-      .from('voucher_payments')
-      .insert({
-        voucher_id: voucherId, 
-        payment_type: 'bank_transfer', 
-        bank_account_id: bankAccountId,
-        amount: voucher.total_amount, 
-        paid_at: new Date().toISOString().slice(0, 10)
-      });
-    if (paymentError) throw paymentError;
+    // 2. 寫入單據專用的付款紀錄
+    await supabase.from('voucher_payments').insert({
+      voucher_id: voucherId, 
+      payment_type: 'bank_transfer', 
+      bank_account_id: bankAccountId,
+      amount: voucher.total_amount, 
+      paid_at: new Date().toISOString().slice(0, 10)
+    });
+
+    // 3. ⭐️ 寫入銀行綜合流水帳 (配合 BankAccounts.js 的邏輯)
+    await supabase.from('bank_transactions').insert([{
+      bank_account_id: bankAccountId,
+      type: '支出',  // 配合 getBankBalance 的判斷
+      amount: voucher.total_amount,
+      transaction_date: new Date().toISOString().slice(0, 10),
+      description: `單據付款銷案 (單號: ${voucher.voucher_no || voucherId})`,
+      created_by: state?.currentUser?.id
+    }]);
 
     // 4. 更新單據狀態為已結案 (closed)
-    const { error: updateError } = await supabase
-      .from('vouchers')
-      .update({ 
-        status: 'closed',
-        closed_at: new Date().toISOString()
-      })
-      .eq('id', voucherId);
-    if (updateError) throw updateError;
+    await supabase.from('vouchers').update({ 
+      status: 'closed', closed_at: new Date().toISOString()
+    }).eq('id', voucherId);
 
-    // 5. 寫入審批流歷程檔案日誌
+    // 5. 寫入審批歷程
     await supabase.from('voucher_workflow_logs').insert([{
-      voucher_id: voucherId,
-      actor_id: state.currentUser?.id,
-      action: 'close',
-      from_status: 'approved',
-      to_status: 'closed',
-      reject_reason: '執行付款銷案'
+      voucher_id: voucherId, actor_id: state.currentUser?.id, action: 'close',
+      from_status: 'approved', to_status: 'closed', reject_reason: '執行付款銷案'
     }]);
 
     alert('單據已成功付款並銷案！銀行餘額已成功扣除。');
     
-    // 6. 重新更新 Dashboard 和工作流列表
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
     
-    // 隱藏可能開啟的 Modal
     const modal = document.getElementById('voucherDetailModal');
     if (modal) modal.style.display = 'none';
 
