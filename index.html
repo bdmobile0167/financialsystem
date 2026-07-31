@@ -455,13 +455,13 @@
         <section id="reports" class="tab-panel" style="display:none;">
           <div class="panel">
             <div class="panel-header">
-              <h3>四大財報</h3>
+              <h3 class="no-print">四大財報</h3>
               <div class="button-row" style="margin-top:0;">
                 <button id="printReportBtn" class="secondary">列印報表</button>
                 <button id="exportExcelBtn" class="secondary">匯出 Excel</button>
               </div>
             </div>
-            <div class="form-grid">
+            <div class="form-grid no-print">
               <div>
                 <label>報表期間（起）</label>
                 <input type="date" id="reportPeriodStart" />
@@ -480,7 +480,7 @@
               <button type="button" class="secondary period-preset-btn" data-preset="month">本月</button>
               <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
             </div>
-            <p class="muted" style="margin-top:8px;">不填期間預設顯示全部歷史資料加總。</p>
+            <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
             <div class="grid grid-2" style="margin-top: 12px;">
               <div>
                 <div id="incomeLetterhead" class="report-letterhead"></div>

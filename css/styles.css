@@ -512,6 +512,13 @@ td button {
   }
 }
 
+/* 列印時隱藏特定元素 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
 .voucher-card {
   border: 1px solid var(--border);
   border-radius: 12px;
