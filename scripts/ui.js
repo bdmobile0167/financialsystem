@@ -10,18 +10,13 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
-import { fetchCompanyData, getCompanyData } from './api/api.js'; 
+import { fetchCompanyData, getCompanyData } from '../src/api/api.js'; 
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
 }
 
-// 假設全域有一個 state 物件
-const state = {
-  companyInfo: {},
-  businessItems: [],
-  directorShareholders: []
-};
+// 假設全域有一個 state 物件（使用從 `state.js` 匯入的 `defaultState`）
 
 async function initPage() {
   try {
@@ -121,6 +116,8 @@ const STATUS_LABELS = {
   approved: '已核准入帳',
   cancelled: '已撤銷'
 };
+
+const state = { ...defaultState };
 
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
 function getStatusBadge(status) {
@@ -2607,14 +2604,14 @@ window.viewVoucherDetail = async (voucherId) => {
     const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId);
     const attachments = await getAttachmentsByVoucherId(voucherId);
     
-    // 💡 關鍵新增：取得該單據的審核與異動歷程 (Audit Logs)
+    // 取得該單據的審核與異動歷程 (Audit Logs)
     const { data: logs } = await supabase
       .from('voucher_workflow_logs')
       .select('*, profiles!actor_id(full_name)')
       .eq('voucher_id', voucherId)
       .order('created_at', { ascending: true });
 
-    // 建立一個覆蓋式動態 Modal 視窗
+    // 建立或取得覆蓋式動態 Modal 視窗
     let modal = document.getElementById('voucherDetailModal');
     if (!modal) {
       modal = document.createElement('div');
@@ -2622,6 +2619,28 @@ window.viewVoucherDetail = async (voucherId) => {
       modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:9999;";
       document.body.appendChild(modal);
     }
+
+    const linesHtml = (lines || []).map(l => `
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:6px;">${l.description || l.item_category || '-'}</td>
+        <td style="padding:6px;">${l.account_code || '-'}</td>
+        <td style="padding:6px; text-align:right;">$${Number(l.amount || 0).toLocaleString()}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" class="muted" style="padding:6px;">無明細項目</td></tr>';
+
+    const invoicesHtml = (invoices || []).map(inv => `
+      <div style="font-size:13px; color:#374151; margin-bottom:4px;">
+        📄 類型：${inv.invoice_type} ｜ 號碼：${inv.invoice_number || '未填'} ｜ 金額：$${Number(inv.amount || 0).toLocaleString()}
+      </div>
+    `).join('') || '<div class="muted" style="font-size:13px;">無發票/收據資訊</div>';
+
+    const logsHtml = (logs || []).map(l => `
+      <div style="font-size:13px; padding:6px 0; border-top:1px solid #f3f4f6;">
+        ${new Date(l.created_at).toLocaleString('zh-TW')}｜<strong>${l.profiles?.full_name || '系統'}</strong> 執行：${l.action}
+        ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
+        ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
+      </div>
+    `).join('') || '<p class="muted" style="font-size:13px;">尚無審批紀錄。</p>';
 
     modal.style.display = 'flex';
     modal.innerHTML = `
@@ -2634,59 +2653,44 @@ window.viewVoucherDetail = async (voucherId) => {
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:15px; font-size:14px; color:#4b5563;">
           <p style="margin:4px 0;"><strong>申請日期：</strong>${vch.tx_date || vch.created_at?.split('T')[0]}</p>
           <p style="margin:4px 0;"><strong>申請人：</strong>${vch.profiles?.full_name || '未知'}</p>
-          <p style="margin:4px 0;"><strong>部門：</strong>${vch.departments?.name || '-'}</p>
-          <p style="margin:4px 0;"><strong>目前審核狀態：</strong><span style="color:orange; font-weight:bold;">${vch.status}</span></p>
-          <p style="grid-column: span 2; margin:4px 0;"><strong>主旨總結：</strong>${vch.summary || '-'}</p>
-          <p style="grid-column: span 2; margin:4px 0;"><strong>總金額：</strong><span style="color:#d9534f; font-weight:bold; font-size:16px;">$${Number(vch.total_amount || 0).toLocaleString()}</span></p>
+          <p style="margin:4px 0;"><strong>部門：</strong>${vch.departments?.name || '未分配'}</p>
+          <p style="margin:4px 0;"><strong>狀態：</strong>${typeof getStatusBadge === 'function' ? getStatusBadge(vch.status) : (vch.status || '-')}</p>
+          <p style="margin:4px 0; grid-column: span 2;"><strong>總摘要：</strong>${vch.summary || '-'}</p>
+          <p style="margin:4px 0; grid-column: span 2;"><strong>總金額：</strong><span style="font-size:16px; font-weight:700; color:#059669;">$${Number(vch.total_amount || 0).toLocaleString()}</span></p>
         </div>
-        
-        <h4 style="margin-top:20px; border-left:4px solid #007bff; padding-left:8px;">報支項目拆分清單</h4>
-        <table class="table" style="width:100%; margin-bottom:15px; border:1px solid #ddd; border-collapse:collapse;">
+
+        <h4 style="margin:16px 0 8px; font-size:15px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">明細項目</h4>
+        <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:15px;">
           <thead>
-            <tr style="background:#f9f9f9; text-align:left;">
-              <th style="padding:8px; border:1px solid #ddd;">摘要項目說明</th>
-              <th style="padding:8px; border:1px solid #ddd;">科目編號</th>
-              <th style="padding:8px; border:1px solid #ddd;">核銷金額</th>
+            <tr style="background:#f8f9fa; text-align:left;">
+              <th style="padding:6px;">說明 / 類別</th>
+              <th style="padding:6px;">會計科目</th>
+              <th style="padding:6px; text-align:right;">金額</th>
             </tr>
           </thead>
           <tbody>
-            ${lines?.map(l => `<tr><td style="padding:8px; border:1px solid #ddd;">${l.description}</td><td style="padding:8px; border:1px solid #ddd;">${l.account_code || '-'}</td><td style="padding:8px; border:1px solid #ddd;">$${Number(l.amount).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:8px; text-align:center;">無明細</td></tr>'}
+            ${linesHtml}
           </tbody>
         </table>
 
-        ${invoices?.length ? invoices.map(inv => `
-          <p><strong>憑證：</strong>${inv.invoice_type} - 號碼：${inv.invoice_number || '未填'}｜金額：$${Number(inv.amount || 0).toLocaleString()}</p>
-        `).join('') : '<p class="muted">尚無憑證資料</p>'}
-        
-        <!-- 💡 關鍵新增：歷程清單區塊 -->
-        <h4 style="margin-top:20px; border-left:4px solid #10b981; padding-left:8px;">審核與異動歷程 (Audit Logs)</h4>
-        <ul style="padding-left:20px; font-size:13px; color:#4b5563; margin-top:8px; max-height:150px; overflow-y:auto; background:#f9f9f9; padding:10px 10px 10px 30px; border-radius:4px;">
-          ${logs?.map(log => `
-            <li style="margin-bottom:6px;">
-              <strong>[${new Date(log.created_at).toLocaleString()}]</strong> 
-              操作人：${log.profiles?.full_name || '系統'} - 動作：<strong>${log.action}</strong>
-              ${log.reject_reason ? `<br><span style="color:red;">退件原因：${log.reject_reason}</span>` : ''}
-            </li>
-          `).join('') || '<li>尚無歷程紀錄</li>'}
-        </ul>
-        <h4>附件</h4>
-        ${attachments?.length ? attachments.map((a, i) => `
-          <button type="button" class="secondary" onclick="openAttachment('${a.file_url || a.url}')" style="margin:2px;">📎 附件 ${i + 1}</button>
-        `).join('') : '<p class="muted">尚無附件</p>'}
-        <div style="margin-top:20px; text-align:right; gap:10px; display:flex; justify-content:flex-end;">
-          ${(vch.status === 'pending_review' && ['manager','admin'].includes(state.currentUser?.role)) ? `
-            <button onclick="window.approveFromDetail('${vch.id}')" style="background:#10b981; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">核准</button>
-            <button onclick="window.rejectFromDetail('${vch.id}')" style="background:#ef4444; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">退件</button>
-          ` : ''}
-          ${vch.status !== 'voided' && typeof processVoidVoucher === 'function' ? `
-            <button onclick="processVoidVoucher('${vch.id}', '${vch.project_id}', ${vch.total_amount})" style="background:#d9534f; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">辦理銷案</button>
-          ` : ''}
-          <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="background:#6c757d; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">關閉</button>
+        <h4 style="margin:16px 0 8px; font-size:15px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">憑證 / 發票資訊</h4>
+        <div style="margin-bottom:15px;">
+          ${invoicesHtml}
+        </div>
+
+        <h4 style="margin:16px 0 8px; font-size:15px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">審批歷程</h4>
+        <div style="margin-bottom:15px; max-height:150px; overflow-y:auto; background:#f9fafb; padding:8px; border-radius:6px;">
+          ${logsHtml}
+        </div>
+
+        <div style="text-align:right; margin-top:20px;">
+          <button type="button" class="secondary" onclick="document.getElementById('voucherDetailModal').style.display='none'">關閉</button>
         </div>
       </div>
     `;
   } catch (err) {
-    alert(err.message);
+    console.error(err);
+    alert('載入單據詳細內容失敗：' + err.message);
   }
 };
 
