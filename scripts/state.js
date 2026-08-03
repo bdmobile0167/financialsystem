@@ -1,4 +1,4 @@
-import { COMPANY_INFO, BUSINESS_ITEMS, DIRECTOR_SHAREHOLDER_LIST, STRUCTURE_SETTINGS, OPTION_LIST, STANDARDIZED_STRUCTURE_SETTINGS } from './company-data.js';
+import { STRUCTURE_SETTINGS, OPTION_LIST, STANDARDIZED_STRUCTURE_SETTINGS } from './company-data.js';
 
 export const STORAGE_KEY = 'finance_netlify_app_v1';
 export const USER_KEY = 'finance_netlify_user';
@@ -9,9 +9,11 @@ export const defaultState = {
   activeTab: 'dashboard',
   systemName: '財務管理系統',
   pendingRequests: [],
-  companyInfo: COMPANY_INFO,
-  businessItems: BUSINESS_ITEMS,
-  directorShareholders: DIRECTOR_SHAREHOLDER_LIST,
+  // Do NOT treat company-data.js as the authoritative source for company data.
+  // Use empty defaults; frontend should fetch real company data from Supabase.
+  companyInfo: {},
+  businessItems: [],
+  directorShareholders: [],
   structureSettings: STRUCTURE_SETTINGS,
   optionList: OPTION_LIST,
   standardizedSettings: STANDARDIZED_STRUCTURE_SETTINGS
@@ -23,9 +25,10 @@ export function loadState(state) {
     const parsed = JSON.parse(stored);
     state.transactions = parsed.transactions || [];
     state.systemName = parsed.systemName || '財務管理系統';
-    state.companyInfo = parsed.companyInfo || COMPANY_INFO;
-    state.businessItems = parsed.businessItems || BUSINESS_ITEMS;
-    state.directorShareholders = parsed.directorShareholders || DIRECTOR_SHAREHOLDER_LIST;
+    // If stored state contains company-related data, use it; otherwise start empty.
+    state.companyInfo = parsed.companyInfo || {};
+    state.businessItems = parsed.businessItems || [];
+    state.directorShareholders = parsed.directorShareholders || [];
     state.structureSettings = parsed.structureSettings || STRUCTURE_SETTINGS;
     state.optionList = parsed.optionList || OPTION_LIST;
     state.standardizedSettings = parsed.standardizedSettings || STANDARDIZED_STRUCTURE_SETTINGS;
