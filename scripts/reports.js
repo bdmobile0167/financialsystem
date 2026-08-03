@@ -147,13 +147,26 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
-    // 依資產負債表代碼規範進行階層篩選
+    // 1. 額外抓取真實銀行帳戶餘額
+    const { data: banks } = await supabase.from('bank_accounts').select('balance, opening_balance');
+    const realBankBalance = (banks || []).reduce((sum, b) => sum + Number(b.balance ?? b.opening_balance ?? 0), 0);
+
+    // 2. 依資產負債表代碼規範進行階層篩選
+    // 如果你想讓現金 (1102) 直接對應真實銀行餘額，可以針對流動資產 rows 做調整或保留原樣
     const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
     const nonCurrentAssetsRows = rows.filter(r => r.code.startsWith('15') || r.code.startsWith('16'));
     const currentLiabilitiesRows = rows.filter(r => r.code.startsWith('2'));
     const equityRows = rows.filter(r => r.code.startsWith('3'));
 
-    const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    // 計算流動資產總額：如果 1102 科目想用真實銀行餘額取代或輔助，可在此處彈性處理
+    // 這裡保留原本各科目總和，但若需要把 1102 換成真實銀行餘額，可將該行金額替換
+    const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => {
+      if (r.code === '1102') {
+        return sum + Math.max(0, realBankBalance); // 使用真實銀行餘額
+      }
+      return sum + (r.debitTotal - r.creditTotal);
+    }, 0);
+
     const nonCurrentAssetsTotal = nonCurrentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const totalAssets = currentAssetsTotal + nonCurrentAssetsTotal;
 
@@ -174,7 +187,16 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
         {
           title: '資產 (Assets)',
           subsections: [
-            { title: '流動資產', items: currentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: currentAssetsTotal },
+            { 
+              title: '流動資產', 
+              items: currentAssetsRows.map(r => {
+                if (r.code === '1102') {
+                  return ['現金及銀行存款（實際餘額）', Math.max(0, realBankBalance), r.code];
+                }
+                return [r.name, r.debitTotal - r.creditTotal, r.code];
+              }), 
+              subtotal: currentAssetsTotal 
+            },
             { title: '非流動資產', items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
           ],
           total: totalAssets

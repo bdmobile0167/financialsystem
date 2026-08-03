@@ -1062,17 +1062,87 @@ window.calculateVoucherTotal = () => {
 
 window.fetchPayeeName = async (inputEl) => {
   const identifier = inputEl.value.trim();
-  const nameSpan = inputEl.closest('td, div').querySelector('.grid-payee-name');
+  const container = inputEl.closest('td, div');
+  const nameSpan = container.querySelector('.grid-payee-name');
   if (!nameSpan) return;
-  if (!identifier) { nameSpan.innerText = ''; return; }
+  if (!identifier) { nameSpan.innerHTML = ''; return; }
 
   nameSpan.innerText = '查詢中...';
   const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
+
   if (error || !data) {
-    nameSpan.innerText = '（查無資料，請洽會計新增）';
+    nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
     return;
   }
-  nameSpan.innerText = data.name;
+  nameSpan.innerText = maskPayeeName(data.name);
+  nameSpan.dataset.fullName = data.name; // 實際姓名存起來，送出表單時要用真實姓名，不是馬賽克版本
+};
+
+window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
+  const container = document.getElementById('addPayeeModalContainer');
+  container.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;">
+      <div style="background:#fff; padding:24px; border-radius:8px; max-width:420px; width:90%;">
+        <h3 style="margin-top:0;">新增付款人</h3>
+        <label>身分證／統一編號</label>
+        <input type="text" id="newPayeeIdentifier" value="${prefillIdentifier || ''}" style="width:100%; padding:6px; margin-bottom:10px;">
+        <label>姓名／公司名稱</label>
+        <input type="text" id="newPayeeName" style="width:100%; padding:6px; margin-bottom:10px;" required>
+        <label>類型</label>
+        <select id="newPayeeType" style="width:100%; padding:6px; margin-bottom:10px;">
+          <option value="個人">個人</option>
+          <option value="公司">公司／廠商</option>
+        </select>
+        <label>Email</label>
+        <input type="email" id="newPayeeEmail" style="width:100%; padding:6px; margin-bottom:10px;">
+        <label>電話</label>
+        <input type="text" id="newPayeePhone" style="width:100%; padding:6px; margin-bottom:10px;">
+        <label>地址</label>
+        <input type="text" id="newPayeeAddress" style="width:100%; padding:6px; margin-bottom:10px;">
+        <label>銀行帳號（選填）</label>
+        <input type="text" id="newPayeeBankAccount" style="width:100%; padding:6px; margin-bottom:14px;">
+        <div style="text-align:right;">
+          <button type="button" class="secondary" onclick="document.querySelector('.modal-backdrop').remove()">取消</button>
+          <button type="button" class="primary-btn" onclick="submitNewPayee('${triggerBtn ? triggerBtn.closest('td, div').querySelector('.grid-payee-id')?.id || '' : ''}')">儲存</button>
+        </div>
+      </div>
+    </div>`;
+  window.__payeeTriggerContext = triggerBtn;
+};
+
+window.submitNewPayee = async () => {
+  const identifier = document.getElementById('newPayeeIdentifier').value.trim();
+  const name = document.getElementById('newPayeeName').value.trim();
+  if (!identifier || !name) { alert('身分證/統編與姓名為必填'); return; }
+
+  const payload = {
+    identifier,
+    name,
+    type: document.getElementById('newPayeeType').value,
+    email: document.getElementById('newPayeeEmail').value.trim() || null,
+    phone: document.getElementById('newPayeePhone').value.trim() || null,
+    address: document.getElementById('newPayeeAddress').value.trim() || null,
+    bank_account: document.getElementById('newPayeeBankAccount').value.trim() || null
+  };
+
+  try {
+    const { error } = await supabase.from('payees').insert(payload);
+    if (error) throw error;
+    showMessage('付款人已新增。');
+    document.querySelector('.modal-backdrop')?.remove();
+
+    // 回填到原本觸發的那個欄位
+    const trigger = window.__payeeTriggerContext;
+    if (trigger) {
+      const container = trigger.closest('td, div');
+      const idInput = container.querySelector('.grid-payee-id, .grid-proxy-id');
+      const nameSpan = container.querySelector('.grid-payee-name, .grid-proxy-name');
+      if (idInput) idInput.value = identifier;
+      if (nameSpan) { nameSpan.innerText = maskPayeeName(name); nameSpan.dataset.fullName = name; }
+    }
+  } catch (error) {
+    alert('新增失敗：' + error.message);
+  }
 };
 
 window.addExcelRow = (prefillFile = null) => {
@@ -1153,10 +1223,15 @@ window.toggleProxyPayer = (checkboxEl) => {
 window.fetchProxyPayerName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
-  if (!identifier) { nameSpan.innerText = ''; return; }
+  if (!identifier) { nameSpan.innerHTML = ''; return; }
   nameSpan.innerText = '查詢中...';
   const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
-  nameSpan.innerText = data ? `代付人：${data.name}` : '（查無代付人資料）';
+  if (data) {
+    nameSpan.innerText = `代付人：${maskPayeeName(data.name)}`;
+    nameSpan.dataset.fullName = data.name;
+  } else {
+    nameSpan.innerHTML = `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增</button>`;
+  }
 };
 
 window.assignLineAttachment = (rowId, file) => {
@@ -1345,7 +1420,8 @@ function initializeEventsInternal() {
       if (tab === 'budget') {
         renderBudget();
       }
-      if (tab === 'reports') {
+      if (btn.dataset.tab === 'reports') {
+        setDefaultReportPeriod();
         renderReports();
       }
     });
@@ -2254,23 +2330,44 @@ async function updateProject(id) {
   }
 }
 
-// 綁定更新專案 API
 window.updateProject = async (id) => {
-  const newBudget = document.getElementById(`edit-budget-${id}`).value;
-  const newDept = document.getElementById(`edit-dept-${id}`).value;
-  
-  const { error } = await supabase.from('projects').update({
-    total_budget: newBudget,
-    department_id: newDept || null
-  }).eq('id', id);
+  const newBudgetInput = document.getElementById(`edit-budget-${id}`);
+  const newDeptInput = document.getElementById(`edit-dept-${id}`);
+  const newBudget = Number(newBudgetInput.value);
 
-  if (error) alert('更新失敗');
-  else {
-    alert('專案已更新');
+  try {
+    const { data: current, error: fetchErr } = await supabase
+      .from('projects').select('total_budget, remaining_budget').eq('id', id).single();
+    if (fetchErr) throw fetchErr;
+
+    const oldBudget = Number(current.total_budget || 0);
+
+    if (newBudget !== oldBudget) {
+      const reason = prompt(`預算將從 ${oldBudget.toLocaleString()} 改為 ${newBudget.toLocaleString()}，請輸入變更原因：`);
+      if (!reason || !reason.trim()) {
+        alert('未輸入原因，已取消變更。');
+        return;
+      }
+
+      const delta = newBudget - oldBudget;
+      const newRemaining = Number(current.remaining_budget || 0) + delta;
+      const { data: { user } } = await supabase.auth.getUser();
+
+      await updateProjectBudget(id, oldBudget, newBudget, reason.trim(), user.id);
+      await supabase.from('projects').update({
+        remaining_budget: newRemaining,
+        department_id: newDeptInput.value || null
+      }).eq('id', id);
+    } else {
+      await supabase.from('projects').update({ department_id: newDeptInput.value || null }).eq('id', id);
+    }
+
+    showMessage('專案已更新。');
     renderProjectList();
+  } catch (error) {
+    alert('更新失敗：' + error.message);
   }
 };
-
 window.deleteProject = async (id) => {
   if (confirm('確定刪除此專案？')) {
     await supabase.from('projects').delete().eq('id', id);
@@ -3905,5 +4002,25 @@ async function handleConfirmImportStatement() {
     document.getElementById('detectedParserText').innerHTML = '';
   } catch (error) {
     showMessage(`匯入失敗：${error.message}`, true);
+  }
+}
+
+function maskPayeeName(name) {
+  if (!name) return '';
+  const len = name.length;
+  if (len <= 1) return name;
+  if (len === 2) return name[0] + 'O';
+  return name[0] + 'O'.repeat(len - 2) + name[len - 1];
+}
+
+function setDefaultReportPeriod() {
+  const startInput = document.getElementById('reportPeriodStart');
+  const endInput = document.getElementById('reportPeriodEnd');
+  if (startInput && !startInput.value) {
+    const year = new Date().getFullYear();
+    startInput.value = `${year}-01-01`;
+  }
+  if (endInput && !endInput.value) {
+    endInput.value = new Date().toISOString().slice(0, 10);
   }
 }
