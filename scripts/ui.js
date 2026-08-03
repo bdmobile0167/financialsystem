@@ -863,7 +863,7 @@ function renderTable(id, rows) {
 function renderApprovalTable() {
   const body = document.getElementById('approvalTableBody');
   body.innerHTML = '';
-  if (!state.currentUser || !isAdminUser(state.currentUser.username)) {
+  if (!state.currentUser || !isAdminUser(state.currentUser.role)) {
     body.innerHTML = '<tr><td colspan="4" class="muted">僅限管理者檢視核准申請。</td></tr>';
     return;
   }
@@ -883,7 +883,7 @@ function renderApprovalTable() {
 function updateSettings() {
   const passwordCard = document.getElementById('passwordCard');
   if (passwordCard) {
-    passwordCard.style.display = state.currentUser && isAdminUser(state.currentUser.username) ? 'block' : 'none';
+    passwordCard.style.display = state.currentUser && isAdminUser(state.currentUser.role) ? 'block' : 'none';
   }
 }
 

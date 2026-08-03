@@ -1,5 +1,4 @@
 ﻿import { USER_KEY } from './state.js';
-import { ADMIN_USERNAME } from './config.js';
 import { requestApproval, isEmailApproved } from './approval.js';
 
 function normalizeEmail(value) {
@@ -14,8 +13,7 @@ export function isLocalTestMode() {
 
 export function formatUser(user) {
   const email = normalizeEmail(user.email || user.user_metadata?.email || '');
-  // 如果是 admin 信箱維持 admin；否則優先採用資料庫傳過來的 role，若沒有才給預設值
-  const role = isAdminUser(email) ? 'admin' : (user.role || user.user_metadata?.role || 'employee');
+  const role = user.role || user.user_metadata?.role || 'employee';
   return {
     username: email,
     name: user.user_metadata?.full_name || user.email || 'Vercel 使用者',
@@ -23,8 +21,8 @@ export function formatUser(user) {
   };
 }
 
-export function isAdminUser(email) {
-  return normalizeEmail(email) === normalizeEmail(ADMIN_USERNAME);
+export function isAdminUser(role) {
+  return role === 'admin';
 }
 
 export function saveCurrentUser(user) {
@@ -66,7 +64,7 @@ export async function getCurrentSessionUser() {
     id: sessionData.session.user.id,
     username: profile.email,
     name: profile.full_name,
-    role: profile.role,
+    role: profile.role || 'employee',
     department_id: profile.department_id, // 修正：將 key 名稱改為 department_id
     mustChangePassword: profile.must_change_password
   };
@@ -114,7 +112,7 @@ export async function signInWithSupabase(email, password) {
     id: userId,
     username: profile.email,
     name: profile.full_name,
-    role: profile.role, // 'employee', 'admin', 或是 'super_admin'
+    role: profile.role || 'employee', // 'employee', 'admin', 或是 'super_admin'
     department_id: profile.department_id,
     company_id: profile.company_id, // 💡 新增這行
     mustChangePassword: profile.must_change_password

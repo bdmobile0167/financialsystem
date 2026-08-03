@@ -79,7 +79,7 @@ export function getCurrentPermissions(role) {
   return ROLE_PERMISSIONS[role] || [];
 }
 
-export function getStructureSettings(companyId) {
+export async function getStructureSettings(companyId) {
   if (!companyId) return [];
   try {
     // Try company_settings table first (key/value pairs)
