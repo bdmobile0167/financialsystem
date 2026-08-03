@@ -36,3 +36,23 @@ export async function getStructureSettings(companyId) {
     return [];
   }
 }
+
+export function getActiveCompanyId() {
+  return localStorage.getItem('current_company_id') || null;
+}
+
+export function setActiveCompanyId(id) {
+  if (id) localStorage.setItem('current_company_id', id);
+  else localStorage.removeItem('current_company_id');
+  // Notify listeners (UI) to reload company-scoped data
+  try { window.dispatchEvent(new CustomEvent('companyChanged', { detail: { companyId: id } })); } catch (e) { /* ignore */ }
+}
+
+export function clearCompanyCache() {
+  // Clear any company-scoped localStorage keys (best-effort)
+  try {
+    localStorage.removeItem('company_cache');
+    // Dispatch event so UI can clear in-memory caches
+    window.dispatchEvent(new CustomEvent('companyCleared'));
+  } catch (e) { console.warn('clearCompanyCache failed', e); }
+}

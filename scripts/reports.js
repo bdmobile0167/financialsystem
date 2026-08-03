@@ -1,6 +1,6 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
-import { getCompanyInfo } from './companyContext.js';
+import { getCompanyInfo, getActiveCompanyId } from './companyContext.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -10,13 +10,17 @@ export function summarizeTransactions(transactions) {
 }
 
 async function fetchSupabaseTrialBalance(startDate, endDate) {
+  const companyId = getActiveCompanyId();
   let query = supabase.from('journal_entries').select('*');
+  if (companyId) query = query.eq('company_id', companyId);
   if (startDate) query = query.gte('entry_date', startDate);
   if (endDate) query = query.lte('entry_date', endDate);
   const { data: entries, error } = await query;
   if (error) throw error;
 
-  const { data: accounts, error: accError } = await supabase.from('accounts').select('*');
+  let accQuery = supabase.from('accounts').select('*');
+  if (companyId) accQuery = accQuery.eq('company_id', companyId);
+  const { data: accounts, error: accError } = await accQuery;
   if (accError) throw accError;
 
   const ledger = {};
@@ -148,7 +152,9 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
     // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
-    const { data: banks } = await supabase.from('bank_accounts').select('balance, opening_balance');
+    let bankQ = supabase.from('bank_accounts').select('balance, opening_balance');
+    if (companyId) bankQ = bankQ.eq('company_id', companyId);
+    const { data: banks } = await bankQ;
     const realBankBalance = (banks || []).reduce((sum, b) => sum + Number(b.balance ?? b.opening_balance ?? 0), 0);
 
     // 2. 依資產負債表代碼規範進行階層篩選
@@ -257,7 +263,8 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
 
 export async function buildCashflowStatement(transactions, startDate = null, endDate = null) {
   try {
-    const { data: bankAccount, error: bankErr } = await supabase.from('accounts').select('id').eq('code', '1102').single();
+    const companyId = getActiveCompanyId();
+    const { data: bankAccount, error: bankErr } = await supabase.from('accounts').select('id').eq('code', '1102').eq('company_id', companyId).single();
     if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
 
     let query = supabase

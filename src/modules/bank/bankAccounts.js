@@ -1,7 +1,11 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
+import { getActiveCompanyId } from '../../../scripts/companyContext.js';
 
 export async function loadBankAccounts() {
-  const { data, error } = await supabase.from('bank_accounts').select('*').order('bank_name');
+  const companyId = getActiveCompanyId();
+  let q = supabase.from('bank_accounts').select('*').order('bank_name');
+  if (companyId) q = q.eq('company_id', companyId);
+  const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }
@@ -16,7 +20,8 @@ export async function addBankAccount(account) {
       account_number: account.account_number,
       nickname: account.nickname,
       opening_balance: account.opening_balance,
-      created_by: user?.id
+      created_by: user?.id,
+      company_id: getActiveCompanyId()
     }])
     .select()
     .single();
@@ -26,7 +31,7 @@ export async function addBankAccount(account) {
 }
 
 export async function deleteBankAccount(id) {
-  const { error } = await supabase.from('bank_accounts').delete().eq('id', id);
+  const { error } = await supabase.from('bank_accounts').delete().eq('id', id).eq('company_id', getActiveCompanyId());
   if (error) throw error;
 }
 
@@ -81,7 +86,8 @@ export function setupTransactionForm() {
           amount: amount,
           transaction_date: transDate,
           description: description,
-          created_by: state?.currentUser?.id
+          created_by: state?.currentUser?.id,
+          company_id: getActiveCompanyId()
         }]);
 
       if (error) throw error;
