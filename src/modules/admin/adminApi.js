@@ -21,13 +21,22 @@ export async function toggleUserActive(id, active) {
 export async function inviteNewUser(payload) {
   const { data: sessionData } = await supabase.auth.getSession();
 
+  // 💡 確保傳給後端的 key 絕對正確，並且處理空字串轉 null
+  const safePayload = {
+    email: payload.email,
+    fullName: payload.fullName || payload.name, // 容錯處理，確保有 fullName
+    role: payload.role || 'employee',
+    departmentId: payload.departmentId ? payload.departmentId : null, // 避免空字串造成資料庫關聯錯誤
+    password: payload.password
+  };
+
   const res = await fetch('/api/invite', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${sessionData.session.access_token}`
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(safePayload)
   });
 
   const result = await res.json();

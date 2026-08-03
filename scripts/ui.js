@@ -10,6 +10,41 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
+import { fetchCompanyData, getCompanyData } from './api/api.js'; 
+export async function renderCompanyInfo() {
+    const data = await fetchCompanyData();
+    // 進行 DOM 操作將資料顯示在網頁上
+}
+
+// 假設全域有一個 state 物件
+const state = {
+  companyInfo: {},
+  businessItems: [],
+  directorShareholders: []
+};
+
+async function initPage() {
+  try {
+    // 1. 透過 api.js 取得資料
+    const data = await getCompanyData();
+    
+    // 2. 將資料存入 state
+    state.companyInfo = data.companyInfo;
+    state.businessItems = data.businessItems;
+    state.directorShareholders = data.directorShareholders;
+    
+    // 3. 執行你寫好的渲染與填表函式
+    renderCompanyData();
+    fillCompanyInfoForm();
+    renderBusinessData();
+    
+  } catch (error) {
+    console.error('載入失敗：', error);
+  }
+}
+
+// 頁面載入完成時執行
+document.addEventListener('DOMContentLoaded', initPage);
 
 const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
 
@@ -272,7 +307,9 @@ function renderBusinessData() {
   const container = document.getElementById('businessInfoContent');
   if (!container) return;
   const businessRows = (state.businessItems || []).map(item => `<li>${item.code} - ${item.item}</li>`).join('');
-  const directorRows = (state.directorShareholders || []).map(person => `<li>姓名：${person.name} / 職務：${person.role} / 身分證：${person.idNumber} / 出資：${Number(person.amount).toLocaleString()} / 地址：${person.address}</li>`).join('');
+  const directorRows = (state.directorShareholders || []).map(person => `
+    <li>姓名：${person.name ?? '-'} / 職務：${person.role ?? '-'} / 身分證：${person.idNumber ?? '-'} / 出資：${Number(person.amount || 0).toLocaleString()} / 地址：${person.address ?? '-'}</li>
+  `).join('');
   container.innerHTML = `
     <div class="info-block">
       <h4>營業項目</h4>
@@ -4067,3 +4104,30 @@ function setDefaultReportPeriod() {
     endInput.value = new Date().toISOString().slice(0, 10);
   }
 }
+
+// 假設這段是在初始化 Navigation Bar 或 Header
+function renderHeader(user) {
+  let companySwitcherHTML = '';
+  
+  // 💡 只有 super_admin (CEO) 才會看到這個區塊
+  if (user.role === 'super_admin') {
+    const currentCompanyId = localStorage.getItem('current_company_id');
+    companySwitcherHTML = `
+      <select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">
+        <option value="A_COMPANY_UUID" ${currentCompanyId === 'A_COMPANY_UUID' ? 'selected' : ''}>A 科技</option>
+        <option value="B_COMPANY_UUID" ${currentCompanyId === 'B_COMPANY_UUID' ? 'selected' : ''}>B 企劃</option>
+      </select>
+    `;
+  }
+
+  document.getElementById('header-user-info').innerHTML = `
+    ${companySwitcherHTML}
+    <span>歡迎，${user.name}</span>
+  `;
+}
+
+// 綁定切換事件：切換後存入 localStorage 並重新整理畫面載入新資料
+window.switchCompany = (newCompanyId) => {
+  localStorage.setItem('current_company_id', newCompanyId);
+  window.location.reload(); // 重新整理，讓所有 API 抓取新公司的資料
+};

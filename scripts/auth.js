@@ -18,7 +18,7 @@ export function formatUser(user) {
   const role = isAdminUser(email) ? 'admin' : (user.role || user.user_metadata?.role || 'employee');
   return {
     username: email,
-    name: user.user_metadata?.full_name || user.email || 'Netlify 使用者',
+    name: user.user_metadata?.full_name || user.email || 'Vercel 使用者',
     role: role
   };
 }
@@ -93,14 +93,27 @@ export async function signInWithSupabase(email, password) {
     return { ok: false, message: '這個帳號已被停用，請聯絡管理員。' };
   }
 
+  // 在回傳 user 的地方加上 company_id
   const user = {
     id: userId,
     username: profile.email,
     name: profile.full_name,
-    role: profile.role,
+    role: profile.role, // 'employee', 'admin', 或是 'super_admin'
     department_id: profile.department_id,
+    company_id: profile.company_id, // 💡 新增這行
     mustChangePassword: profile.must_change_password
   };
+
+  // 若是 super_admin 登入，預設先幫他選定一家公司，並存入 localStorage
+  if (profile.role === 'super_admin') {
+    if (!localStorage.getItem('current_company_id')) {
+      // 預設先看他自己原本歸屬的公司，或者系統預設第一家
+      localStorage.setItem('current_company_id', profile.company_id); 
+    }
+  } else {
+    // 一般員工，永遠綁定自己的公司
+    localStorage.setItem('current_company_id', profile.company_id);
+  }
 
   return { ok: true, user };
 }
