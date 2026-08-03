@@ -1,4 +1,4 @@
-import { STRUCTURE_SETTINGS, OPTION_LIST, STANDARDIZED_STRUCTURE_SETTINGS } from './company-data.js';
+import { STRUCTURE_SETTINGS } from './company-data.js';
 
 export const STORAGE_KEY = 'finance_netlify_app_v1';
 export const USER_KEY = 'finance_netlify_user';
@@ -15,8 +15,8 @@ export const defaultState = {
   businessItems: [],
   directorShareholders: [],
   structureSettings: STRUCTURE_SETTINGS,
-  optionList: OPTION_LIST,
-  standardizedSettings: STANDARDIZED_STRUCTURE_SETTINGS
+  optionList: [],
+  standardizedSettings: {}
 };
 
 export function loadState(state) {
@@ -30,8 +30,8 @@ export function loadState(state) {
     state.businessItems = parsed.businessItems || [];
     state.directorShareholders = parsed.directorShareholders || [];
     state.structureSettings = parsed.structureSettings || STRUCTURE_SETTINGS;
-    state.optionList = parsed.optionList || OPTION_LIST;
-    state.standardizedSettings = parsed.standardizedSettings || STANDARDIZED_STRUCTURE_SETTINGS;
+    state.optionList = parsed.optionList || [];
+    state.standardizedSettings = parsed.standardizedSettings || {};
   } else {
     // 📍【修改位置】：將原本的 SAMPLE_DATA 替換成空陣列 []
     state.transactions = [];
