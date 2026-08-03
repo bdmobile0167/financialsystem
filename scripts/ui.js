@@ -2390,7 +2390,10 @@ window.updateProject = async (id) => {
       }
 
       const delta = newBudget - oldBudget;
-      const newRemaining = Number(current.remaining_budget || 0) + delta;
+      let newRemaining = Number(current.remaining_budget || 0) + delta;
+
+      // 🛡️ 防呆機制：確保剩餘預算絕對不會超過新的總預算
+      newRemaining = Math.min(newRemaining, newBudget);
       const { data: { user } } = await supabase.auth.getUser();
 
       await updateProjectBudget(id, oldBudget, newBudget, reason.trim(), user.id);
