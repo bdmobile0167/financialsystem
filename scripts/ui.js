@@ -10,7 +10,7 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
-import { getCompanyInfo, getStructureSettings, getActiveCompanyId, setActiveCompanyId } from './companyContext.js';
+import { getCompanyInfo, getMyCompanies, getStructureSettings, getActiveCompanyId, setActiveCompanyId, validateCompanyAccess } from './companyContext.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -29,11 +29,20 @@ async function initPage() {
 
     state.currentUser = sessionUser;
 
-    // 2. 渲染 Header (包含公司切換器與版本號)
-    await renderHeader(sessionUser);
+    // 2. 載入會員公司清單，並以 localStorage 偏好為主、但驗證 membership
+    const companyMemberships = await getMyCompanies(sessionUser.id);
+    state.myCompanies = companyMemberships;
 
-    // 3. 載入目前公司設定（以 localStorage 優先，否則使用 profile.company_id）
-    const currentCompanyId = localStorage.getItem('current_company_id') || sessionUser.company_id;
+    const preferredCompanyId = getActiveCompanyId();
+    const validCompany = companyMemberships.find(m => m.company_id === preferredCompanyId);
+    const activeCompanyId = validCompany?.company_id || companyMemberships[0]?.company_id || sessionUser.company_id;
+    if (activeCompanyId) setActiveCompanyId(activeCompanyId);
+
+    // 3. 渲染 Header (包含公司切換器與版本號)
+    await renderHeader(sessionUser, companyMemberships);
+
+    // 4. 載入目前公司設定
+    const currentCompanyId = getActiveCompanyId();
     if (currentCompanyId) {
       state.companyInfo = await getCompanyInfo(currentCompanyId);
       state.structureSettings = await getStructureSettings(currentCompanyId);
@@ -4154,27 +4163,25 @@ function setDefaultReportPeriod() {
 }
 
 // 假設這段是在初始化 Navigation Bar 或 Header
-async function renderHeader(user) {
+async function renderHeader(user, memberships = []) {
   let companySwitcherHTML = '';
 
   // 版本號顯示（固定）
   const VERSION_LABEL = 'Demo v2.9.3';
+  const activeCompanyId = getActiveCompanyId();
+  const activeCompany = memberships.find(m => m.company_id === activeCompanyId) || memberships[0];
+  const activeCompanyName = activeCompany?.companies?.name || activeCompany?.companies?.company_name_zh || activeCompany?.companies?.company_name_en || activeCompany?.companies?.company_code || activeCompany?.company_id || '未選擇公司';
 
-  // 只有 super_admin (CEO) 才會看到公司切換器
-  if (user.role === 'super_admin') {
-    try {
-      const { data: memberships, error } = await supabase
-        .from('company_memberships')
-        .select('company_id, companies(name)')
-        .eq('user_id', user.id);
-      if (!error && memberships && memberships.length) {
-        companySwitcherHTML = `<select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">` +
-          memberships.map(m => `<option value="${m.company_id}" ${localStorage.getItem('current_company_id') === m.company_id ? 'selected' : ''}>${m.companies?.name || m.company_id}</option>`).join('') +
-          `</select>`;
-      }
-    } catch (e) {
-      console.warn('renderHeader: failed to load memberships', e);
-    }
+  if (memberships.length > 1) {
+    companySwitcherHTML = `<label style="margin-right: 8px; color:#333;">目前公司：</label>` +
+      `<select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">` +
+      memberships.map(m => {
+        const name = m.companies?.name || m.companies?.company_name_zh || m.companies?.company_name_en || m.companies?.company_code || m.company_id;
+        return `<option value="${m.company_id}" ${activeCompanyId === m.company_id ? 'selected' : ''}>${name}</option>`;
+      }).join('') +
+      `</select>`;
+  } else if (memberships.length === 1) {
+    companySwitcherHTML = `<span style="margin-right: 15px; color:#333; font-weight:600;">目前公司：${activeCompanyName}</span>`;
   }
 
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
@@ -4187,13 +4194,23 @@ async function renderHeader(user) {
 }
 
 // 綁定切換事件：切換後存入 localStorage 並重新整理畫面載入新資料
-window.switchCompany = (newCompanyId) => {
-  // Use companyContext to set active company and reload app data without full refresh
+window.switchCompany = async (newCompanyId) => {
+  const userId = state.currentUser?.id;
+  if (!userId) {
+    console.warn('switchCompany: no current user');
+    return;
+  }
+
+  const valid = await validateCompanyAccess(newCompanyId, userId);
+  if (!valid) {
+    console.warn('switchCompany: company access denied', newCompanyId);
+    showToast('無權切換此公司。', 'error');
+    return;
+  }
+
   setActiveCompanyId(newCompanyId);
-  // clear in-memory company-scoped state
   state.companyInfo = {};
   state.structureSettings = {};
-  // reload key datasets for the new company
   reloadAppData();
 };
 
