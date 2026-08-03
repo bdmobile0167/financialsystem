@@ -685,10 +685,10 @@ async function exportReportsToExcel() {
     XLSX.utils.book_append_sheet(wb, sheet, sheetName);
   }
 
-  addStatementSheet('損益表', '損益表', buildIncomeStatement(periodTx));
-  addStatementSheet('資產負債表', '資產負債表', buildBalanceSheet(periodTx));
-  addStatementSheet('現金流量表', '現金流量表', buildCashflowStatement(periodTx));
-  addStatementSheet('權益變動表', '權益變動表', buildEquityStatement(periodTx));
+  addStatementSheet('損益表', '損益表', await buildIncomeStatement(periodTx));
+  addStatementSheet('資產負債表', '資產負債表', await buildBalanceSheet(periodTx));
+  addStatementSheet('現金流量表', '現金流量表', await buildCashflowStatement(periodTx));
+  addStatementSheet('權益變動表', '權益變動表', await buildEquityStatement(periodTx));
 
   const journal = await buildJournal(periodTx);
   const journalAoa = [

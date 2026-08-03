@@ -149,6 +149,7 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
 
 export async function buildBalanceSheet(transactions, startDate = null, endDate = null) {
   try {
+    const companyId = getActiveCompanyId();
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
     // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
@@ -264,13 +265,16 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
 export async function buildCashflowStatement(transactions, startDate = null, endDate = null) {
   try {
     const companyId = getActiveCompanyId();
-    const { data: bankAccount, error: bankErr } = await supabase.from('accounts').select('id').eq('code', '1102').eq('company_id', companyId).single();
+    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');
+    if (companyId) accountQuery = accountQuery.eq('company_id', companyId);
+    const { data: bankAccount, error: bankErr } = await accountQuery.single();
     if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
 
     let query = supabase
       .from('journal_entries')
       .select('debit_account_id, credit_account_id, debit_amount, credit_amount, voucher_id, vouchers(category)')
       .not('voucher_id', 'is', null);
+    if (companyId) query = query.eq('company_id', companyId);
     if (startDate) query = query.gte('entry_date', startDate);
     if (endDate) query = query.lte('entry_date', endDate);
     const { data: entries, error } = await query;
@@ -318,7 +322,7 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
 
     let openingCapital = 0;
     try {
-      const companyId = localStorage.getItem('current_company_id');
+      const companyId = getActiveCompanyId();
       if (companyId) {
         const comp = await getCompanyInfo(companyId);
         openingCapital = Number(comp.totalCapital || comp.total_capital || 0);
