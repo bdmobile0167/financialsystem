@@ -362,7 +362,6 @@ async function renderDashboard() {
     const vouchers = vchs || [];
 
     // ---------- 2. 依角色抓專案（預算來源） ----------
-    const companyId = getActiveCompanyId();
     let projectQuery = supabase.from('projects').select('id, name, project_code, total_budget, remaining_budget, department_id');
     if (companyId) projectQuery = projectQuery.eq('company_id', companyId);
     if (!isPrivileged && user.department_id) {
