@@ -122,8 +122,6 @@ const STATUS_LABELS = {
   cancelled: '已撤銷'
 };
 
-const state = { ...defaultState };
-
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
 function getStatusBadge(status) {
   switch (status) {
