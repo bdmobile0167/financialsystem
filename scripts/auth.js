@@ -39,15 +39,23 @@ export function loadCurrentUser() {
 import { supabase } from './supabaseClient.js';
 
 export async function getCurrentSessionUser() {
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return null;
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    console.error('getSession error', sessionError);
+    return null;
+  }
+  if (!sessionData?.session) return null;
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', sessionData.session.user.id)
     .single();
 
+  if (profileError) {
+    console.error('fetch profile error', profileError);
+    return null;
+  }
   if (!profile) return null;
   if (profile.active === false) {
     await supabase.auth.signOut();
@@ -68,23 +76,31 @@ export async function signInWithSupabase(email, password) {
   // 1. 執行登入，直接從回傳結果取得 user 物件，避免依賴後續的 getSession 同步時差
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    const message = error.message === 'Invalid login credentials' ? '帳號或密碼錯誤。' : error.message;
+    console.error('signInWithPassword error', error);
+    const message = (error.message === 'Invalid login credentials' || /invalid/i.test(error.message)) ? '帳號或密碼錯誤。' : error.message;
     return { ok: false, message };
   }
 
   const userId = data.user?.id;
   if (!userId) {
+    console.error('signIn: no user id in response', data);
     return { ok: false, message: '登入成功但找不到使用者資料，請聯絡管理員。' };
   }
 
   // 2. 直接以取得的 userId 查詢對應的 profile 資料
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single();
 
+  if (profileError) {
+    console.error('fetch profile after signIn error', profileError);
+    return { ok: false, message: '登入成功但無法讀取個人資料，請聯絡管理員。' };
+  }
+
   if (!profile) {
+    console.error('fetch profile after signIn: profile is null', userId);
     return { ok: false, message: '登入成功但找不到使用者資料，請聯絡管理員。' };
   }
 
