@@ -1,6 +1,6 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
-import { COMPANY_INFO } from './company-data.js';
+import { getCompanyInfo } from './companyContext.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -147,33 +147,25 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
-    // 1. 額外抓取真實銀行帳戶餘額
+    // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
     const { data: banks } = await supabase.from('bank_accounts').select('balance, opening_balance');
     const realBankBalance = (banks || []).reduce((sum, b) => sum + Number(b.balance ?? b.opening_balance ?? 0), 0);
 
     // 2. 依資產負債表代碼規範進行階層篩選
-    // 如果你想讓現金 (1102) 直接對應真實銀行餘額，可以針對流動資產 rows 做調整或保留原樣
     const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
     const nonCurrentAssetsRows = rows.filter(r => r.code.startsWith('15') || r.code.startsWith('16'));
     const currentLiabilitiesRows = rows.filter(r => r.code.startsWith('2'));
     const equityRows = rows.filter(r => r.code.startsWith('3'));
 
-    // 計算流動資產總額：如果 1102 科目想用真實銀行餘額取代或輔助，可在此處彈性處理
-    // 這裡保留原本各科目總和，但若需要把 1102 換成真實銀行餘額，可將該行金額替換
-    const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => {
-      if (r.code === '1102') {
-        return sum + Math.max(0, realBankBalance); // 使用真實銀行餘額
-      }
-      return sum + (r.debitTotal - r.creditTotal);
-    }, 0);
-
+    // 💡 嚴謹的 ERP 系統作法：總資產必須嚴格使用「試算表 (分錄)」的金額加總，確保借貸平衡
+    const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const nonCurrentAssetsTotal = nonCurrentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const totalAssets = currentAssetsTotal + nonCurrentAssetsTotal;
 
     const currentLiabilitiesTotal = currentLiabilitiesRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
     const capitalTotal = equityRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
 
-    // 計算本期淨利以併入保留盈餘
+    // 計算本期淨利以併入保留盈餘 (動態抓取 4, 5, 6 開頭)
     const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
     const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const netProfit = totalRevenue - totalExpense;
@@ -191,7 +183,11 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
               title: '流動資產', 
               items: currentAssetsRows.map(r => {
                 if (r.code === '1102') {
-                  return ['現金及銀行存款（實際餘額）', Math.max(0, realBankBalance), r.code];
+                  // 畫面上同時顯示帳面餘額與真實餘額，方便會計抓漏
+                  const ledgerBalance = r.debitTotal - r.creditTotal;
+                  const discrepancy = realBankBalance - ledgerBalance;
+                  const note = discrepancy !== 0 ? ` (網銀實際: $${realBankBalance.toLocaleString()} / 差額: $${discrepancy.toLocaleString()})` : '';
+                  return [`${r.name}${note}`, ledgerBalance, r.code];
                 }
                 return [r.name, r.debitTotal - r.creditTotal, r.code];
               }), 
@@ -220,10 +216,18 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
     };
   } catch (err) {
     console.warn('資產負債表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    // 降級邏輯也保持會計平衡
     const { trialBalance } = runAccountingPipeline(transactions);
-    const { netProfit } = summarizeTransactions(transactions);
+    
+    const revenueRows = trialBalance.rows.filter(r => r.code.startsWith('4'));
+    const expenseRows = trialBalance.rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6'));
+    const totalRevenue = revenueRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = expenseRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const netProfit = totalRevenue - totalExpense;
+
     const cashRow = trialBalance.rows.find(r => r.code === '1102');
     const cash = cashRow ? cashRow.debitTotal - cashRow.creditTotal : 0;
+    
     const capitalRow = trialBalance.rows.find(r => r.code === '3110');
     const capital = capitalRow ? capitalRow.creditTotal - capitalRow.debitTotal : 0;
 
@@ -305,7 +309,17 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
     const capitalRow = rows.find(r => r.code === '3110');
     const capitalChange = capitalRow ? capitalRow.creditTotal - capitalRow.debitTotal : 0;
 
-    const openingCapital = Number(COMPANY_INFO.totalCapital || 0);
+    let openingCapital = 0;
+    try {
+      const companyId = localStorage.getItem('current_company_id');
+      if (companyId) {
+        const comp = await getCompanyInfo(companyId);
+        openingCapital = Number(comp.totalCapital || comp.total_capital || 0);
+      }
+    } catch (e) {
+      console.warn('Unable to fetch company info for opening capital', e);
+    }
+
     const endingEquity = openingCapital + capitalChange + retainedEarnings;
 
     return [

@@ -10,7 +10,7 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
-import { fetchCompanyData, getCompanyData } from '../src/api/api.js'; 
+import { getCompanyInfo, getStructureSettings } from './companyContext.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -20,19 +20,30 @@ export async function renderCompanyInfo() {
 
 async function initPage() {
   try {
-    // 1. 透過 api.js 取得資料
-    const data = await getCompanyData();
-    
-    // 2. 將資料存入 state
-    state.companyInfo = data.companyInfo;
-    state.businessItems = data.businessItems;
-    state.directorShareholders = data.directorShareholders;
-    
-    // 3. 執行你寫好的渲染與填表函式
-    renderCompanyData();
-    fillCompanyInfoForm();
-    renderBusinessData();
-    
+    // 1. 取得目前登入者資訊
+    const sessionUser = await getCurrentSessionUser();
+    if (!sessionUser) {
+      // 未登入或 session 失效，保留登入畫面
+      return;
+    }
+
+    state.currentUser = sessionUser;
+
+    // 2. 渲染 Header (包含公司切換器與版本號)
+    await renderHeader(sessionUser);
+
+    // 3. 載入目前公司設定（以 localStorage 優先，否則使用 profile.company_id）
+    const currentCompanyId = localStorage.getItem('current_company_id') || sessionUser.company_id;
+    if (currentCompanyId) {
+      state.companyInfo = await getCompanyInfo(currentCompanyId);
+      state.structureSettings = await getStructureSettings(currentCompanyId);
+    }
+
+    // 4. 執行既有的渲染函式（若有）
+    if (typeof renderCompanyData === 'function') renderCompanyData();
+    if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
+    if (typeof renderBusinessData === 'function') renderBusinessData();
+
   } catch (error) {
     console.error('載入失敗：', error);
   }
@@ -4108,23 +4119,35 @@ function setDefaultReportPeriod() {
 }
 
 // 假設這段是在初始化 Navigation Bar 或 Header
-function renderHeader(user) {
+async function renderHeader(user) {
   let companySwitcherHTML = '';
-  
-  // 💡 只有 super_admin (CEO) 才會看到這個區塊
+
+  // 版本號顯示（固定）
+  const VERSION_LABEL = 'Demo v2.9.3';
+
+  // 只有 super_admin (CEO) 才會看到公司切換器
   if (user.role === 'super_admin') {
-    const currentCompanyId = localStorage.getItem('current_company_id');
-    companySwitcherHTML = `
-      <select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">
-        <option value="A_COMPANY_UUID" ${currentCompanyId === 'A_COMPANY_UUID' ? 'selected' : ''}>A 科技</option>
-        <option value="B_COMPANY_UUID" ${currentCompanyId === 'B_COMPANY_UUID' ? 'selected' : ''}>B 企劃</option>
-      </select>
-    `;
+    try {
+      const { data: memberships, error } = await supabase
+        .from('company_memberships')
+        .select('company_id, companies(name)')
+        .eq('user_id', user.id);
+      if (!error && memberships && memberships.length) {
+        companySwitcherHTML = `<select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">` +
+          memberships.map(m => `<option value="${m.company_id}" ${localStorage.getItem('current_company_id') === m.company_id ? 'selected' : ''}>${m.companies?.name || m.company_id}</option>`).join('') +
+          `</select>`;
+      }
+    } catch (e) {
+      console.warn('renderHeader: failed to load memberships', e);
+    }
   }
+
+  const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `
     ${companySwitcherHTML}
     <span>歡迎，${user.name}</span>
+    ${versionHTML}
   `;
 }
 

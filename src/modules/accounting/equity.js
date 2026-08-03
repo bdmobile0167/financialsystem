@@ -1,15 +1,19 @@
-import { COMPANY_INFO } from '../../../scripts/company-data.js';
 import { runAccountingPipeline } from './index.js';
 
-export function buildEquityAnalysis(transactions) {
+export function buildEquityAnalysis(transactions, openingCapital = 0) {
   const { trialBalance } = runAccountingPipeline(transactions);
-  const openingCapital = Number(COMPANY_INFO.totalCapital || 0);
+  openingCapital = Number(openingCapital || 0);
 
-  const revenueRow = trialBalance.rows.find(r => r.code === '4111');
-  const expenseRow = trialBalance.rows.find(r => r.code === '6100');
-  const revenue = revenueRow ? revenueRow.creditTotal - revenueRow.debitTotal : 0;
-  const expense = expenseRow ? expenseRow.debitTotal - expenseRow.creditTotal : 0;
-  const retainedEarnings = revenue - expense;
+  // 💡 修正：動態抓取所有 4(收入) 與 5,6(費用) 科目
+  const totalRevenue = trialBalance.rows
+    .filter(r => r.code.startsWith('4'))
+    .reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    
+  const totalExpense = trialBalance.rows
+    .filter(r => r.code.startsWith('5') || r.code.startsWith('6'))
+    .reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    
+  const retainedEarnings = totalRevenue - totalExpense;
 
   // 本期透過「融資活動」新增的股本（股東入資/借款 - 還款/減資）
   const capitalRow = trialBalance.rows.find(r => r.code === '3110');
@@ -21,7 +25,7 @@ export function buildEquityAnalysis(transactions) {
   const cashBalance = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
 
   const monthsCovered = new Set(transactions.map(t => (t.date || '').slice(0, 7))).size || 1;
-  const avgMonthlyExpense = expense / monthsCovered;
+  const avgMonthlyExpense = totalExpense / monthsCovered; // 使用修正後的 totalExpense
   const cashRunwayMonths = avgMonthlyExpense > 0 ? cashBalance / avgMonthlyExpense : null;
 
   let fundraisingSuggestion = '資金水位正常，暫時不需要募資。';

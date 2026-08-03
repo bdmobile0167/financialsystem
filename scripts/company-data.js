@@ -66,7 +66,9 @@ export const STRUCTURE_SETTINGS = [
   { field: '資本總額', keyword: '資本總額', tableNumber: 0, direction: '水平', position: '右側', dataType: '單一值' }
 ];
 
-// Compatibility exports for legacy modules that expect single-company constants
-export const COMPANY_INFO = COMPANIES_DATA[0] ? COMPANIES_DATA[0].info : {};
-export const OPTION_LIST = COMPANIES_DATA[0] ? (COMPANIES_DATA[0].businessItems || []) : [];
-export const STANDARDIZED_STRUCTURE_SETTINGS = STRUCTURE_SETTINGS;
+// Compatibility exports (DEPRECATED).
+// Frontend should fetch company data from Supabase via `companyContext.js`.
+// These are intentionally empty to discourage runtime reliance on local hard-coded data.
+export const COMPANY_INFO = {};
+export const OPTION_LIST = [];
+export const STANDARDIZED_STRUCTURE_SETTINGS = [];
