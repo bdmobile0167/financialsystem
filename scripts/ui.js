@@ -1084,23 +1084,38 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
     <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;">
       <div style="background:#fff; padding:24px; border-radius:8px; max-width:420px; width:90%;">
         <h3 style="margin-top:0;">新增付款人</h3>
+        
         <label>身分證／統一編號</label>
         <input type="text" id="newPayeeIdentifier" value="${prefillIdentifier || ''}" style="width:100%; padding:6px; margin-bottom:10px;">
+        
         <label>姓名／公司名稱</label>
         <input type="text" id="newPayeeName" style="width:100%; padding:6px; margin-bottom:10px;" required>
+        
         <label>類型</label>
         <select id="newPayeeType" style="width:100%; padding:6px; margin-bottom:10px;">
-          <option value="個人">個人</option>
-          <option value="公司">公司／廠商</option>
+          <option value="individual">個人</option>
+          <option value="company">公司／廠商</option>
         </select>
+        
         <label>Email</label>
         <input type="email" id="newPayeeEmail" style="width:100%; padding:6px; margin-bottom:10px;">
+        
         <label>電話</label>
         <input type="text" id="newPayeePhone" style="width:100%; padding:6px; margin-bottom:10px;">
+        
         <label>地址</label>
         <input type="text" id="newPayeeAddress" style="width:100%; padding:6px; margin-bottom:10px;">
-        <label>銀行帳號（選填）</label>
-        <input type="text" id="newPayeeBankAccount" style="width:100%; padding:6px; margin-bottom:14px;">
+        
+        <!-- 匯款資訊區塊 -->
+        <div style="background:#f9fafb; padding:12px; border-radius:6px; margin-bottom:14px; border:1px solid #e5e7eb;">
+          <label style="font-weight:600; color:#374151;">金融機構代號（選填，共7碼）</label>
+          <div style="font-size:12px; color:#6b7280; margin-bottom:4px;">前3碼總行代號 + 後4碼分支代號（例如中國信託營業部：8220016）</div>
+          <input type="text" id="newPayeeBankCode" placeholder="請輸入7碼數字" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,'')" style="width:100%; padding:6px; margin-bottom:10px;">
+          
+          <label style="font-weight:600; color:#374151;">銀行帳號（選填）</label>
+          <input type="text" id="newPayeeBankAccount" placeholder="請輸入銀行帳號" oninput="this.value=this.value.replace(/[^0-9-]/g,'')" style="width:100%; padding:6px;">
+        </div>
+        
         <div style="text-align:right;">
           <button type="button" class="secondary" onclick="document.querySelector('.modal-backdrop').remove()">取消</button>
           <button type="button" class="primary-btn" onclick="submitNewPayee('${triggerBtn ? triggerBtn.closest('td, div').querySelector('.grid-payee-id')?.id || '' : ''}')">儲存</button>
@@ -1113,7 +1128,27 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
 window.submitNewPayee = async () => {
   const identifier = document.getElementById('newPayeeIdentifier').value.trim();
   const name = document.getElementById('newPayeeName').value.trim();
-  if (!identifier || !name) { alert('身分證/統編與姓名為必填'); return; }
+  
+  if (!identifier || !name) { 
+    alert('身分證/統編與姓名為必填'); 
+    return; 
+  }
+
+  // 取得匯款資訊
+  const bankCode = document.getElementById('newPayeeBankCode').value.trim();
+  const bankAcc = document.getElementById('newPayeeBankAccount').value.trim();
+  
+  // 檢核金融機構代碼是否確實填滿7碼
+  if (bankCode && bankCode.length !== 7) {
+    alert('金融機構代號必須為完整的7碼數字（3碼總行+4碼分支）。');
+    return;
+  }
+
+  // 將代碼與帳號組合成單一字串 (格式: 8220016-1234567890)
+  let finalBankAccount = null;
+  if (bankCode || bankAcc) {
+    finalBankAccount = `${bankCode ? bankCode : ''}${bankCode && bankAcc ? '-' : ''}${bankAcc ? bankAcc : ''}`;
+  }
 
   const payload = {
     identifier,
@@ -1122,23 +1157,28 @@ window.submitNewPayee = async () => {
     email: document.getElementById('newPayeeEmail').value.trim() || null,
     phone: document.getElementById('newPayeePhone').value.trim() || null,
     address: document.getElementById('newPayeeAddress').value.trim() || null,
-    bank_account: document.getElementById('newPayeeBankAccount').value.trim() || null
+    bank_account: finalBankAccount
   };
 
   try {
     const { error } = await supabase.from('payees').insert(payload);
     if (error) throw error;
+    
     showMessage('付款人已新增。');
     document.querySelector('.modal-backdrop')?.remove();
-
+    
     // 回填到原本觸發的那個欄位
     const trigger = window.__payeeTriggerContext;
     if (trigger) {
       const container = trigger.closest('td, div');
       const idInput = container.querySelector('.grid-payee-id, .grid-proxy-id');
       const nameSpan = container.querySelector('.grid-payee-name, .grid-proxy-name');
+      
       if (idInput) idInput.value = identifier;
-      if (nameSpan) { nameSpan.innerText = maskPayeeName(name); nameSpan.dataset.fullName = name; }
+      if (nameSpan) { 
+        nameSpan.innerText = maskPayeeName(name); 
+        nameSpan.dataset.fullName = name; 
+      }
     }
   } catch (error) {
     alert('新增失敗：' + error.message);
