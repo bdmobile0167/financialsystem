@@ -295,12 +295,13 @@ export async function buildCashflowStatement(transactions, startDate = null, end
 export async function buildEquityStatement(transactions, startDate = null, endDate = null) {
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const revenueRow = rows.find(r => r.code === '4111');
-    const expenseRow = rows.find(r => r.code === '6100');
-    const revenue = revenueRow ? revenueRow.creditTotal - revenueRow.debitTotal : 0;
-    const expense = expenseRow ? expenseRow.debitTotal - expenseRow.creditTotal : 0;
-    const retainedEarnings = revenue - expense;
+    
+    // 💡 修正：改為動態抓取所有收入 (4開頭) 與費用 (5、6開頭) 科目，與損益表保持一致
+    const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
+    const retainedEarnings = totalRevenue - totalExpense;
 
+    // 抓取股本變動 (這裡假設所有 31 開頭的都是股本相關，或者保留原來的 3110)
     const capitalRow = rows.find(r => r.code === '3110');
     const capitalChange = capitalRow ? capitalRow.creditTotal - capitalRow.debitTotal : 0;
 
