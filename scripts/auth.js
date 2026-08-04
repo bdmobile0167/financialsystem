@@ -65,7 +65,7 @@ export async function getCurrentSessionUser() {
     username: profile.email,
     name: profile.full_name,
     role: profile.role || 'employee',
-    department_id: profile.department_id, // 修正：將 key 名稱改為 department_id
+    department_id: profile.department_id,
     mustChangePassword: profile.must_change_password
   };
 }
@@ -107,27 +107,14 @@ export async function signInWithSupabase(email, password) {
     return { ok: false, message: '這個帳號已被停用，請聯絡管理員。' };
   }
 
-  // 在回傳 user 的地方加上 company_id
   const user = {
     id: userId,
     username: profile.email,
     name: profile.full_name,
-    role: profile.role || 'employee', // 'employee', 'admin', 或是 'super_admin'
+    role: profile.role || 'employee',
     department_id: profile.department_id,
-    company_id: profile.company_id, // 💡 新增這行
     mustChangePassword: profile.must_change_password
   };
-
-  // 若是 super_admin 登入，預設先幫他選定一家公司，並存入 localStorage
-  if (profile.role === 'super_admin') {
-    if (!localStorage.getItem('current_company_id')) {
-      // 預設先看他自己原本歸屬的公司，或者系統預設第一家
-      localStorage.setItem('current_company_id', profile.company_id); 
-    }
-  } else {
-    // 一般員工，永遠綁定自己的公司
-    localStorage.setItem('current_company_id', profile.company_id);
-  }
 
   return { ok: true, user };
 }

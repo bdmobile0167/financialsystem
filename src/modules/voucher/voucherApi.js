@@ -1,44 +1,27 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { getActiveCompanyId } from '../../../scripts/companyContext.js';
 import { saveAttachment } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
 import { VOUCHER_STATUS } from './voucherStatus.js';  // ← 同一資料夾
 
-export async function fetchAccounts() {
-  const companyId = getActiveCompanyId();
-  let q = supabase.from('accounts').select('*').order('code');
-  if (companyId) q = q.eq('company_id', companyId);
-  const { data, error } = await q;
+export async function fetchAccounts() {  let q = supabase.from('accounts').select('*').order('code');  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
 
-export async function fetchBankAccounts() {
-  const companyId = getActiveCompanyId();
-  let q = supabase.from('bank_accounts').select('*').order('bank_name');
-  if (companyId) q = q.eq('company_id', companyId);
-  const { data, error } = await q;
+export async function fetchBankAccounts() {  let q = supabase.from('bank_accounts').select('*').order('bank_name');  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
 
-export async function fetchDepartments() {
-  const companyId = getActiveCompanyId();
-  let q = supabase.from('departments').select('*').order('name');
-  if (companyId) q = q.eq('company_id', companyId);
-  const { data, error } = await q;
+export async function fetchDepartments() {  let q = supabase.from('departments').select('*').order('name');  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
 
-export async function fetchMyVouchers() {
-  const companyId = getActiveCompanyId();
-  let q = supabase
+export async function fetchMyVouchers() {  let q = supabase
     .from('vouchers')
     .select('*, voucher_lines(*), invoices(*), voucher_payments(*)')
-    .order('created_at', { ascending: false });
-  if (companyId) q = q.eq('company_id', companyId);
-  const { data, error } = await q;
+    .order('created_at', { ascending: false });  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
@@ -115,8 +98,7 @@ export async function createVoucher(payload) {
       status: status,
       trip_start_date: tripStartDate || null,
       trip_end_date: tripEndDate || null
-      , company_id: getActiveCompanyId()
-    })
+      ,    })
     .select()
     .single();
 
@@ -148,10 +130,7 @@ export async function createVoucher(payload) {
       };
     });
 
-    // include company_id in lines for clearer scoping
-    const companyId = getActiveCompanyId();
-    const linesWithCompany = finalLines.map(l => ({ ...l, company_id: companyId }));
-    const { error: lineError } = await supabase.from('voucher_lines').insert(linesWithCompany);
+    const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
     if (lineError) throw lineError;
   }
 
@@ -164,9 +143,7 @@ export async function createVoucher(payload) {
       amount: i.amount,
       tax_amount: i.tax_amount || 0
     }));
-    const companyId = getActiveCompanyId();
-    const invoicesWithCompany = finalInvoices.map(i => ({ ...i, company_id: companyId }));
-    const { error: invoiceError } = await supabase.from('invoices').insert(invoicesWithCompany);
+    const { error: invoiceError } = await supabase.from('invoices').insert(finalInvoices);
     if (invoiceError) throw invoiceError;
   }
 
@@ -213,10 +190,8 @@ export async function accountingApprove(voucher) {
   if (error) throw error;
   await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
 
-  if (voucher.project_id) {
-    const companyId = getActiveCompanyId();
-    const { data: proj } = await supabase
-      .from('projects').select('remaining_budget').eq('id', voucher.project_id).eq('company_id', companyId).single();
+  if (voucher.project_id) {    const { data: proj } = await supabase
+      .from('projects').select('remaining_budget').eq('id', voucher.project_id).single();
     if (proj) {
       const newRemaining = Number(proj.remaining_budget || 0) - Number(voucher.total_amount || 0);
       await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', voucher.project_id);
@@ -248,15 +223,13 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 
 // 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
-  try {
-    const companyId = getActiveCompanyId();
-    const { data: voucher, error: vError } = await supabase
-      .from('vouchers').select('*').eq('id', voucherId).eq('company_id', companyId).single();
+  try {    const { data: voucher, error: vError } = await supabase
+      .from('vouchers').select('*').eq('id', voucherId).single();
     if (vError) throw vError;
     if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
 
     const { data: bank, error: bankFetchError } = await supabase
-      .from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).eq('company_id', companyId).single();
+      .from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
     if (bankFetchError) throw bankFetchError;
 
     const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
@@ -273,7 +246,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       .from('accounts')
       .select('id, code')
       .filter(isUuid ? 'id' : 'code', 'eq', accountCodeId)
-      .eq('company_id', companyId)
+      
       .single();
 
     if (debitAccError || !debitAcc) {
@@ -285,7 +258,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       .from('accounts')
       .select('id, code')
       .eq('code', '1102')
-      .eq('company_id', companyId)
+      
       .single();
 
     if (creditAccError || !creditAcc) {
@@ -303,15 +276,14 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       credit_amount: voucher.total_amount,
       entry_date: paymentDate,
       memo: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
-      , company_id: companyId
-    }]);
+      ,    }]);
     if (jeError) throw jeError;
 
     const { error: updateError } = await supabase
       .from('vouchers')
       .update({ status: 'closed', payment_date: paymentDate, closed_at: new Date().toISOString() })
       .eq('id', voucherId)
-      .eq('company_id', companyId);
+      ;
     if (updateError) throw updateError;
 
     return { success: true, message: '歸帳銷案成功' };
@@ -322,28 +294,22 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
 }
 
 // 取得使用者的報支單列表
-export async function fetchUserVouchers(userId) {
-  const companyId = getActiveCompanyId();
-  let q = supabase
+export async function fetchUserVouchers(userId) {  let q = supabase
     .from('vouchers')
     .select('*, voucher_lines(*), invoices(*)')
     .eq('applicant_id', userId)
-    .order('created_at', { ascending: false });
-  if (companyId) q = q.eq('company_id', companyId);
-  const { data, error } = await q;
+    .order('created_at', { ascending: false });  const { data, error } = await q;
 
   if (error) throw error;
   return data;
 }
 
 // 取得單一報支單詳細資料
-export async function fetchVoucherDetail(voucherId) {
-  const companyId = getActiveCompanyId();
-  const { data, error } = await supabase
+export async function fetchVoucherDetail(voucherId) {  const { data, error } = await supabase
     .from('vouchers')
     .select('*, voucher_lines(*), invoices(*), voucher_payments(*)')
     .eq('id', voucherId)
-    .eq('company_id', companyId)
+    
     .single();
 
   if (error) throw error;

@@ -1,5 +1,4 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { getActiveCompanyId } from '../../../scripts/companyContext.js';
 
 // 上傳附件至 Supabase Storage 並寫入 voucher_attachments 資料表
 export async function saveAttachment(voucherId, file) {
@@ -31,8 +30,7 @@ export async function saveAttachment(voucherId, file) {
       file_name: file.name,
       file_type: file.type,
       file_url: publicUrl
-      , company_id: getActiveCompanyId()
-    })
+      ,    })
     .select()
     .single();
 
@@ -46,7 +44,7 @@ export async function getAttachmentsByVoucherId(voucherId) {
     .from('voucher_attachments')
     .select('*')
     .eq('voucher_id', voucherId)
-    .eq('company_id', getActiveCompanyId());
+    ;
 
   if (error) throw error;
   return data;

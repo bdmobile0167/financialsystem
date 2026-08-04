@@ -1,5 +1,4 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { getActiveCompanyId } from '../../../scripts/companyContext.js';
 
 // 建立專案
 export async function createProject(projectData) {
@@ -7,7 +6,7 @@ export async function createProject(projectData) {
   
   const { data, error } = await supabase
     .from('projects')
-    .insert([{ ...projectData, project_code: code, remaining_budget: projectData.total_budget, company_id: getActiveCompanyId() }])
+    .insert([{ ...projectData, project_code: code, remaining_budget: projectData.total_budget }])
     .select().single();
   if (error) throw error;
   return data;
@@ -23,7 +22,7 @@ export async function updateProjectBudget(projectId, oldAmount, newAmount, reaso
       // 剩餘預算的重新計算應在後端或這裡一併處理（此處先簡化為由總額直接覆蓋，實際需扣除已花費）
     })
     .eq('id', projectId)
-    .eq('company_id', getActiveCompanyId());
+    ;
     
   if (updateError) throw updateError;
 
@@ -36,7 +35,7 @@ export async function updateProjectBudget(projectId, oldAmount, newAmount, reaso
       old_amount: oldAmount,
       new_amount: newAmount,
       change_reason: reason
-    , company_id: getActiveCompanyId() }]);
+    }]);
 
   if (logError) throw logError;
   return true;
@@ -49,14 +48,6 @@ export async function fetchProjectBudgetLogs(projectId) {
     .select('*, profiles!changed_by(full_name)')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
-    
-  // 若存在 company 分隔，額外加上過濾
-  if (getActiveCompanyId()) {
-    // 重新查詢以確保 company_id 過濾
-    const res = await supabase.from('project_budget_logs').select('*, profiles!changed_by(full_name)').eq('project_id', projectId).eq('company_id', getActiveCompanyId()).order('created_at', { ascending: false });
-    if (res.error) throw res.error;
-    return res.data;
-  }
     
   if (error) throw error;
   return data;

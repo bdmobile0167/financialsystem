@@ -1,6 +1,6 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
-import { getCompanyInfo, getActiveCompanyId } from './companyContext.js';
+import { getCompanyInfo } from './companyContext.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -9,18 +9,12 @@ export function summarizeTransactions(transactions) {
   return { revenue, expense, netProfit };
 }
 
-async function fetchSupabaseTrialBalance(startDate, endDate) {
-  const companyId = getActiveCompanyId();
-  let query = supabase.from('journal_entries').select('*');
-  if (companyId) query = query.eq('company_id', companyId);
-  if (startDate) query = query.gte('entry_date', startDate);
+async function fetchSupabaseTrialBalance(startDate, endDate) {  let query = supabase.from('journal_entries').select('*');  if (startDate) query = query.gte('entry_date', startDate);
   if (endDate) query = query.lte('entry_date', endDate);
   const { data: entries, error } = await query;
   if (error) throw error;
 
-  let accQuery = supabase.from('accounts').select('*');
-  if (companyId) accQuery = accQuery.eq('company_id', companyId);
-  const { data: accounts, error: accError } = await accQuery;
+  let accQuery = supabase.from('accounts').select('*');  const { data: accounts, error: accError } = await accQuery;
   if (accError) throw accError;
 
   const ledger = {};
@@ -148,14 +142,10 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
 }
 
 export async function buildBalanceSheet(transactions, startDate = null, endDate = null) {
-  try {
-    const companyId = getActiveCompanyId();
-    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+  try {    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
     // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
-    let bankQ = supabase.from('bank_accounts').select('balance, opening_balance');
-    if (companyId) bankQ = bankQ.eq('company_id', companyId);
-    const { data: banks } = await bankQ;
+    let bankQ = supabase.from('bank_accounts').select('balance, opening_balance');    const { data: banks } = await bankQ;
     const realBankBalance = (banks || []).reduce((sum, b) => sum + Number(b.balance ?? b.opening_balance ?? 0), 0);
 
     // 2. 依資產負債表代碼規範進行階層篩選
@@ -263,19 +253,13 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
 }
 
 export async function buildCashflowStatement(transactions, startDate = null, endDate = null) {
-  try {
-    const companyId = getActiveCompanyId();
-    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');
-    if (companyId) accountQuery = accountQuery.eq('company_id', companyId);
-    const { data: bankAccount, error: bankErr } = await accountQuery.single();
+  try {    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');    const { data: bankAccount, error: bankErr } = await accountQuery.single();
     if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
 
     let query = supabase
       .from('journal_entries')
       .select('debit_account_id, credit_account_id, debit_amount, credit_amount, voucher_id, vouchers(category)')
-      .not('voucher_id', 'is', null);
-    if (companyId) query = query.eq('company_id', companyId);
-    if (startDate) query = query.gte('entry_date', startDate);
+      .not('voucher_id', 'is', null);    if (startDate) query = query.gte('entry_date', startDate);
     if (endDate) query = query.lte('entry_date', endDate);
     const { data: entries, error } = await query;
     if (error) throw error;
@@ -322,11 +306,8 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
 
     let openingCapital = 0;
     try {
-      const companyId = getActiveCompanyId();
-      if (companyId) {
-        const comp = await getCompanyInfo(companyId);
-        openingCapital = Number(comp.totalCapital || comp.total_capital || 0);
-      }
+      const comp = await getCompanyInfo() || {};
+      openingCapital = Number(comp.totalCapital || comp.total_capital || 0);
     } catch (e) {
       console.warn('Unable to fetch company info for opening capital', e);
     }

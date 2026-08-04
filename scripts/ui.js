@@ -10,7 +10,6 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
-import { getCompanyInfo, getMyCompanies, getStructureSettings, getActiveCompanyId, setActiveCompanyId, validateCompanyAccess } from './companyContext.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -29,26 +28,17 @@ async function initPage() {
 
     state.currentUser = sessionUser;
 
-    // 2. 載入會員公司清單，並以 localStorage 偏好為主、但驗證 membership
-    const companyMemberships = await getMyCompanies(sessionUser.id);
-    state.myCompanies = companyMemberships;
+    // 2. 目前不再使用多公司切換模式
+    state.myCompanies = [];
 
-    const preferredCompanyId = getActiveCompanyId();
-    const validCompany = companyMemberships.find(m => m.company_id === preferredCompanyId);
-    const activeCompanyId = validCompany?.company_id || companyMemberships[0]?.company_id || sessionUser.company_id;
-    if (activeCompanyId) setActiveCompanyId(activeCompanyId);
+    // 3. 渲染 Header (包含版本號)
+    await renderHeader(sessionUser);
 
-    // 3. 渲染 Header (包含公司切換器與版本號)
-    await renderHeader(sessionUser, companyMemberships);
+    // 4. 初始化公司設定
+    state.companyInfo = {};
+    state.structureSettings = {};
 
-    // 4. 載入目前公司設定
-    const currentCompanyId = getActiveCompanyId();
-    if (currentCompanyId) {
-      state.companyInfo = await getCompanyInfo(currentCompanyId);
-      state.structureSettings = await getStructureSettings(currentCompanyId);
-    }
-
-    // 4. 執行既有的渲染函式（若有）
+    // 5. 執行既有的渲染函式（若有）
     if (typeof renderCompanyData === 'function') renderCompanyData();
     if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
     if (typeof renderBusinessData === 'function') renderBusinessData();
@@ -354,14 +344,10 @@ async function renderDashboard() {
 
   try {
     // ---------- 1. 依角色抓報支單 ----------
-    const companyId = getActiveCompanyId();
     let voucherQuery = supabase
       .from('vouchers')
       .select('*, profiles!applicant_id(full_name), departments(name)')
       .order('created_at', { ascending: false });
-
-    if (companyId) voucherQuery = voucherQuery.eq('company_id', companyId);
-
     if (!isPrivileged && user.department_id) {
       voucherQuery = voucherQuery.eq('department_id', user.department_id);
     }
@@ -372,7 +358,6 @@ async function renderDashboard() {
 
     // ---------- 2. 依角色抓專案（預算來源） ----------
     let projectQuery = supabase.from('projects').select('id, name, project_code, total_budget, remaining_budget, department_id');
-    if (companyId) projectQuery = projectQuery.eq('company_id', companyId);
     if (!isPrivileged && user.department_id) {
       // 一般員工／主管：只看自己部門的專案
       projectQuery = projectQuery.eq('department_id', user.department_id);
@@ -1124,7 +1109,7 @@ window.fetchPayeeName = async (inputEl) => {
   if (!identifier) { nameSpan.innerHTML = ''; return; }
 
   nameSpan.innerText = '查詢中...';
-  const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).eq('company_id', getActiveCompanyId()).maybeSingle();
+  const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
 
   if (error || !data) {
     nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
@@ -1217,7 +1202,7 @@ window.submitNewPayee = async () => {
   };
 
   try {
-    const { error } = await supabase.from('payees').insert({ ...payload, company_id: getActiveCompanyId() });
+    const { error } = await supabase.from('payees').insert({ ...payload,  });
     if (error) throw error;
     
     showMessage('付款人已新增。');
@@ -1321,7 +1306,7 @@ window.fetchProxyPayerName = async (inputEl) => {
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
   if (!identifier) { nameSpan.innerHTML = ''; return; }
   nameSpan.innerText = '查詢中...';
-  const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).eq('company_id', getActiveCompanyId()).maybeSingle();
+  const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
   if (data) {
     nameSpan.innerText = `代付人：${maskPayeeName(data.name)}`;
     nameSpan.dataset.fullName = data.name;
@@ -1576,9 +1561,7 @@ function initializeEventsInternal() {
             amount: amount,
             transaction_date: transDate,
             description: description,
-              created_by: state.currentUser?.id,
-              company_id: getActiveCompanyId()
-          }]);
+              created_by: state.currentUser?.id,          }]);
 
         if (error) throw error;
 
@@ -1701,7 +1684,7 @@ function initializeEventsInternal() {
           .from('bank_accounts')
           .update(bankData)
           .eq('id', state.editingBankId)
-          .eq('company_id', getActiveCompanyId());
+          ;
 
         if (error) {
           alert('更新失敗：' + error.message);
@@ -1713,7 +1696,7 @@ function initializeEventsInternal() {
       } else {
         const { error } = await supabase
           .from('bank_accounts')
-          .insert([{ ...bankData, company_id: getActiveCompanyId() }]);
+          .insert([{ ...bankData,  }]);
 
         if (error) {
           alert('新增失敗：' + error.message);
@@ -1966,9 +1949,7 @@ function initializeEventsInternal() {
           end_date: document.getElementById('projectEnd').value || null,
           department_id: document.getElementById('projectDepartment').value || null,
           total_budget: totalBudget,
-          remaining_budget: totalBudget,
-          company_id: getActiveCompanyId()
-        })
+          remaining_budget: totalBudget,        })
         .select()
         .single();
 
@@ -1982,7 +1963,7 @@ function initializeEventsInternal() {
           { project_id: newProject.id, category: '其他', amount: Math.round(totalBudget * 0.05) }
         ];
 
-        const itemsWithCompany = budgetItems.map(b => ({ ...b, company_id: getActiveCompanyId() }));
+        const itemsWithCompany = budgetItems.map(b => ({ ...b,  }));
         const { error: itemsError } = await supabase
           .from('project_budget_items')
           .insert(itemsWithCompany);
@@ -1994,7 +1975,7 @@ function initializeEventsInternal() {
       e.target.reset();
 
       if (selectedTeamMembers.length > 0 && newProject?.id) {
-        const userProjectsWithCompany = selectedTeamMembers.map(m => ({ user_id: m.id, project_id: newProject.id, company_id: getActiveCompanyId() }));
+        const userProjectsWithCompany = selectedTeamMembers.map(m => ({ user_id: m.id, project_id: newProject.id,  }));
         await supabase.from('user_projects').insert(userProjectsWithCompany);
       }
       selectedTeamMembers = [];
@@ -2017,7 +1998,7 @@ function initializeEventsInternal() {
     }
     try {
       const name = document.getElementById('newDepartmentName').value.trim();
-      const { error } = await supabase.from('departments').insert({ name, company_id: getActiveCompanyId() });
+      const { error } = await supabase.from('departments').insert({ name,  });
       if (error) throw error;
       showMessage('部門已新增。');
       e.target.reset();
@@ -2418,7 +2399,7 @@ async function updateProject(id) {
         department_id: newDeptId
       })
       .eq('id', id)
-      .eq('company_id', getActiveCompanyId());
+      ;
 
     if (error) throw error;
 
@@ -2437,7 +2418,7 @@ window.updateProject = async (id) => {
 
   try {
     const { data: current, error: fetchErr } = await supabase
-      .from('projects').select('total_budget, remaining_budget').eq('id', id).eq('company_id', getActiveCompanyId()).single();
+      .from('projects').select('total_budget, remaining_budget').eq('id', id).single();
     if (fetchErr) throw fetchErr;
 
     const oldBudget = Number(current.total_budget || 0);
@@ -2460,9 +2441,9 @@ window.updateProject = async (id) => {
       await supabase.from('projects').update({
         remaining_budget: newRemaining,
         department_id: newDeptInput.value || null
-      }).eq('id', id).eq('company_id', getActiveCompanyId());
+      }).eq('id', id);
     } else {
-      await supabase.from('projects').update({ department_id: newDeptInput.value || null }).eq('id', id).eq('company_id', getActiveCompanyId());
+      await supabase.from('projects').update({ department_id: newDeptInput.value || null }).eq('id', id);
     }
 
     showMessage('專案已更新。');
@@ -2473,7 +2454,7 @@ window.updateProject = async (id) => {
 };
 window.deleteProject = async (id) => {
   if (confirm('確定刪除此專案？')) {
-    await supabase.from('projects').delete().eq('id', id).eq('company_id', getActiveCompanyId());
+    await supabase.from('projects').delete().eq('id', id);
     renderProjectList();
   }
 };
@@ -2484,7 +2465,7 @@ async function renderAdminDepartmentList() {
   if (!container) return;
   
   try {
-    const { data: depts, error } = await supabase.from('departments').select('*').eq('company_id', getActiveCompanyId()).order('created_at');
+    const { data: depts, error } = await supabase.from('departments').select('*').order('created_at');
     if (error) throw error;
 
     container.innerHTML = depts.map(d => `
@@ -2525,7 +2506,7 @@ window.editDepartmentName = async (id) => {
 
 window.deleteDepartment = async (id) => {
   if (confirm('確定刪除此部門？如果已有使用者或專案綁定，可能無法刪除。')) {
-    const { error } = await supabase.from('departments').delete().eq('id', id).eq('company_id', getActiveCompanyId());
+    const { error } = await supabase.from('departments').delete().eq('id', id);
     if (error) alert('刪除失敗：' + error.message);
     else renderAdminDepartmentList();
   }
@@ -2592,11 +2573,7 @@ async function loadAndRenderProjects() {
 }
 
 async function fetchProjects() {
-  const userRole = state.currentUser?.role;
-  const projCompanyId = getActiveCompanyId();
-  let query = supabase.from('projects').select('*').order('project_code');
-  if (projCompanyId) query = query.eq('company_id', projCompanyId);
-
+  const userRole = state.currentUser?.role;  let query = supabase.from('projects').select('*').order('project_code');
   if (userRole === 'employee' || userRole === 'manager') {
     query = query.eq('department_id', state.currentUser.department_id);
   }
@@ -2606,7 +2583,7 @@ async function fetchProjects() {
 }
 
 async function loadDepartments() {
-  const { data } = await supabase.from('departments').select('*').eq('company_id', getActiveCompanyId());
+  const { data } = await supabase.from('departments').select('*');
   return data;
 }
 
@@ -2621,19 +2598,17 @@ function renderPermissionCheckboxes() {
 
 // 🔥 統一合併版：點擊單號跳出 Modal 詳細表單視窗（含完整審核歷程）
 window.viewVoucherDetail = async (voucherId) => {
-  try {
-    const companyId = getActiveCompanyId();
-    const { data: vch, error: vError } = await supabase
+  try {    const { data: vch, error: vError } = await supabase
       .from('vouchers')
       .select('*, profiles!applicant_id(full_name), departments(name)')
       .eq('id', voucherId)
-      .eq('company_id', companyId)
+      
       .single();
     
     if (vError || !vch) throw new Error('無法讀取報支明細資料');
 
-    const { data: lines } = await supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId).eq('company_id', companyId);
-    const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId).eq('company_id', companyId);
+    const { data: lines } = await supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId);
+    const { data: invoices } = await supabase.from('invoices').select('*').eq('voucher_id', voucherId);
     const attachments = await getAttachmentsByVoucherId(voucherId);
     
     // 取得該單據的審核與異動歷程 (Audit Logs)
@@ -2753,7 +2728,7 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
           .from('projects')
           .update({ remaining_budget: restored })
           .eq('id', projectId)
-          .eq('company_id', getActiveCompanyId());
+          ;
       }
     }
 
@@ -2764,9 +2739,7 @@ window.processVoidVoucher = async (voucherId, projectId, totalAmount) => {
       action: 'recall',
       from_status: 'pending_review',
       to_status: 'voided',
-      reject_reason: '使用者手動撤銷與辦理銷案',
-      company_id: getActiveCompanyId()
-    }]);
+      reject_reason: '使用者手動撤銷與辦理銷案',    }]);
 
     alert('銷案手續已完成，預算已即時返還！');
     document.getElementById('voucherDetailModal').style.display = 'none';
@@ -2821,7 +2794,7 @@ window.editBankAccount = async (id) => {
       .from('bank_accounts')
       .select('*')
       .eq('id', id)
-      .eq('company_id', getActiveCompanyId())
+      
       .single();
       
     if (error) throw error;
@@ -2893,7 +2866,7 @@ window.saveBankEdit = async () => {
       .from('bank_accounts')
       .update(updateData)
       .eq('id', id)
-      .eq('company_id', getActiveCompanyId());
+      ;
 
     if (error) throw error;
     alert('銀行帳號更新成功！');
@@ -2914,33 +2887,30 @@ window.accountingApproveAndClose = async (voucherId) => {
 
   try {
     // 補上還沒被歸類科目的明細列
-    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).eq('company_id', getActiveCompanyId()).is('account_code', null);
+    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
 
-    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).eq('company_id', getActiveCompanyId()).single();
+    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
 
     // 核准（觸發資料庫自動產生總帳分錄 + 扣除專案預算）
     await accountingApprove(voucher);
 
     // 扣除銀行餘額、記錄付款
-    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).eq('company_id', getActiveCompanyId()).single();
+    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
     if (bankErr) throw bankErr;
     const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
-    await supabase.from('bank_accounts').update({ balance: Number(currentBalance) - Number(voucher.total_amount) }).eq('id', bankAccountId).eq('company_id', getActiveCompanyId());
+    await supabase.from('bank_accounts').update({ balance: Number(currentBalance) - Number(voucher.total_amount) }).eq('id', bankAccountId);
 
     await supabase.from('voucher_payments').insert({
       voucher_id: voucherId, payment_type: 'bank_transfer', bank_account_id: bankAccountId,
-      amount: voucher.total_amount, paid_at: new Date().toISOString().slice(0, 10), company_id: getActiveCompanyId()
-    });
+      amount: voucher.total_amount, paid_at: new Date().toISOString().slice(0, 10),    });
 
-    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId).eq('company_id', getActiveCompanyId());
+    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId);
 
     if (note) {
       const { data: { user } } = await supabase.auth.getUser();
       await supabase.from('voucher_workflow_logs').insert({
-        voucher_id: voucherId, actor_id: user.id, action: 'close', from_status: 'approved', to_status: 'closed', reject_reason: note,
-        company_id: getActiveCompanyId()
-      });
+        voucher_id: voucherId, actor_id: user.id, action: 'close', from_status: 'approved', to_status: 'closed', reject_reason: note,      });
     }
 
     showMessage('已核准並完成歸帳。');
@@ -2964,8 +2934,8 @@ window.openAccountingReviewModal = async (voucherId) => {
     if (!voucher) return alert('找不到單據');
 
     // 取得銀行帳戶與會計科目
-    const { data: banks } = await supabase.from('bank_accounts').select('*').eq('company_id', getActiveCompanyId());
-    const { data: accounts } = await supabase.from('accounts').select('*').eq('company_id', getActiveCompanyId()).order('code');
+    const { data: banks } = await supabase.from('bank_accounts').select('*');
+    const { data: accounts } = await supabase.from('accounts').select('*').order('code');
     // 或者使用: const accounts = window.__cachedAccounts || [];
 
     let html = `
@@ -3104,17 +3074,17 @@ window.closeVoucher = async (voucherId) => {
   }
 
   try {
-    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).eq('company_id', getActiveCompanyId()).single();
+    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
 
     // 1. 查詢銀行餘額並扣款
-    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).eq('company_id', getActiveCompanyId()).single();
+    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
     if (bankErr) throw bankErr;
 
     const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
     await supabase.from('bank_accounts').update({ 
       balance: Number(currentBalance) - Number(voucher.total_amount) 
-    }).eq('id', bankAccountId).eq('company_id', getActiveCompanyId());
+    }).eq('id', bankAccountId);
 
     // 2. 寫入單據專用的付款紀錄
     await supabase.from('voucher_payments').insert({
@@ -3122,9 +3092,7 @@ window.closeVoucher = async (voucherId) => {
       payment_type: 'bank_transfer', 
       bank_account_id: bankAccountId,
       amount: voucher.total_amount, 
-      paid_at: new Date().toISOString().slice(0, 10),
-      company_id: getActiveCompanyId()
-    });
+      paid_at: new Date().toISOString().slice(0, 10),    });
 
     // 3. ⭐️ 寫入銀行綜合流水帳 (配合 BankAccounts.js 的邏輯)
     await supabase.from('bank_transactions').insert([{
@@ -3133,21 +3101,17 @@ window.closeVoucher = async (voucherId) => {
       amount: voucher.total_amount,
       transaction_date: new Date().toISOString().slice(0, 10),
       description: `單據付款銷案 (單號: ${voucher.voucher_no || voucherId})`,
-      created_by: state?.currentUser?.id,
-      company_id: getActiveCompanyId()
-    }]);
+      created_by: state?.currentUser?.id,    }]);
 
     // 4. 更新單據狀態為已結案 (closed)
     await supabase.from('vouchers').update({ 
       status: 'closed', closed_at: new Date().toISOString() 
-    }).eq('id', voucherId).eq('company_id', getActiveCompanyId());
+    }).eq('id', voucherId);
 
     // 5. 寫入審批歷程
     await supabase.from('voucher_workflow_logs').insert([{
       voucher_id: voucherId, actor_id: state.currentUser?.id, action: 'close',
-      from_status: 'approved', to_status: 'closed', reject_reason: '執行付款銷案',
-      company_id: getActiveCompanyId()
-    }]);
+      from_status: 'approved', to_status: 'closed', reject_reason: '執行付款銷案',    }]);
 
     alert('單據已成功付款並銷案！銀行餘額已成功扣除。');
     
@@ -3241,14 +3205,14 @@ async function renderFinancialCenter() {
       .from('vouchers')
       .select('*, profiles!applicant_id(full_name), departments(name)')
       .eq('status', 'approved')
-      .eq('company_id', getActiveCompanyId())
+      
       .order('created_at', { ascending: true });
 
     if (error) throw error;
 
     // 2. 取得會計科目與銀行清單（供歸帳下拉選單使用）
-    const { data: accounts } = await supabase.from('accounts').select('*').eq('company_id', getActiveCompanyId()).order('code');
-    const { data: banks } = await supabase.from('bank_accounts').select('*').eq('company_id', getActiveCompanyId());
+    const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+    const { data: banks } = await supabase.from('bank_accounts').select('*');
 
     let html = `
       <div style="margin-bottom: 24px;">
@@ -3335,15 +3299,13 @@ window.processPayment = async (voucherId, totalAmount) => {
   }
   if (!confirm(`確定付款結案？金額 $${Number(totalAmount).toLocaleString()}`)) return;
 
-  try {
-    const companyId = getActiveCompanyId();
-    const today = new Date().toISOString().split('T')[0];
+  try {    const today = new Date().toISOString().split('T')[0];
     const user = state.currentUser;
     const { data: voucher, error: vErr } = await supabase
       .from('vouchers')
       .select('project_id, status, voucher_no, summary')
       .eq('id', voucherId)
-      .eq('company_id', companyId)
+      
       .single();
     if (vErr) throw vErr;
     if (voucher.status !== 'approved') throw new Error('僅「已核准待付款」可結案');
@@ -3354,7 +3316,7 @@ window.processPayment = async (voucherId, totalAmount) => {
         .from('projects')
         .select('remaining_budget')
         .eq('id', voucher.project_id)
-        .eq('company_id', companyId)
+        
         .single();
       if (proj) {
         await supabase
@@ -3363,7 +3325,7 @@ window.processPayment = async (voucherId, totalAmount) => {
             remaining_budget: Math.max(0, Number(proj.remaining_budget || 0) - Number(totalAmount))
           })
           .eq('id', voucher.project_id)
-          .eq('company_id', companyId);
+          ;
       }
     }
 
@@ -3375,8 +3337,7 @@ window.processPayment = async (voucherId, totalAmount) => {
       amount: totalAmount,
       voucher_id: voucherId,
       description: `報支撥款 ${voucher.voucher_no || voucherId}`
-      , company_id: companyId
-    });
+      ,    });
 
     // 3. 會計分錄（欄位名請依你的 DB 調整）
     await supabase.from('journal_entries').insert({
@@ -3386,8 +3347,7 @@ window.processPayment = async (voucherId, totalAmount) => {
       credit_amount: totalAmount,
       memo: `報支結案：${voucher.summary || voucher.voucher_no}`,
       voucher_id: voucherId
-      , company_id: companyId
-    });
+      ,    });
 
     // 4. 狀態改 closed
     await supabase
@@ -3397,7 +3357,7 @@ window.processPayment = async (voucherId, totalAmount) => {
         closed_at: new Date().toISOString() 
       })
       .eq('id', voucherId)
-      .eq('company_id', companyId);
+      ;
 
     alert('付款結案成功！');
 
@@ -3407,9 +3367,7 @@ window.processPayment = async (voucherId, totalAmount) => {
       actor_id: user?.id,
       action: '付款結案 (Closed)',
       from_status: 'approved',
-      to_status: 'closed',
-      company_id: companyId
-    });
+      to_status: 'closed',    });
 
    // 重新渲染畫面
     if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
@@ -3531,17 +3489,16 @@ window.openResubmitModal = async (voucherId) => {
     resubLineAttachments = {}; // 重置暫存附件
 
     // A. 同步抓取資料
-    const companyId = getActiveCompanyId();
     const [
       { data: vch, error: vErr },
       { data: lines, error: lErr },
       { data: invoices, error: iErr },
       { data: depts, error: dErr }
     ] = await Promise.all([
-      supabase.from('vouchers').select('*').eq('id', voucherId).eq('company_id', companyId).single(),
-      supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId).eq('company_id', companyId),
-      supabase.from('invoices').select('*').eq('voucher_id', voucherId).eq('company_id', companyId),
-      supabase.from('departments').select('id, name').eq('company_id', companyId)
+      supabase.from('vouchers').select('*').eq('id', voucherId).single(),
+      supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId),
+      supabase.from('invoices').select('*').eq('voucher_id', voucherId),
+      supabase.from('departments').select('id, name')
     ]);
 
     if (vErr || !vch) throw new Error('無法取得報支單資料');
@@ -3551,13 +3508,13 @@ window.openResubmitModal = async (voucherId) => {
     const isAdminOrAccounting = ['admin', 'accounting'].includes(state.currentUser?.role);
     
     if (isAdminOrAccounting) {
-      const { data: pData } = await supabase.from('projects').select('id, name, project_code').eq('company_id', getActiveCompanyId());
+      const { data: pData } = await supabase.from('projects').select('id, name, project_code');
       projectsData = pData || [];
     } else {
       const { data: userProjs } = await supabase.from('user_projects').select('project_id').eq('user_id', state.currentUser?.id);
       const projectIds = (userProjs || []).map(up => up.project_id);
       if (projectIds.length > 0) {
-        const { data: pData } = await supabase.from('projects').select('id, name, project_code').in('id', projectIds).eq('company_id', getActiveCompanyId());
+        const { data: pData } = await supabase.from('projects').select('id, name, project_code').in('id', projectIds);
         projectsData = pData || [];
       }
     }
@@ -3860,9 +3817,7 @@ window.submitFullResubmission = async (e, voucherId) => {
     return;
   }
 
-  try {
-    const companyId = getActiveCompanyId();
-    // 1. 更新 vouchers 主檔
+  try {    // 1. 更新 vouchers 主檔
     const { error: vErr } = await supabase
       .from('vouchers')
       .update({
@@ -3877,19 +3832,19 @@ window.submitFullResubmission = async (e, voucherId) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', voucherId)
-      .eq('company_id', companyId);
+      ;
 
     if (vErr) throw vErr;
 
     // 2. 替換舊明細與舊發票
-    await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId).eq('company_id', companyId);
-    const linesWithCompany = newLines.map(l => ({ ...l, company_id: companyId }));
-    await supabase.from('voucher_lines').insert(linesWithCompany);
+    await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId);
+    const linesWithCompany = newLines.map(l => ({ ...l,}));
+    await supabase.from('voucher_lines').insert(finalLines);
 
-    await supabase.from('invoices').delete().eq('voucher_id', voucherId).eq('company_id', companyId);
+    await supabase.from('invoices').delete().eq('voucher_id', voucherId);
     if (newInvoices.length > 0) {
-      const invoicesWithCompany = newInvoices.map(i => ({ ...i, company_id: companyId }));
-      await supabase.from('invoices').insert(invoicesWithCompany);
+      const invoicesWithCompany = newInvoices.map(i => ({ ...i,}));
+      await supabase.from('invoices').insert(finalInvoices);
     }
 
     // 3. 寫入工作流程記錄
@@ -3901,9 +3856,7 @@ window.submitFullResubmission = async (e, voucherId) => {
         actor_id: state.currentUser?.id,
         action: 'submit',
         from_status: 'rejected',
-        to_status: 'pending_review',
-        company_id: companyId
-      });
+        to_status: 'pending_review',      });
     }
 
     alert('修改並重送成功！單據已重新送交主管審核。');
@@ -3920,7 +3873,7 @@ window.submitFullResubmission = async (e, voucherId) => {
 
 window.approveFromDetail = async (voucherId) => {
   try {
-    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).eq('company_id', getActiveCompanyId()).single();
+    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     
     // 根據角色決定呼叫哪個核准邏輯
     if (state.currentUser?.role === 'accounting') {
@@ -3944,7 +3897,7 @@ window.rejectFromDetail = async (voucherId) => {
   if (!reason) return;
   
   try {
-    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).eq('company_id', getActiveCompanyId()).single();
+    const { data: voucher } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     
     // 根據角色決定呼叫哪個退件邏輯
     if (state.currentUser?.role === 'accounting') {
@@ -4129,7 +4082,7 @@ async function handleConfirmImportStatement() {
         uploaded_by: user.id
       }));
 
-    const rowsWithCompany = rows.map(r => ({ ...r, company_id: getActiveCompanyId() }));
+    const rowsWithCompany = rows.map(r => ({ ...r,  }));
     const { error } = await supabase.from('bank_statement_transactions').insert(rowsWithCompany);
     if (error) throw error;
 
@@ -4163,65 +4116,22 @@ function setDefaultReportPeriod() {
 }
 
 // 假設這段是在初始化 Navigation Bar 或 Header
-async function renderHeader(user, memberships = []) {
-  let companySwitcherHTML = '';
-
+async function renderHeader(user) {
   // 版本號顯示（固定）
   const VERSION_LABEL = 'Demo v2.9.3';
-  const activeCompanyId = getActiveCompanyId();
-  const activeCompany = memberships.find(m => m.company_id === activeCompanyId) || memberships[0];
-  const activeCompanyName = activeCompany?.companies?.name || activeCompany?.companies?.company_name_zh || activeCompany?.companies?.company_name_en || activeCompany?.companies?.company_code || activeCompany?.company_id || '未選擇公司';
-
-  if (memberships.length > 1) {
-    companySwitcherHTML = `<label style="margin-right: 8px; color:#333;">目前公司：</label>` +
-      `<select id="companySwitcher" onchange="switchCompany(this.value)" style="margin-right: 15px; padding: 5px; border-radius: 4px;">` +
-      memberships.map(m => {
-        const name = m.companies?.name || m.companies?.company_name_zh || m.companies?.company_name_en || m.companies?.company_code || m.company_id;
-        return `<option value="${m.company_id}" ${activeCompanyId === m.company_id ? 'selected' : ''}>${name}</option>`;
-      }).join('') +
-      `</select>`;
-  } else if (memberships.length === 1) {
-    companySwitcherHTML = `<span style="margin-right: 15px; color:#333; font-weight:600;">目前公司：${activeCompanyName}</span>`;
-  }
-
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `
-    ${companySwitcherHTML}
     <span>歡迎，${user.name}</span>
     ${versionHTML}
   `;
 }
 
-// 綁定切換事件：切換後存入 localStorage 並重新整理畫面載入新資料
-window.switchCompany = async (newCompanyId) => {
-  const userId = state.currentUser?.id;
-  if (!userId) {
-    console.warn('switchCompany: no current user');
-    return;
-  }
-
-  const valid = await validateCompanyAccess(newCompanyId, userId);
-  if (!valid) {
-    console.warn('switchCompany: company access denied', newCompanyId);
-    showToast('無權切換此公司。', 'error');
-    return;
-  }
-
-  setActiveCompanyId(newCompanyId);
-  state.companyInfo = {};
-  state.structureSettings = {};
-  reloadAppData();
-};
-
 async function reloadAppData() {
   try {
-    const companyId = getActiveCompanyId();
-    if (!companyId) return;
-
-    // 1) refresh company info and settings
-    state.companyInfo = await getCompanyInfo(companyId) || {};
-    state.structureSettings = await getStructureSettings(companyId) || {};
+    // 1) refresh company-independent info and settings
+    state.companyInfo = {};
+    state.structureSettings = {};
 
     // 2) refresh bank accounts
     try {

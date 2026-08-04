@@ -2,7 +2,6 @@ import { loadChartOfAccounts } from './chartOfAccounts.js';
 import { runAccountingPipeline } from './index.js'; // 供 catch 降級使用
 // 請根據您專案實際的路徑引入 supabase (例如以下路徑)
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { getActiveCompanyId } from '../../../scripts/companyContext.js';
 
 function resolveAccounts(accounts, category, type) {
   const bank = accounts.find(a => a.code === '1102');
@@ -50,18 +49,14 @@ export function buildJournalEntries(transactions = []) {
 }
 
 export async function buildJournal(transactions = []) {
-  try {
-    const companyId = getActiveCompanyId();
-    let q = supabase
+  try {    let q = supabase
       .from('journal_entries')
       .select(`
         *,
         debit_account:accounts!debit_account_id(code, name),
         credit_account:accounts!credit_account_id(code, name)
       `)
-      .order('entry_date', { ascending: false });
-    if (companyId) q = q.eq('company_id', companyId);
-    const { data: journalEntries, error } = await q;
+      .order('entry_date', { ascending: false });    const { data: journalEntries, error } = await q;
 
     if (error) throw error;
 
