@@ -8,8 +8,9 @@ import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSup
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
-import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
+import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
+import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -1069,6 +1070,7 @@ function showApp() {
   updateAdminNavVisibility();
   applyRoleBasedTabVisibility();
   render();
+  initNotificationBell();
 }
 
 function showForcePasswordView() {
@@ -1559,9 +1561,8 @@ function initializeEventsInternal() {
             bank_account_id: bankAccountId,
             type: transType,
             amount: amount,
-            transaction_date: transDate,
-            description: description,
-              created_by: state.currentUser?.id,          }]);
+            tx_date: transDate,
+            description: description,          }]);
 
         if (error) throw error;
 
@@ -2249,7 +2250,7 @@ async function renderVoucherWorkflowList() {
           `;
         } else if (vStatus === 'approved') {
           actionButtons = `
-            <button class="btn-small success close-voucher-btn" data-id="${row.id}" onclick="closeVoucher('${row.id}')">
+            <button class="btn-small success close-voucher-btn" data-id="${row.id}" onclick="openCloseVoucherModal('${row.id}')">
               執行付款銷案
             </button>
           `;
@@ -2892,20 +2893,19 @@ window.accountingApproveAndClose = async (voucherId) => {
     const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
 
-    // 核准（觸發資料庫自動產生總帳分錄 + 扣除專案預算）
+    // 1. 核准（狀態轉為 approved + 扣除專案預算）
     await accountingApprove(voucher);
 
-    // 扣除銀行餘額、記錄付款
-    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
-    if (bankErr) throw bankErr;
-    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
-    await supabase.from('bank_accounts').update({ balance: Number(currentBalance) - Number(voucher.total_amount) }).eq('id', bankAccountId);
-
-    await supabase.from('voucher_payments').insert({
-      voucher_id: voucherId, payment_type: 'bank_transfer', bank_account_id: bankAccountId,
-      amount: voucher.total_amount, paid_at: new Date().toISOString().slice(0, 10),    });
-
-    await supabase.from('vouchers').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', voucherId);
+    // 2. 歸帳並付款銷案：統一交給 closeVoucherByAccounting 處理，
+    //    這個函式會正確寫入「借：所選費用科目／貸：銀行存款(1102)」的雙分錄到 journal_entries，
+    //    並寫入銀行流水、voucher_payments，最後把單據狀態轉為 closed。
+    const closeResult = await closeVoucherByAccounting(
+      voucherId,
+      accountCode,
+      bankAccountId,
+      new Date().toISOString().slice(0, 10)
+    );
+    if (!closeResult.success) throw new Error(closeResult.error);
 
     if (note) {
       const { data: { user } } = await supabase.auth.getUser();
@@ -3060,64 +3060,99 @@ window.rejectVoucher = async (voucherId, stage = 'manager') => {
 };
 
 /**
- * 3. 執行付款銷案 (Close Voucher)
- * 將狀態轉為 closed，寫入審批歷程，並重新渲染畫面
+ * 3a. 開啟「執行付款銷案」的銀行帳戶／會計科目選擇視窗
+ * （原本的版本直接讀取只存在於「詳細審核」Modal 裡的 reviewBankAccount 欄位，
+ *   從列表直接點擊時該元素根本不存在，所以一定會失敗；改成自帶選單。）
  */
-window.closeVoucher = async (voucherId) => {
+window.openCloseVoucherModal = async (voucherId) => {
+  try {
+    const { data: voucher } = await supabase
+      .from('vouchers')
+      .select('*, voucher_lines(*)')
+      .eq('id', voucherId)
+      .single();
+    if (!voucher) return alert('找不到單據');
+
+    const { data: banks } = await supabase.from('bank_accounts').select('*');
+    const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+
+    // 若明細已經有歸帳科目，預設帶入第一筆的科目
+    const existingCode = voucher.voucher_lines?.find(l => l.account_code)?.account_code || '';
+
+    const html = `
+      <div class="modal-backdrop" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
+        <div style="background:white; padding:25px; border-radius:12px; width:90%; max-width:500px; max-height:90vh; overflow:auto;">
+          <h3>執行付款銷案 - ${voucher.voucher_no || ''}</h3>
+          <p><strong>摘要：</strong>${voucher.summary || '-'}</p>
+          <p><strong>總金額：</strong>$${Number(voucher.total_amount).toLocaleString()}</p>
+
+          <label>歸帳會計科目：</label>
+          <select id="closeAccountCode" style="width:100%; padding:8px; margin:8px 0;">
+            <option value="">請選擇歸帳科目...</option>
+            ${(accounts || []).map(acc => `
+              <option value="${acc.code}" ${acc.code === existingCode ? 'selected' : ''}>${acc.code} ${acc.name}</option>
+            `).join('')}
+          </select>
+
+          <label>付款銀行帳戶：</label>
+          <select id="closeBankAccountId" style="width:100%; padding:8px; margin:8px 0;">
+            <option value="">請選擇付款銀行帳戶...</option>
+            ${(banks || []).map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('')}
+          </select>
+
+          <div style="margin-top:20px; text-align:right;">
+            <button onclick="confirmCloseVoucher('${voucherId}')" class="primary-btn">確認付款並銷案</button>
+            <button onclick="this.closest('.modal-backdrop').remove()" style="margin-left:10px;">取消</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+  } catch (err) {
+    alert('載入單據失敗：' + err.message);
+  }
+};
+
+/**
+ * 3b. 確認執行付款銷案：補上未分類的明細科目後，交給 closeVoucherByAccounting
+ * 統一寫入正確的借貸雙分錄、銀行流水、付款紀錄，並把單據狀態轉為 closed。
+ */
+window.confirmCloseVoucher = async (voucherId) => {
+  const accountCode = document.getElementById('closeAccountCode')?.value;
+  const bankAccountId = document.getElementById('closeBankAccountId')?.value;
+
+  if (!accountCode) { alert('請選擇歸帳科目'); return; }
+  if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
   if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
 
-  // ⚠️ 請確保能取得付款的銀行帳戶 ID (假設你有一個下拉選單)
-  const bankAccountId = document.getElementById('reviewBankAccount')?.value; 
-  if (!bankAccountId) {
-    alert('無法執行付款：請先選擇付款的銀行帳戶！');
-    return;
-  }
-
   try {
-    const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
-    if (vErr) throw vErr;
+    // 補上還沒被歸類科目的明細列
+    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
 
-    // 1. 查詢銀行餘額並扣款
-    const { data: bank, error: bankErr } = await supabase.from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
-    if (bankErr) throw bankErr;
+    const result = await closeVoucherByAccounting(
+      voucherId,
+      accountCode,
+      bankAccountId,
+      new Date().toISOString().slice(0, 10)
+    );
+    if (!result.success) throw new Error(result.error);
 
-    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
-    await supabase.from('bank_accounts').update({ 
-      balance: Number(currentBalance) - Number(voucher.total_amount) 
-    }).eq('id', bankAccountId);
-
-    // 2. 寫入單據專用的付款紀錄
-    await supabase.from('voucher_payments').insert({
-      voucher_id: voucherId, 
-      payment_type: 'bank_transfer', 
-      bank_account_id: bankAccountId,
-      amount: voucher.total_amount, 
-      paid_at: new Date().toISOString().slice(0, 10),    });
-
-    // 3. ⭐️ 寫入銀行綜合流水帳 (配合 BankAccounts.js 的邏輯)
-    await supabase.from('bank_transactions').insert([{
-      bank_account_id: bankAccountId,
-      type: '支出',  // 配合 getBankBalance 的判斷
-      amount: voucher.total_amount,
-      transaction_date: new Date().toISOString().slice(0, 10),
-      description: `單據付款銷案 (單號: ${voucher.voucher_no || voucherId})`,
-      created_by: state?.currentUser?.id,    }]);
-
-    // 4. 更新單據狀態為已結案 (closed)
-    await supabase.from('vouchers').update({ 
-      status: 'closed', closed_at: new Date().toISOString() 
-    }).eq('id', voucherId);
-
-    // 5. 寫入審批歷程
+    // 寫入審批歷程
+    const { data: { user } } = await supabase.auth.getUser();
     await supabase.from('voucher_workflow_logs').insert([{
-      voucher_id: voucherId, actor_id: state.currentUser?.id, action: 'close',
+      voucher_id: voucherId, actor_id: user?.id || state.currentUser?.id, action: 'close',
       from_status: 'approved', to_status: 'closed', reject_reason: '執行付款銷案',    }]);
 
-    alert('單據已成功付款並銷案！銀行餘額已成功扣除。');
-    
+    alert('單據已成功付款並銷案！');
+
+    document.querySelector('.modal-backdrop')?.remove();
     if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
     if (typeof renderDashboard === 'function') renderDashboard();
-    
+
     const modal = document.getElementById('voucherDetailModal');
     if (modal) modal.style.display = 'none';
 
@@ -3339,10 +3374,17 @@ window.processPayment = async (voucherId, totalAmount) => {
       description: `報支撥款 ${voucher.voucher_no || voucherId}`
       ,    });
 
-    // 3. 會計分錄（欄位名請依你的 DB 調整）
+    // 3. 會計分錄：借記所選費用科目，貸記銀行存款 (1102)
+    const { data: bankLedgerAccount } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('code', '1102')
+      .single();
+
     await supabase.from('journal_entries').insert({
       entry_date: today,
       debit_account_id: accountId,
+      credit_account_id: bankLedgerAccount?.id || null,
       debit_amount: totalAmount,
       credit_amount: totalAmount,
       memo: `報支結案：${voucher.summary || voucher.voucher_no}`,
@@ -3838,13 +3880,11 @@ window.submitFullResubmission = async (e, voucherId) => {
 
     // 2. 替換舊明細與舊發票
     await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId);
-    const linesWithCompany = newLines.map(l => ({ ...l,}));
-    await supabase.from('voucher_lines').insert(finalLines);
+    await supabase.from('voucher_lines').insert(newLines);
 
     await supabase.from('invoices').delete().eq('voucher_id', voucherId);
     if (newInvoices.length > 0) {
-      const invoicesWithCompany = newInvoices.map(i => ({ ...i,}));
-      await supabase.from('invoices').insert(finalInvoices);
+      await supabase.from('invoices').insert(newInvoices);
     }
 
     // 3. 寫入工作流程記錄
@@ -4125,6 +4165,102 @@ async function renderHeader(user) {
     <span>歡迎，${user.name}</span>
     ${versionHTML}
   `;
+}
+
+// ===== 通知功能 =====
+let notificationPollTimer = null;
+
+async function refreshNotificationBadge() {
+  try {
+    const count = await fetchUnreadCount();
+    const badge = document.getElementById('notificationBadge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('更新通知未讀數失敗:', err);
+  }
+}
+
+async function renderNotificationList() {
+  const list = document.getElementById('notificationList');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:16px; text-align:center; color:#999; font-size:13px;">載入中…</div>';
+  try {
+    const notifications = await fetchMyNotifications();
+    if (notifications.length === 0) {
+      list.innerHTML = '<div style="padding:16px; text-align:center; color:#999; font-size:13px;">目前沒有通知</div>';
+      return;
+    }
+    list.innerHTML = notifications.map(n => `
+      <div class="notification-item" data-id="${n.id}" data-voucher-id="${n.voucher_id || ''}"
+        style="padding:10px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; ${n.is_read ? '' : 'background:#eff6ff;'}">
+        <div style="font-size:13px; font-weight:${n.is_read ? '400' : '600'}; color:#1e293b;">${n.title}</div>
+        ${n.message ? `<div style="font-size:12px; color:#64748b; margin-top:2px;">${n.message}</div>` : ''}
+        <div style="font-size:11px; color:#94a3b8; margin-top:4px;">${new Date(n.created_at).toLocaleString('zh-TW')}</div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.notification-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        const id = item.dataset.id;
+        const voucherId = item.dataset.voucherId;
+        await markNotificationRead(id);
+        await refreshNotificationBadge();
+        item.style.background = '#fff';
+        const panel = document.getElementById('notificationPanel');
+        if (panel) panel.style.display = 'none';
+        if (voucherId && typeof window.viewVoucherDetail === 'function') {
+          window.viewVoucherDetail(voucherId);
+        }
+      });
+    });
+  } catch (err) {
+    console.error('讀取通知列表失敗:', err);
+    list.innerHTML = '<div style="padding:16px; text-align:center; color:#dc2626; font-size:13px;">讀取失敗</div>';
+  }
+}
+
+function initNotificationBell() {
+  const bellBtn = document.getElementById('notificationBellBtn');
+  const panel = document.getElementById('notificationPanel');
+  const markAllBtn = document.getElementById('markAllNotificationsReadBtn');
+  if (!bellBtn || !panel) return;
+
+  if (!bellBtn.dataset.bound) {
+    bellBtn.dataset.bound = 'true';
+    bellBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isOpen = panel.style.display === 'block';
+      panel.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) await renderNotificationList();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && e.target !== bellBtn) {
+        panel.style.display = 'none';
+      }
+    });
+
+    if (markAllBtn) {
+      markAllBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await markAllNotificationsRead();
+        await refreshNotificationBadge();
+        await renderNotificationList();
+      });
+    }
+  }
+
+  refreshNotificationBadge();
+
+  if (!notificationPollTimer) {
+    notificationPollTimer = setInterval(refreshNotificationBadge, 30000);
+  }
 }
 
 async function reloadAppData() {

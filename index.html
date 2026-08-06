@@ -87,6 +87,19 @@
                 <h2>財務管理系統</h2>
                 <div id="welcomeText" class="muted">歡迎，使用者</div>
                 <div id="header-user-info" style="margin-left: 12px; display:flex; align-items:center; gap:8px;"></div>
+                <div style="position:relative; margin-left:8px;">
+                  <button id="notificationBellBtn" type="button" aria-label="通知" style="position:relative; background:none; border:none; cursor:pointer; font-size:20px; padding:6px;">
+                    🔔
+                    <span id="notificationBadge" style="display:none; position:absolute; top:0; right:0; background:#dc2626; color:#fff; border-radius:999px; font-size:11px; line-height:1; padding:3px 5px; min-width:16px; text-align:center;"></span>
+                  </button>
+                  <div id="notificationPanel" style="display:none; position:absolute; right:0; top:36px; width:320px; max-height:400px; overflow:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.15); z-index:1000;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #eee;">
+                      <strong style="font-size:14px;">通知</strong>
+                      <button id="markAllNotificationsReadBtn" type="button" style="background:none; border:none; color:#2563eb; font-size:12px; cursor:pointer;">全部標為已讀</button>
+                    </div>
+                    <div id="notificationList"></div>
+                  </div>
+                </div>
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
                   <label style="font-size:14px; color:#666;">目前專案：</label>
                   <select id="globalProjectSelect" style="padding:6px 10px; border-radius:6px;"></select>

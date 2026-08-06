@@ -2,6 +2,7 @@ import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
 import { VOUCHER_STATUS } from './voucherStatus.js';  // ← 同一資料夾
+import { createNotification, createNotificationForMany, getUserIdsByRole } from '../../../scripts/notifications.js';
 
 export async function fetchAccounts() {  let q = supabase.from('accounts').select('*').order('code');  const { data, error } = await q;
   if (error) throw error;
@@ -161,6 +162,17 @@ export async function createVoucher(payload) {
 
   // 5. 寫入審批歷程
   await logWorkflow(voucher.id, 'submit', null, 'pending_review');
+
+  // 6. 通知主管有新單待審核
+  if (currentManagerId) {
+    await createNotification(
+      currentManagerId,
+      '有新的報支單待審核',
+      `${summary || voucherNo} － 金額 $${Number(totalAmount).toLocaleString()}`,
+      voucher.id
+    );
+  }
+
   return { success: true, data: voucher };
 }
 
@@ -171,6 +183,16 @@ export async function managerApprove(voucher) {
     .eq('id', voucher.id);
   if (error) throw error;
   await logWorkflow(voucher.id, 'manager_approve', voucher.status, VOUCHER_STATUS.PENDING_ACCOUNTING);
+
+  // 通知所有會計人員：有單據待歸帳
+  const { data: full } = await supabase.from('vouchers').select('voucher_no, summary, total_amount').eq('id', voucher.id).single();
+  const accountingUserIds = await getUserIdsByRole('accounting');
+  await createNotificationForMany(
+    accountingUserIds,
+    '有報支單待會計審核',
+    `${full?.summary || full?.voucher_no || ''} － 金額 $${Number(full?.total_amount || 0).toLocaleString()}`,
+    voucher.id
+  );
 }
 
 export async function managerReject(voucher, reason) {
@@ -180,6 +202,16 @@ export async function managerReject(voucher, reason) {
     .eq('id', voucher.id);
   if (error) throw error;
   await logWorkflow(voucher.id, 'manager_reject', voucher.status, VOUCHER_STATUS.MANAGER_REJECTED, reason);
+
+  const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
+  if (full?.applicant_id) {
+    await createNotification(
+      full.applicant_id,
+      '您的報支單已被主管退回',
+      `${full.summary || full.voucher_no || ''}${reason ? '：' + reason : ''}`,
+      voucher.id
+    );
+  }
 }
 
 export async function accountingApprove(voucher) {
@@ -197,6 +229,16 @@ export async function accountingApprove(voucher) {
       await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', voucher.project_id);
     }
   }
+
+  const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
+  if (full?.applicant_id) {
+    await createNotification(
+      full.applicant_id,
+      '您的報支單已核准，待付款',
+      `${full.summary || full.voucher_no || ''}`,
+      voucher.id
+    );
+  }
 }
 
 // 會計退件 → 直接退回申請人
@@ -211,6 +253,16 @@ export async function accountingReject(voucher, reason) {
   if (error) throw error;
 
   await logWorkflow(voucher.id, 'reject', voucher.status, 'accounting_rejected', reason);
+
+  const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
+  if (full?.applicant_id) {
+    await createNotification(
+      full.applicant_id,
+      '您的報支單已被會計退回',
+      `${full.summary || full.voucher_no || ''}${reason ? '：' + reason : ''}`,
+      voucher.id
+    );
+  }
 }
 
 export async function resubmitVoucher(voucher, { summary, amount }) {
@@ -228,16 +280,17 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     if (vError) throw vError;
     if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
 
-    const { data: bank, error: bankFetchError } = await supabase
-      .from('bank_accounts').select('balance, opening_balance').eq('id', bankAccountId).single();
-    if (bankFetchError) throw bankFetchError;
-
-    const currentBalance = bank.balance ?? bank.opening_balance ?? 0;
-    const { error: bankError } = await supabase
-      .from('bank_accounts')
-      .update({ balance: Number(currentBalance) - Number(voucher.total_amount) })
-      .eq('id', bankAccountId);
-    if (bankError) throw bankError;
+    // balance 為資料庫 GENERATED 欄位（= opening_balance），無法直接 update；
+    // 銀行餘額改由「銀行流水 bank_transactions」動態加總得出，這裡寫入一筆支出流水即可
+    const { error: bankTxError } = await supabase.from('bank_transactions').insert({
+      bank_account_id: bankAccountId,
+      tx_date: paymentDate,
+      type: '支出',
+      amount: voucher.total_amount,
+      voucher_id: voucherId,
+      description: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
+    });
+    if (bankTxError) throw bankTxError;
 
     // 💡 1. 自動判斷傳進來的是 UUID 還是 Code，並查出完整的科目資訊
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountCodeId);
@@ -269,9 +322,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     const { error: jeError } = await supabase.from('journal_entries').insert([{
       voucher_id: voucherId,
       debit_account_id: debitAcc.id,
-      debit_account_code: debitAcc.code,
       credit_account_id: creditAcc.id,
-      credit_account_code: creditAcc.code,
       debit_amount: voucher.total_amount,
       credit_amount: voucher.total_amount,
       entry_date: paymentDate,
@@ -285,6 +336,24 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       .eq('id', voucherId)
       ;
     if (updateError) throw updateError;
+
+    // 寫入付款紀錄
+    await supabase.from('voucher_payments').insert({
+      voucher_id: voucherId,
+      payment_type: 'bank_transfer',
+      bank_account_id: bankAccountId,
+      amount: voucher.total_amount,
+      paid_at: paymentDate
+    });
+
+    if (voucher.applicant_id) {
+      await createNotification(
+        voucher.applicant_id,
+        '您的報支單已完成付款銷案',
+        `${voucher.summary || voucher.voucher_no || ''} － 金額 $${Number(voucher.total_amount).toLocaleString()}`,
+        voucherId
+      );
+    }
 
     return { success: true, message: '歸帳銷案成功' };
   } catch (error) {

@@ -145,8 +145,15 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
   try {    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
     // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
-    let bankQ = supabase.from('bank_accounts').select('balance, opening_balance');    const { data: banks } = await bankQ;
-    const realBankBalance = (banks || []).reduce((sum, b) => sum + Number(b.balance ?? b.opening_balance ?? 0), 0);
+    // 注意：bank_accounts.balance 是資料庫的 GENERATED 欄位（恆等於 opening_balance），
+    // 無法反映任何一筆銀行流水，因此改用「期初餘額 + 銀行流水收支」動態計算真實餘額
+    const { data: banks } = await supabase.from('bank_accounts').select('id, opening_balance');
+    const { data: bankTxs } = await supabase.from('bank_transactions').select('bank_account_id, type, amount');
+    const realBankBalance = (banks || []).reduce((sum, b) => {
+      const txs = (bankTxs || []).filter(t => t.bank_account_id === b.id);
+      const net = txs.reduce((s, t) => s + (t.type === '支出' ? -Number(t.amount || 0) : Number(t.amount || 0)), 0);
+      return sum + Number(b.opening_balance || 0) + net;
+    }, 0);
 
     // 2. 依資產負債表代碼規範進行階層篩選
     const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
