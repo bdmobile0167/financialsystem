@@ -12,6 +12,7 @@ import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fe
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
+import { confirmCrossVerification } from './voucherVerification.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -2890,6 +2891,10 @@ window.accountingApproveAndClose = async (voucherId) => {
   if (!accountCode) { alert('請選擇歸帳科目'); return; }
   if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
 
+  // 勾稽核對：明細金額、發票金額、科目有效性
+  const passedVerification = await confirmCrossVerification(voucherId, accountCode);
+  if (!passedVerification) return;
+
   try {
     // 補上還沒被歸類科目的明細列
     await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
@@ -3179,6 +3184,10 @@ window.confirmCloseVoucher = async (voucherId) => {
 
   if (!accountCode) { alert('請選擇歸帳科目'); return; }
   if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
+
+  // 勾稽核對：明細金額、發票金額、科目有效性（內含警告時的確認對話框）
+  const passedVerification = await confirmCrossVerification(voucherId, accountCode);
+  if (!passedVerification) return;
   if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
 
   try {
