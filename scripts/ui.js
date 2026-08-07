@@ -11,6 +11,7 @@ import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../s
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
+import { calcInvoiceTax } from './taxCalc.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -1796,8 +1797,10 @@ function initializeEventsInternal() {
         password: document.getElementById('invitePassword').value.trim()
       });
       resultBox.style.display = 'block';
-      resultBox.className = 'message success';
-      resultBox.textContent = `帳號已建立：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（請自行告知使用者）`;
+      resultBox.className = result.emailSent ? 'message success' : 'message error';
+      resultBox.textContent = result.emailSent
+        ? `帳號已建立，邀請信已寄至 ${result.credentials.email}（信中含登入網址與初始密碼，使用者登入後系統會強制要求設定新密碼）。`
+        : `帳號已建立：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（邀請信寄送失敗：${result.emailError || '未知原因'}，請自行告知使用者）`;
       e.target.reset();
       renderAdminUserTable();
     } catch (error) {
@@ -1863,11 +1866,12 @@ function initializeEventsInternal() {
 
           const invType = invTypeInput ? invTypeInput.value : '無';
           if (invType !== '無') {
+            const taxInfo = calcInvoiceTax(invType, amt);
             invoiceLines.push({
               invoice_type: invType,
               invoice_number: invNumInput?.value.trim() || null,
               amount: amt,
-              tax_amount: 0
+              tax_amount: taxInfo.taxAmount
             });
           }
         });
@@ -2966,12 +2970,16 @@ window.openAccountingReviewModal = async (voucherId) => {
 
           <h4 style="margin-top:20px;">歸帳設定</h4>
           <label>會計科目：</label>
-          <select id="reviewAccountCode" style="width:100%; padding:8px; margin:8px 0;">
-            <option value="">請選擇歸帳科目...</option>
-            ${accounts.map(acc => `
-              <option value="${acc.code}">${acc.code} ${acc.name}</option>
-            `).join('')}
-          </select>
+          <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+            <select id="reviewAccountCode" style="flex:1; padding:8px;">
+              <option value="">請選擇歸帳科目...</option>
+              ${accounts.map(acc => `
+                <option value="${acc.code}">${acc.code} ${acc.name}</option>
+              `).join('')}
+            </select>
+            <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'reviewAccountCode')" style="white-space:nowrap; padding:8px 12px;">✨ AI建議科目</button>
+          </div>
+          <div id="aiSuggestExplain_reviewAccountCode" style="font-size:12px; color:#64748b; margin:-4px 0 8px;"></div>
 
           <label>付款銀行帳戶：</label>
           <select id="reviewBankAccount" style="width:100%; padding:8px; margin:8px 0;">
@@ -2996,6 +3004,46 @@ window.openAccountingReviewModal = async (voucherId) => {
 
   } catch (err) {
     alert('載入明細失敗：' + err.message);
+  }
+};
+
+/**
+ * 呼叫 /api/classify，依單據內容取得 AI（或關鍵字規則）建議的會計科目，並自動帶入指定的下拉選單
+ */
+window.suggestAccountCodeAI = async (voucherId, selectElementId) => {
+  const select = document.getElementById(selectElementId);
+  const explainBox = document.getElementById(`aiSuggestExplain_${selectElementId}`);
+  if (!select) return;
+
+  try {
+    if (explainBox) explainBox.textContent = '分析中…';
+
+    const { data: voucher } = await supabase
+      .from('vouchers')
+      .select('summary, total_amount, voucher_lines(description, item_category_note, payee_name)')
+      .eq('id', voucherId)
+      .single();
+    if (!voucher) throw new Error('找不到單據資料');
+
+    const description = voucher.voucher_lines?.map(l => l.description || l.item_category_note).filter(Boolean).join('；') || voucher.summary;
+    const vendor = voucher.voucher_lines?.find(l => l.payee_name)?.payee_name || '';
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const res = await fetch('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData.session.access_token}` },
+      body: JSON.stringify({ description, vendor, amount: voucher.total_amount })
+    });
+    const result = await res.json();
+    if (!res.ok || !result.ok) throw new Error(result.message || 'AI 建議失敗');
+
+    const { accountCode, explanation } = result.suggestion;
+    if (accountCode) select.value = accountCode;
+    if (explainBox) {
+      explainBox.textContent = `${result.mode === 'ai' ? '🤖 AI' : '📐 規則'}建議：${explanation || ''}`;
+    }
+  } catch (err) {
+    if (explainBox) explainBox.textContent = `AI 建議失敗：${err.message}`;
   }
 };
 
@@ -3087,12 +3135,16 @@ window.openCloseVoucherModal = async (voucherId) => {
           <p><strong>總金額：</strong>$${Number(voucher.total_amount).toLocaleString()}</p>
 
           <label>歸帳會計科目：</label>
-          <select id="closeAccountCode" style="width:100%; padding:8px; margin:8px 0;">
-            <option value="">請選擇歸帳科目...</option>
-            ${(accounts || []).map(acc => `
-              <option value="${acc.code}" ${acc.code === existingCode ? 'selected' : ''}>${acc.code} ${acc.name}</option>
-            `).join('')}
-          </select>
+          <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+            <select id="closeAccountCode" style="flex:1; padding:8px;">
+              <option value="">請選擇歸帳科目...</option>
+              ${(accounts || []).map(acc => `
+                <option value="${acc.code}" ${acc.code === existingCode ? 'selected' : ''}>${acc.code} ${acc.name}</option>
+              `).join('')}
+            </select>
+            <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'closeAccountCode')" style="white-space:nowrap; padding:8px 12px;">✨ AI建議科目</button>
+          </div>
+          <div id="aiSuggestExplain_closeAccountCode" style="font-size:12px; color:#64748b; margin:-4px 0 8px;"></div>
 
           <label>付款銀行帳戶：</label>
           <select id="closeBankAccountId" style="width:100%; padding:8px; margin:8px 0;">
@@ -3844,12 +3896,13 @@ window.submitFullResubmission = async (e, voucherId) => {
     });
 
     if (invType && invType !== '無') {
+      const taxInfo = calcInvoiceTax(invType, amount);
       newInvoices.push({
         voucher_id: voucherId,
         invoice_type: invType,
         invoice_number: invNum,
         amount: amount,
-        tax_amount: 0
+        tax_amount: taxInfo.taxAmount
       });
     }
   });
