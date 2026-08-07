@@ -1,5 +1,5 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { saveAttachment } from './attachments.js';
+import { saveAttachment, deleteAttachment } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
 import { VOUCHER_STATUS } from './voucherStatus.js';  // ← 同一資料夾
 import { createNotification, createNotificationForMany, getUserIdsByRole } from '../../../scripts/notifications.js';
@@ -126,8 +126,7 @@ export async function createVoucher(payload) {
         payee_name: l.payee_name || null,
         is_proxy_payment: l.is_proxy_payment || false,
         proxy_payer_identifier: l.proxy_payer_identifier || null,
-        proxy_payer_name: l.proxy_payer_name || null,
-        attachment_name: file?.name || l.attachment_name || null
+        proxy_payer_name: l.proxy_payer_name || null
       };
     });
 
@@ -273,6 +272,195 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
   await logWorkflow(voucher.id, 'resubmit', voucher.status, 'pending_review');
 }
 
+/**
+ * 更新憑證（修改主檔、明細行、發票）。
+ * 策略：先刪除所有既有明細行/發票，再重新插入。
+ * 注意：此函式不處理附件上傳，附件請用 saveAttachment() 獨立處理。
+ */
+export async function updateVoucher(voucherId, payload) {
+  const {
+    txDate, category, summary, departmentId, currentManagerId,
+    projectId, totalAmount, status,
+    detailLines, invoiceLines,
+    voucherType, manualNumber,
+    tripStartDate, tripEndDate,
+    // 附件處理（重送／編輯用）
+    newAttachments,        // [] File — 需上傳的新附件
+    deleteAttachmentIds     // [] id — 需刪除的既有附件
+  } = payload;
+
+  // 1. 更新主檔
+  const updateData = {};
+  if (txDate !== undefined) updateData.tx_date = txDate;
+  if (category !== undefined) updateData.category = category;
+  if (summary !== undefined) updateData.summary = summary;
+  if (departmentId !== undefined) updateData.department_id = departmentId;
+  if (currentManagerId !== undefined) updateData.current_manager_id = currentManagerId || null;
+  if (projectId !== undefined) updateData.project_id = (projectId && projectId !== 'all') ? projectId : null;
+  if (totalAmount !== undefined) updateData.total_amount = totalAmount;
+  if (status !== undefined) updateData.status = status;
+  if (tripStartDate !== undefined) updateData.trip_start_date = tripStartDate || null;
+  if (tripEndDate !== undefined) updateData.trip_end_date = tripEndDate || null;
+  updateData.updated_at = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from('vouchers')
+    .update(updateData)
+    .eq('id', voucherId);
+  if (updateError) throw updateError;
+
+  // 2. 更新明細行（刪除舊行 → 插入新行）
+  if (detailLines !== undefined) {
+    // 刪除舊明細
+    const { error: deleteLinesError } = await supabase
+      .from('voucher_lines')
+      .delete()
+      .eq('voucher_id', voucherId);
+    if (deleteLinesError) throw deleteLinesError;
+
+    // 插入新明細
+    if (detailLines.length > 0) {
+      const newLines = detailLines.map(l => {
+        const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
+        const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
+        return {
+          voucher_id: voucherId,
+          description: l.description,
+          account_code: cleanCode !== '' ? cleanCode : null,
+          amount: l.amount,
+          item_category: l.item_category || null,
+          item_category_note: l.item_category_note || null,
+          receipt_month: l.receipt_month || null,
+          payee_identifier: l.payee_identifier || null,
+          payee_name: l.payee_name || null,
+          is_proxy_payment: l.is_proxy_payment || false,
+          proxy_payer_identifier: l.proxy_payer_identifier || null,
+          proxy_payer_name: l.proxy_payer_name || null
+        };
+      });
+      const { error: insertLinesError } = await supabase.from('voucher_lines').insert(newLines);
+      if (insertLinesError) throw insertLinesError;
+    }
+  }
+
+  // 3. 更新發票明細（刪除舊發票 → 插入新發票）
+  if (invoiceLines !== undefined) {
+    const { error: deleteInvError } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('voucher_id', voucherId);
+    if (deleteInvError) throw deleteInvError;
+
+    if (invoiceLines.length > 0) {
+      const newInvoices = invoiceLines.map(i => ({
+        voucher_id: voucherId,
+        invoice_type: i.invoice_type,
+        invoice_number: i.invoice_number || null,
+        amount: i.amount,
+        tax_amount: i.tax_amount || 0
+      }));
+      const { error: insertInvError } = await supabase.from('invoices').insert(newInvoices);
+      if (insertInvError) throw insertInvError;
+    }
+  }
+
+  // 3.5 附件處理：刪除指定附件
+  if (deleteAttachmentIds && deleteAttachmentIds.length > 0) {
+    for (const attId of deleteAttachmentIds) {
+      try {
+        await deleteAttachment(attId);
+      } catch (err) {
+        console.warn(`刪除附件 ${attId} 失敗（已跳過）:`, err.message);
+      }
+    }
+  }
+
+  // 3.6 附件處理：上傳新附件
+  if (newAttachments && newAttachments.length > 0) {
+    for (const file of newAttachments) {
+      try {
+        await saveAttachment(voucherId, file);
+      } catch (err) {
+        console.error(`新附件上傳失敗（${file?.name || '未知檔案'}）:`, err);
+      }
+    }
+  }
+
+  return { success: true, message: '憑證已更新。' };
+}
+
+/**
+ * 刪除憑證（含明細行、發票、附件、付款記錄、workflow logs）。
+ * 會一併刪除 Storage 中的附件實體檔案。
+ */
+export async function deleteVoucher(voucherId) {
+  // 1. 刪除附件（先取得所有附件紀錄，逐一刪除 Storage 檔案）
+  const { data: attachments } = await supabase
+    .from('voucher_attachments')
+    .select('id, file_path, file_url')
+    .eq('voucher_id', voucherId);
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      try {
+        await deleteAttachment(att.id, att.file_path);
+      } catch (err) {
+        console.warn(`刪除附件 ${att.id} 時發生錯誤（已跳過）:`, err.message);
+      }
+    }
+  }
+
+  // 2. 刪除明細行
+  const { error: delLinesError } = await supabase
+    .from('voucher_lines')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delLinesError) console.warn('刪除 voucher_lines 失敗:', delLinesError.message);
+
+  // 3. 刪除發票
+  const { error: delInvError } = await supabase
+    .from('invoices')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delInvError) console.warn('刪除 invoices 失敗:', delInvError.message);
+
+  // 4. 刪除付款記錄
+  const { error: delPayError } = await supabase
+    .from('voucher_payments')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delPayError) console.warn('刪除 voucher_payments 失敗:', delPayError.message);
+
+  // 5. 刪除 workflow logs
+  const { error: delLogError } = await supabase
+    .from('voucher_workflow_logs')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delLogError) console.warn('刪除 voucher_workflow_logs 失敗:', delLogError.message);
+
+  // 6. 刪除銀行交易紀錄（若有關聯）
+  const { error: delBankTxError } = await supabase
+    .from('bank_transactions')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delBankTxError) console.warn('刪除 bank_transactions 失敗:', delBankTxError.message);
+
+  // 7. 刪除日記帳分錄
+  const { error: delJEError } = await supabase
+    .from('journal_entries')
+    .delete()
+    .eq('voucher_id', voucherId);
+  if (delJEError) console.warn('刪除 journal_entries 失敗:', delJEError.message);
+
+  // 8. 最後刪除憑證主檔
+  const { error: delVoucherError } = await supabase
+    .from('vouchers')
+    .delete()
+    .eq('id', voucherId);
+  if (delVoucherError) throw delVoucherError;
+
+  return { success: true, message: '憑證已徹底刪除（含附件、明細、發票、分錄、付款記錄）。' };
+}
+
 // 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {    const { data: voucher, error: vError } = await supabase
@@ -288,7 +476,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       type: '支出',
       amount: voucher.total_amount,
       voucher_id: voucherId,
-      description: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
+      description: `報支單核銷結案：${voucher.summary || voucher.voucher_no}`
     });
     if (bankTxError) throw bankTxError;
 
@@ -326,7 +514,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       debit_amount: voucher.total_amount,
       credit_amount: voucher.total_amount,
       entry_date: paymentDate,
-      memo: `報支單核銷結案：${voucher.title || voucher.voucher_no}`
+      memo: `報支單核銷結案：${voucher.summary || voucher.voucher_no}`
       ,    }]);
     if (jeError) throw jeError;
 

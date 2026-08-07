@@ -1,14 +1,13 @@
-﻿import { supabase } from './supabaseClient.js';
-import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+﻿import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
-import { getAttachmentsByVoucherId, saveAttachment, openAttachment } from '../src/modules/voucher/attachments.js';
+import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
 import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
-import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
+import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
@@ -3547,6 +3546,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 用於暫存修改表單中各列所選擇的附件檔案
 let resubLineAttachments = {};
+// 用於暫存被標記移除的既有附件 id
+let resubDeleteAttachmentIds = [];
 
 // 1. 動態載入指定部門的主管清單
 window.loadResubManagers = async (departmentId, selectedManagerId = '') => {
@@ -3590,8 +3591,9 @@ window.loadResubManagers = async (departmentId, selectedManagerId = '') => {
 window.openResubmitModal = async (voucherId) => {
   try {
     resubLineAttachments = {}; // 重置暫存附件
+    resubDeleteAttachmentIds = []; // 重置待刪除的既有附件
 
-    // A. 同步抓取資料
+    // A. 同步抓取資料（含既有附件）
     const [
       { data: vch, error: vErr },
       { data: lines, error: lErr },
@@ -3603,6 +3605,14 @@ window.openResubmitModal = async (voucherId) => {
       supabase.from('invoices').select('*').eq('voucher_id', voucherId),
       supabase.from('departments').select('id, name')
     ]);
+
+    // 抓取既有附件（顯示於 Modal，可標記移除）
+    let attachments = [];
+    try {
+      attachments = await getAttachmentsByVoucherId(voucherId);
+    } catch (err) {
+      console.warn('讀取既有附件失敗:', err);
+    }
 
     if (vErr || !vch) throw new Error('無法取得報支單資料');
 
@@ -3700,7 +3710,7 @@ window.openResubmitModal = async (voucherId) => {
                   const rowId = `resub-row-${index}`;
                   return `
                     <tr data-row-id="${rowId}">
-                      <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" value="${l.voucher_month || ''}" style="width:96%; padding:4px;"></td>
+                      <td style="padding:8px; border:1px solid #ddd;"><input type="month" class="grid-month" value="${l.receipt_month || ''}" style="width:96%; padding:4px;"></td>
                       <td style="padding:8px; border:1px solid #ddd;">
                         <select class="grid-inv-type" onchange="toggleInvoiceRequired(this)" style="width:100%; padding:4px;">
                           <option value="無" ${inv.invoice_type === '無' ? 'selected' : ''}>無</option>
@@ -3722,13 +3732,13 @@ window.openResubmitModal = async (voucherId) => {
                       </td>
                       <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${l.amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
                       <td style="padding:8px; border:1px solid #ddd;">
-                        <input type="text" class="grid-payee-id" value="${l.payee_id || l.payee_identifier || ''}" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
+                        <input type="text" class="grid-payee-id" value="${l.payee_identifier || ''}" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
                         <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;">${l.payee_name || ''}</span>
                       </td>
                       <td style="padding:8px; border:1px solid #ddd; text-align:center;">
                         <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignResubLineAttachment('${rowId}', this.files[0])">
                         <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="this.previousElementSibling.click()">📎 附件</button>
-                        <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">${l.attachment_name || '未選擇'}</div>
+                        <div class="attachment-label" style="font-size:10px; color:#666; margin-top:2px;">未選擇</div>
                         <button type="button" class="danger" style="padding:4px 8px; font-size:12px; margin-top:4px;" onclick="this.closest('tr').remove(); calculateResubTotal();">刪除</button>
                       </td>
                     </tr>
@@ -3778,7 +3788,22 @@ window.openResubmitModal = async (voucherId) => {
             </table>
 
             <button type="button" class="secondary" onclick="addResubExcelRow()">+ 新增一列</button>
-            
+
+            <div style="margin-top: 15px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+              <h4 style="margin:0 0 8px; font-size:14px; color:#0f172a;">既有附件（${(attachments || []).length} 個）</h4>
+              ${(attachments || []).length === 0
+                ? '<p class="muted" style="font-size:12px; margin:0;">目前沒有附件。</p>'
+                : attachments.map(att => `
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e2e8f0; font-size:13px;">
+                    <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                      <input type="checkbox" class="resub-delete-att" data-att-id="${att.id}" onchange="toggleResubDeleteAttachment('${att.id}', this.checked)">
+                      <a href="${att.file_url || '#'}" target="_blank" rel="noopener" style="color:#2563eb; text-decoration:underline; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:320px;">${att.file_name || '附件'}</a>
+                    </div>
+                    <span style="font-size:11px; color:#94a3b8;">勾選以移除</span>
+                  </div>
+                `).join('')}
+            </div>
+
             <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
               <button type="button" class="secondary" onclick="document.getElementById('resubmitModal').style.display='none'" style="padding:8px 16px;">取消</button>
               <button type="submit" class="primary-btn" style="padding:8px 16px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer;">確認修改並重送</button>
@@ -3850,6 +3875,16 @@ window.assignResubLineAttachment = (rowId, file) => {
   if (label) label.textContent = `已選擇：${file.name}`;
 };
 
+// 4.1 標記／取消標記移除既有附件
+window.toggleResubDeleteAttachment = (attId, checked) => {
+  if (!resubDeleteAttachmentIds) resubDeleteAttachmentIds = [];
+  if (checked) {
+    if (!resubDeleteAttachmentIds.includes(attId)) resubDeleteAttachmentIds.push(attId);
+  } else {
+    resubDeleteAttachmentIds = resubDeleteAttachmentIds.filter(id => id !== attId);
+  }
+};
+
 // 5. 即時計算修改表單總金額
 window.calculateResubTotal = () => {
   const amounts = document.querySelectorAll('#resubExcelLinesBody .grid-amount');
@@ -3878,7 +3913,6 @@ window.submitFullResubmission = async (e, voucherId) => {
   let totalAmount = 0;
 
   rows.forEach(row => {
-    const rowId = row.getAttribute('data-row-id');
     const month = row.querySelector('.grid-month').value;
     const invType = row.querySelector('.grid-inv-type').value;
     const invNum = row.querySelector('.grid-inv-num').value.trim();
@@ -3892,22 +3926,18 @@ window.submitFullResubmission = async (e, voucherId) => {
     totalAmount += amount;
 
     newLines.push({
-      voucher_id: voucherId,
-      voucher_month: month,
+      receipt_month: month,
       description: description,
       item_category: categorySelect,
       item_category_note: categoryNote,
       amount: amount,
-      payee_id: payeeId,
       payee_identifier: payeeId,
-      payee_name: payeeName.includes('查無') ? null : payeeName,
-      attachment_name: resubLineAttachments[rowId]?.name || null
+      payee_name: payeeName.includes('查無') ? null : payeeName
     });
 
     if (invType && invType !== '無') {
       const taxInfo = calcInvoiceTax(invType, amount);
       newInvoices.push({
-        voucher_id: voucherId,
         invoice_type: invType,
         invoice_number: invNum,
         amount: amount,
@@ -3921,45 +3951,44 @@ window.submitFullResubmission = async (e, voucherId) => {
     return;
   }
 
-  try {    // 1. 更新 vouchers 主檔
-    const { error: vErr } = await supabase
+  try {
+    // 0. 在 updateVoucher() 之前讀取目前憑證狀態，確保重送歷程的 from_status 是正確的
+    //    （原本在更新後才讀取，此時狀態已被改成 pending_review，導致 from_status 記錄錯誤）
+    const { data: currentVch } = await supabase
       .from('vouchers')
-      .update({
-        summary: title,
-        department_id: departmentId,
-        current_manager_id: managerId,
-        project_id: projectId,
-        trip_start_date: tripStart,
-        trip_end_date: tripEnd,
-        total_amount: totalAmount,
-        status: 'pending_review',
-        updated_at: new Date().toISOString()
-      })
+      .select('status')
       .eq('id', voucherId)
-      ;
+      .single();
 
-    if (vErr) throw vErr;
+    // 1. 透過共用 API 一次完成：更新主檔＋替換明細＋替換發票＋附件（刪除既有/上傳新檔）
+    const updateResult = await updateVoucher(voucherId, {
+      summary: title,
+      departmentId: departmentId,
+      currentManagerId: managerId,
+      projectId: projectId,
+      totalAmount: totalAmount,
+      status: 'pending_review',
+      detailLines: newLines,
+      invoiceLines: newInvoices,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+      newAttachments: Object.values(resubLineAttachments),
+      deleteAttachmentIds: resubDeleteAttachmentIds
+    });
 
-    // 2. 替換舊明細與舊發票
-    await supabase.from('voucher_lines').delete().eq('voucher_id', voucherId);
-    await supabase.from('voucher_lines').insert(newLines);
-
-    await supabase.from('invoices').delete().eq('voucher_id', voucherId);
-    if (newInvoices.length > 0) {
-      await supabase.from('invoices').insert(newInvoices);
+    if (!updateResult || !updateResult.success) {
+      throw new Error(updateResult?.message || '更新憑證失敗');
     }
 
-    // 3. 寫入工作流程記錄
-    if (typeof logWorkflow === 'function') {
-      await logWorkflow(voucherId, 'resubmit', 'rejected', 'pending_review');
-    } else {
-      await supabase.from('voucher_workflow_logs').insert({
-        voucher_id: voucherId,
-        actor_id: state.currentUser?.id,
-        action: 'submit',
-        from_status: 'rejected',
-        to_status: 'pending_review',      });
-    }
+    // 2. 寫入工作流程記錄（重送）：from_status 使用更新前的真實狀態
+    await supabase.from('voucher_workflow_logs').insert({
+      voucher_id: voucherId,
+      actor_id: state.currentUser?.id,
+      action: 'submit',
+      from_status: currentVch?.status || 'rejected',
+      to_status: 'pending_review',
+      reject_reason: null
+    });
 
     alert('修改並重送成功！單據已重新送交主管審核。');
     document.getElementById('resubmitModal').style.display = 'none';
