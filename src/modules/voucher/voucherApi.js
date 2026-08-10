@@ -176,11 +176,18 @@ export async function createVoucher(payload) {
 }
 
 export async function managerApprove(voucher) {
-  const { error } = await supabase
+  // 用「原子性條件更新」防止重複點擊：只有目前狀態仍是 pending_review 時才會更新成功，
+  // 若已被處理過（例如使用者連點多次），這裡會傳回空陣列，避免重複觸發後續動作。
+  const { data, error } = await supabase
     .from('vouchers')
     .update({ status: VOUCHER_STATUS.PENDING_ACCOUNTING, updated_at: new Date().toISOString() })
-    .eq('id', voucher.id);
+    .eq('id', voucher.id)
+    .eq('status', VOUCHER_STATUS.PENDING_REVIEW)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
+  }
   await logWorkflow(voucher.id, 'manager_approve', voucher.status, VOUCHER_STATUS.PENDING_ACCOUNTING);
 
   // 通知所有會計人員：有單據待歸帳
@@ -195,11 +202,16 @@ export async function managerApprove(voucher) {
 }
 
 export async function managerReject(voucher, reason) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('vouchers')
     .update({ status: VOUCHER_STATUS.MANAGER_REJECTED, updated_at: new Date().toISOString() })
-    .eq('id', voucher.id);
+    .eq('id', voucher.id)
+    .eq('status', VOUCHER_STATUS.PENDING_REVIEW)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
+  }
   await logWorkflow(voucher.id, 'manager_reject', voucher.status, VOUCHER_STATUS.MANAGER_REJECTED, reason);
 
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
@@ -214,11 +226,18 @@ export async function managerReject(voucher, reason) {
 }
 
 export async function accountingApprove(voucher) {
-  const { error } = await supabase
+  // 用「原子性條件更新」防止重複點擊／重複呼叫：只有目前狀態仍是 pending_accounting 時才會更新成功。
+  // 這可避免同一張單據因連點多次而重複扣除專案預算、重複寫入歷程與通知。
+  const { data, error } = await supabase
     .from('vouchers')
     .update({ status: VOUCHER_STATUS.APPROVED, updated_at: new Date().toISOString() })
-    .eq('id', voucher.id);
+    .eq('id', voucher.id)
+    .eq('status', VOUCHER_STATUS.PENDING_ACCOUNTING)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
+  }
   await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
 
   if (voucher.project_id) {    const { data: proj } = await supabase
@@ -242,14 +261,19 @@ export async function accountingApprove(voucher) {
 
 // 會計退件 → 直接退回申請人
 export async function accountingReject(voucher, reason) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('vouchers')
     .update({ 
       status: 'accounting_rejected', 
       updated_at: new Date().toISOString() 
     })
-    .eq('id', voucher.id);
+    .eq('id', voucher.id)
+    .eq('status', VOUCHER_STATUS.PENDING_ACCOUNTING)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
+  }
 
   await logWorkflow(voucher.id, 'reject', voucher.status, 'accounting_rejected', reason);
 
@@ -468,6 +492,21 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     if (vError) throw vError;
     if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
 
+    // ⚠️ 關鍵防呆：先用「原子性條件更新」搶先把狀態鎖定為 closed，
+    // 條件是「目前狀態仍是 approved」。若使用者連點多次或網路延遲造成重複觸發，
+    // 只有第一個請求會成功鎖定，其餘請求會因為 0 筆資料被更新而在此提前中止，
+    // 避免後面重複寫入 bank_transactions／journal_entries 導致金額變成多倍（例如 400 變 1600）。
+    const { data: claimed, error: claimError } = await supabase
+      .from('vouchers')
+      .update({ status: 'closed', payment_date: paymentDate, closed_at: new Date().toISOString() })
+      .eq('id', voucherId)
+      .eq('status', 'approved')
+      .select();
+    if (claimError) throw claimError;
+    if (!claimed || claimed.length === 0) {
+      throw new Error('此單據已被結案或狀態已變更，請重新整理頁面後再確認（可能是重複點擊造成）。');
+    }
+
     // balance 為資料庫 GENERATED 欄位（= opening_balance），無法直接 update；
     // 銀行餘額改由「銀行流水 bank_transactions」動態加總得出，這裡寫入一筆支出流水即可
     const { error: bankTxError } = await supabase.from('bank_transactions').insert({
@@ -518,12 +557,7 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       ,    }]);
     if (jeError) throw jeError;
 
-    const { error: updateError } = await supabase
-      .from('vouchers')
-      .update({ status: 'closed', payment_date: paymentDate, closed_at: new Date().toISOString() })
-      .eq('id', voucherId)
-      ;
-    if (updateError) throw updateError;
+    // 狀態已於前面的原子性更新中鎖定為 closed，這裡不需要再次更新。
 
     // 寫入付款紀錄
     await supabase.from('voucher_payments').insert({
@@ -546,6 +580,17 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     return { success: true, message: '歸帳銷案成功' };
   } catch (error) {
     console.error('銷案失敗:', error);
+    // 若狀態已被鎖定為 closed，但後續步驟（寫入分錄等）失敗，嘗試回復成 approved，
+    // 讓會計可以重新執行歸帳，避免單據卡在「已結案但沒有分錄」的不一致狀態。
+    try {
+      await supabase
+        .from('vouchers')
+        .update({ status: 'approved', payment_date: null, closed_at: null })
+        .eq('id', voucherId)
+        .eq('status', 'closed');
+    } catch (rollbackErr) {
+      console.error('回復單據狀態失敗，請人工確認：', rollbackErr);
+    }
     return { success: false, error: error.message };
   }
 }

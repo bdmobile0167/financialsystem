@@ -1488,13 +1488,22 @@ function initializeEventsInternal() {
     if (approveBtn || rejectBtn) {
       e.preventDefault();
       const btn = approveBtn || rejectBtn;
+
+      // 防止連點：按鈕一旦處理中就立即鎖住，避免同一張單據被重複核准／扣款。
+      if (btn.disabled || btn.dataset.processing === '1') return;
+      btn.dataset.processing = '1';
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = '處理中...';
+
       const id = btn.dataset.id;
       const stage = btn.dataset.stage;
-      const vouchers = await fetchMyVouchers();
-      const voucher = vouchers.find(v => v.id === id);
-      if (!voucher) return;
 
       try {
+        const vouchers = await fetchMyVouchers();
+        const voucher = vouchers.find(v => v.id === id);
+        if (!voucher) return;
+
         if (approveBtn) {
           stage === 'manager' ? await managerApprove(voucher) : await accountingApprove(voucher);
           showMessage('已核准。');
@@ -1510,6 +1519,10 @@ function initializeEventsInternal() {
         renderVoucherWorkflowList();
       } catch (error) {
         showMessage(`操作失敗：${error.message}`, true);
+        // 失敗時（例如狀態已變更）恢復按鈕，讓使用者能重新整理後再試一次
+        btn.disabled = false;
+        btn.dataset.processing = '0';
+        btn.textContent = originalLabel;
       }
       return;
     }
@@ -3059,16 +3072,25 @@ window.saveBankEdit = async () => {
 };
 
 window.accountingApproveAndClose = async (voucherId) => {
+  // 防止連點：找到觸發此動作的按鈕並立即鎖住，避免同一張單據被重複歸帳（重複寫入分錄/銀行流水）。
+  const triggerBtn = document.querySelector(`button[onclick="accountingApproveAndClose('${voucherId}')"]`);
+  if (triggerBtn) {
+    if (triggerBtn.disabled) return;
+    triggerBtn.disabled = true;
+    triggerBtn.dataset.originalLabel = triggerBtn.textContent;
+    triggerBtn.textContent = '處理中...';
+  }
+
   const accountCode = document.getElementById('reviewAccountCode')?.value;
   const bankAccountId = document.getElementById('reviewBankAccount')?.value;
   const note = document.getElementById('reviewNote')?.value.trim();
 
-  if (!accountCode) { alert('請選擇歸帳科目'); return; }
-  if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
+  if (!accountCode) { alert('請選擇歸帳科目'); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
+  if (!bankAccountId) { alert('請選擇付款銀行帳戶'); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
 
   // 勾稽核對：明細金額、發票金額、科目有效性
   const passedVerification = await confirmCrossVerification(voucherId, accountCode);
-  if (!passedVerification) return;
+  if (!passedVerification) { if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
 
   try {
     // 補上還沒被歸類科目的明細列
@@ -3103,6 +3125,7 @@ window.accountingApproveAndClose = async (voucherId) => {
     renderDashboard();
   } catch (err) {
     alert('歸帳失敗：' + err.message);
+    if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; }
   }
 };
 
