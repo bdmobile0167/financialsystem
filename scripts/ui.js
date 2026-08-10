@@ -2,7 +2,7 @@
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, getEquityAnalysis } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, getEquityAnalysis } from './reports.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
@@ -726,6 +726,25 @@ function applyReportPeriodPreset(preset) {
   renderReports();
 }
 
+function switchReportTab(tab) {
+  if (!tab) return;
+  document.querySelectorAll('.report-tab-btn').forEach(btn => {
+    btn.classList.toggle('active-tab', btn.dataset.reportTab === tab);
+  });
+  document.querySelectorAll('.report-cards-stack .report-card[data-report-tab]').forEach(card => {
+    card.classList.toggle('active-tab', card.dataset.reportTab === tab);
+  });
+  // 切換單一報表頁籤時自動退出「全部檢視」模式
+  const grid = document.getElementById('reportCardsGrid');
+  const label = document.getElementById('showAllReportsBtnLabel');
+  const showAllBtn = document.getElementById('showAllReportsBtn');
+  if (grid && grid.classList.contains('show-all-mode')) {
+    grid.classList.remove('show-all-mode');
+    if (label) label.textContent = '全部檢視';
+    if (showAllBtn) showAllBtn.classList.remove('is-active');
+  }
+}
+
 async function renderReports() {
   let periodTx = getReportPeriodTransactions();
   const startDate = document.getElementById('reportPeriodStart')?.value || null;
@@ -751,6 +770,10 @@ async function renderReports() {
   renderReportLetterhead('equityLetterhead', '權益變動表');
   renderTable('equityTable', await buildEquityStatement(periodTx, startDate, endDate));
   renderReportSignature('equitySignature');
+
+  renderReportLetterhead('trialLetterhead', '試算表');
+  renderTable('trialTable', await buildTrialBalance(periodTx, startDate, endDate));
+  renderReportSignature('trialSignature');
 
   const analysis = getEquityAnalysis(periodTx);
   const note = document.getElementById('fundraisingNote');
@@ -1911,6 +1934,22 @@ function initializeEventsInternal() {
 
   document.querySelectorAll('.period-preset-btn').forEach(btn => {
     btn.addEventListener('click', () => applyReportPeriodPreset(btn.dataset.preset));
+  });
+
+  // 財報頁籤切換（損益表／資產負債表／現金流量表／權益變動表／試算表）
+  document.querySelectorAll('.report-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchReportTab(btn.dataset.reportTab));
+  });
+
+  // 「全部檢視」切換：畫面上一次顯示全部四大報表（列印時無論如何都會顯示全部）
+  safeListener('showAllReportsBtn', 'click', () => {
+    const grid = document.getElementById('reportCardsGrid');
+    const label = document.getElementById('showAllReportsBtnLabel');
+    const btn = document.getElementById('showAllReportsBtn');
+    if (!grid) return;
+    const showingAll = grid.classList.toggle('show-all-mode');
+    if (label) label.textContent = showingAll ? '單一檢視' : '全部檢視';
+    if (btn) btn.classList.toggle('is-active', showingAll);
   });
 
   safeListener('exportExcelBtn', 'click', () => {

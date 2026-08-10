@@ -376,6 +376,56 @@ export async function checkBudgetSufficiency(projectCost = 0) {
   }
 }
 
+/**
+ * 💡 新增：試算表（Trial Balance）— 依科目列出借方/貸方合計與餘額。
+ */
+export async function buildTrialBalance(transactions = [], startDate = null, endDate = null) {
+  try {
+    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+    const sorted = [...rows].sort((a, b) => String(a.code).localeCompare(String(b.code)));
+    const totalDebit = sorted.reduce((sum, r) => sum + Number(r.debitTotal || 0), 0);
+    const totalCredit = sorted.reduce((sum, r) => sum + Number(r.creditTotal || 0), 0);
+
+    return {
+      type: 'structured',
+      sections: [
+        {
+          title: '會計科目餘額明細',
+          items: sorted.map(r => [
+            `${r.name}（借:${Number(r.debitTotal || 0).toLocaleString()} / 貸:${Number(r.creditTotal || 0).toLocaleString()}）`,
+            Number(r.debitTotal || 0) - Number(r.creditTotal || 0),
+            r.code
+          ]),
+          subtotal: totalDebit
+        }
+      ],
+      netProfit: undefined,
+      trialBalanceCheck: { totalDebit, totalCredit, balanced: totalDebit === totalCredit }
+    };
+  } catch (err) {
+    console.warn('試算表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    const { trialBalance } = runAccountingPipeline(transactions);
+    const sorted = [...trialBalance.rows].sort((a, b) => String(a.code).localeCompare(String(b.code)));
+    const totalDebit = sorted.reduce((sum, r) => sum + Number(r.debitTotal || 0), 0);
+    const totalCredit = sorted.reduce((sum, r) => sum + Number(r.creditTotal || 0), 0);
+    return {
+      type: 'structured',
+      sections: [
+        {
+          title: '會計科目餘額明細',
+          items: sorted.map(r => [
+            `${r.name}（借:${Number(r.debitTotal || 0).toLocaleString()} / 貸:${Number(r.creditTotal || 0).toLocaleString()}）`,
+            Number(r.debitTotal || 0) - Number(r.creditTotal || 0),
+            r.code
+          ]),
+          subtotal: totalDebit
+        }
+      ],
+      trialBalanceCheck: { totalDebit, totalCredit, balanced: totalDebit === totalCredit }
+    };
+  }
+}
+
 export function getEquityAnalysis(transactions) {
   return buildEquityAnalysis(transactions);
 }

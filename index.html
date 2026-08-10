@@ -469,13 +469,51 @@
         
         <section id="reports" class="tab-panel" style="display:none;">
           <div class="panel">
-            <div class="panel-header">
-              <h3 class="no-print">四大財報</h3>
-              <div class="button-row" style="margin-top:0;">
-                <button id="printReportBtn" class="secondary">列印報表</button>
-                <button id="exportExcelBtn" class="secondary">匯出 Excel</button>
+            <!-- 財報頁首橫幅 -->
+            <div class="financial-hero no-print">
+              <div>
+                <div class="financial-hero-eyebrow">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                  <span>IFRS 國際會計準則財務報表系統</span>
+                </div>
+                <h2>四大財務報表</h2>
+                <p>依 IFRS 準則編製，可依期間篩選並切換各報表檢視，列印時將自動輸出全部報表。</p>
+              </div>
+              <div class="button-row financial-hero-actions">
+                <button id="showAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span id="showAllReportsBtnLabel">全部檢視</span>
+                </button>
+                <button id="printReportBtn" class="hero-btn hero-btn-ghost">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  <span>列印報表</span>
+                </button>
+                <button id="exportExcelBtn" class="hero-btn hero-btn-primary">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                  <span>匯出 Excel</span>
+                </button>
               </div>
             </div>
+
+            <!-- 報表頁籤導覽 -->
+            <div class="report-tabbar no-print">
+              <button type="button" class="report-tab-btn active-tab" data-report-tab="income">
+                <span class="report-tab-dot" style="background:#2563eb;"></span>損益表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="balance">
+                <span class="report-tab-dot" style="background:#0f766e;"></span>資產負債表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="cashflow">
+                <span class="report-tab-dot" style="background:#f59e0b;"></span>現金流量表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="equity">
+                <span class="report-tab-dot" style="background:#7c3aed;"></span>權益變動表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="trial">
+                <span class="report-tab-dot" style="background:#475569;"></span>試算表
+              </button>
+            </div>
+
             <div class="form-grid no-print">
               <div>
                 <label>報表期間（起）</label>
@@ -496,30 +534,36 @@
               <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
             </div>
             <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
-            <div class="grid grid-2" style="margin-top: 12px;">
-              <div class="report-card">
+            <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
+              <div class="report-card active-tab" data-report-tab="income" style="--accent-color:#2563eb;">
                 <div id="incomeLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#2563eb;"></span><h4>損益表</h4></div>
                 <table id="incomeTable"></table>
                 <div id="incomeSignature" class="report-signature-row"></div>
               </div>
-              <div class="report-card">
+              <div class="report-card" data-report-tab="balance" style="--accent-color:#0f766e;">
                 <div id="balanceLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#0f766e;"></span><h4>資產負債表</h4></div>
                 <table id="balanceTable"></table>
                 <div id="balanceSignature" class="report-signature-row"></div>
               </div>
-              <div class="report-card">
+              <div class="report-card" data-report-tab="cashflow" style="--accent-color:#f59e0b;">
                 <div id="cashflowLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#f59e0b;"></span><h4>現金流量表</h4></div>
                 <table id="cashflowTable"></table>
                 <div id="cashflowSignature" class="report-signature-row"></div>
               </div>
-              <div class="report-card">
+              <div class="report-card" data-report-tab="equity" style="--accent-color:#7c3aed;">
                 <div id="equityLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#7c3aed;"></span><h4>權益變動表</h4></div>
                 <table id="equityTable"></table>
                 <div id="equitySignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
+                <div id="trialLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
+                <table id="trialTable"></table>
+                <div id="trialSignature" class="report-signature-row"></div>
               </div>
             </div>
           </div>
