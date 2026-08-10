@@ -554,6 +554,215 @@ td button {
 }
 
 /* =========================================
+   6.5 元件樣式：徽章 / 進度條 / 簽核階段指示器 / 勾稽結果 / 時間軸 / 財報卡片
+   ========================================= */
+
+/* ---- 狀態徽章 ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: #e2e8f0;
+  color: #334155;
+}
+.badge.success { background: #dcfce7; color: #15803d; }
+.badge.danger  { background: #fee2e2; color: #b91c1c; }
+.badge.warning { background: #fef3c7; color: #b45309; }
+.badge.wait    { background: #dbeafe; color: #1d4ed8; }
+.badge.secondary { background: #f1f5f9; color: #475569; }
+
+/* ---- 進度條（專案預算使用進度） ---- */
+.progress-track {
+  width: 100%;
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), #3b82f6);
+  transition: width 0.3s ease;
+}
+.progress-fill.warn { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.progress-fill.over { background: linear-gradient(90deg, #dc2626, #ef4444); }
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.progress-label strong { color: var(--text); }
+
+/* ---- 多階段簽核流程指示器 ---- */
+.approval-stepper {
+  display: flex;
+  align-items: center;
+  margin: 10px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.approval-stepper li {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  font-size: 11px;
+  color: var(--muted);
+}
+.approval-stepper li::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+.approval-stepper li:first-child::before { display: none; }
+.approval-stepper .step-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+}
+.approval-stepper li.done .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+.approval-stepper li.done::before { background: var(--accent); }
+.approval-stepper li.current .step-dot { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,0.15); }
+.approval-stepper li.current { color: var(--primary); font-weight: 700; }
+.approval-stepper li.rejected .step-dot { background: var(--danger); border-color: var(--danger); color: #fff; }
+.approval-stepper li.rejected { color: var(--danger); font-weight: 700; }
+
+/* ---- 勾稽核對結果 ---- */
+.verify-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  background: var(--surface-strong);
+}
+.verify-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed var(--border);
+}
+.verify-item:last-child { border-bottom: none; }
+.verify-item .icon { flex-shrink: 0; font-size: 14px; }
+.verify-item.ok    { color: #15803d; }
+.verify-item.warn  { color: #b45309; }
+.verify-item.error { color: #b91c1c; font-weight: 700; }
+
+/* ---- AI 建議科目提示區 ---- */
+.ai-suggest-box {
+  font-size: 12px;
+  color: var(--muted);
+  background: #eff6ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: -2px 0 10px;
+  min-height: 14px;
+}
+.ai-suggest-box:empty { display: none; }
+.ai-suggest-box.pending-review::after {
+  content: '待會計覆核';
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  background: #fef3c7;
+  color: #b45309;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* ---- 時間軸（審批歷程 / Audit Trail） ---- */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+}
+.timeline li {
+  position: relative;
+  padding: 0 0 18px 22px;
+  border-left: 2px solid var(--border);
+}
+.timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.timeline li::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.timeline li.rejected::before { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.timeline li.closed::before { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.timeline .tl-title { font-weight: 700; font-size: 13px; color: var(--text); }
+.timeline .tl-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.timeline .tl-note { font-size: 12px; color: var(--muted); margin-top: 4px; background: var(--surface-strong); border-radius: 8px; padding: 6px 10px; }
+
+/* ---- 財報卡片 ---- */
+.report-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.report-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.report-card-header .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.report-card-header h4 { margin: 0; font-size: 15px; }
+.report-card table { margin-top: 8px; }
+.report-card table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-strong);
+}
+.report-card table tbody tr:hover { background: #f8fafc; }
+
+@media (max-width: 900px) {
+  .approval-stepper { flex-wrap: wrap; gap: 10px 0; }
+  .approval-stepper li::before { display: none; }
+}
+
+/* =========================================
    7. 列印專屬設定 (Print Media Query)
    ========================================= */
 @media print {

@@ -61,26 +61,3 @@ export async function runVoucherCrossVerification(voucherId, accountCode) {
 
   return { canProceed: !hasError, notes };
 }
-
-/**
- * 把勾稽結果顯示成一個確認對話框：
- * - 有 ❌ error：直接擋下，彈出訊息說明原因，回傳 false
- * - 只有 ⚠️ warn：用 confirm() 讓使用者看過警告後自行決定是否繼續
- * - 全部 ✓：直接放行
- */
-export async function confirmCrossVerification(voucherId, accountCode) {
-  const { canProceed, notes } = await runVoucherCrossVerification(voucherId, accountCode);
-  const text = notes.map(n => n.text).join('\n');
-
-  if (!canProceed) {
-    alert(`勾稽核對未通過，無法歸帳：\n\n${text}`);
-    return false;
-  }
-
-  const hasWarning = notes.some(n => n.level === 'warn');
-  if (hasWarning) {
-    return confirm(`勾稽核對結果（含警告，請確認後再決定是否繼續）：\n\n${text}\n\n是否仍要繼續歸帳？`);
-  }
-
-  return true;
-}

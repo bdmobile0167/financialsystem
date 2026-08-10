@@ -60,6 +60,7 @@
             <div class="nav-group-title">財務報表</div>
             <button class="tab-btn" data-tab="bankReconcile">銀行對帳</button>
             <button class="tab-btn" data-tab="reports">四大財報</button>
+            <button class="tab-btn" data-tab="auditTrail">Audit Trail</button>
             <button class="tab-btn" data-tab="voucherCenter">憑證中心</button>
           </div>
           <div class="nav-group">
@@ -496,27 +497,27 @@
             </div>
             <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
             <div class="grid grid-2" style="margin-top: 12px;">
-              <div>
+              <div class="report-card">
                 <div id="incomeLetterhead" class="report-letterhead"></div>
-                <h4>損益表</h4>
+                <div class="report-card-header"><span class="dot" style="background:#2563eb;"></span><h4>損益表</h4></div>
                 <table id="incomeTable"></table>
                 <div id="incomeSignature" class="report-signature-row"></div>
               </div>
-              <div>
+              <div class="report-card">
                 <div id="balanceLetterhead" class="report-letterhead"></div>
-                <h4>資產負債表</h4>
+                <div class="report-card-header"><span class="dot" style="background:#0f766e;"></span><h4>資產負債表</h4></div>
                 <table id="balanceTable"></table>
                 <div id="balanceSignature" class="report-signature-row"></div>
               </div>
-              <div>
+              <div class="report-card">
                 <div id="cashflowLetterhead" class="report-letterhead"></div>
-                <h4>現金流量表</h4>
+                <div class="report-card-header"><span class="dot" style="background:#f59e0b;"></span><h4>現金流量表</h4></div>
                 <table id="cashflowTable"></table>
                 <div id="cashflowSignature" class="report-signature-row"></div>
               </div>
-              <div>
+              <div class="report-card">
                 <div id="equityLetterhead" class="report-letterhead"></div>
-                <h4>權益變動表</h4>
+                <div class="report-card-header"><span class="dot" style="background:#7c3aed;"></span><h4>權益變動表</h4></div>
                 <table id="equityTable"></table>
                 <div id="equitySignature" class="report-signature-row"></div>
               </div>
@@ -527,12 +528,40 @@
             <div class="search-row">
               <input type="text" id="journalSearchInput" placeholder="搜尋摘要、銀行、科目、憑證編號..." />
             </div>
-            <table>
-              <thead>
-                <tr><th>日期</th><th>摘要</th><th>銀行</th><th>借方科目</th><th>借方金額</th><th>貸方科目</th><th>貸方金額</th><th>憑證</th><th>狀態</th></tr>
-              </thead>
-              <tbody id="journalTableBody"></tbody>
-            </table>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr><th>日期</th><th>摘要</th><th>銀行</th><th>借方科目</th><th style="text-align:right;">借方金額</th><th>貸方科目</th><th style="text-align:right;">貸方金額</th><th>憑證</th><th>狀態</th></tr>
+                </thead>
+                <tbody id="journalTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section id="auditTrail" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Audit Trail Logs（單據異動稽核軌跡）</h3>
+            </div>
+            <div class="form-grid" style="margin-bottom:10px;">
+              <div>
+                <label>動作類型</label>
+                <select id="auditTrailActionFilter">
+                  <option value="">全部</option>
+                  <option value="submit">提交申請</option>
+                  <option value="manager_approve">主管核准</option>
+                  <option value="manager_reject">主管退件</option>
+                  <option value="accounting_approve">會計核准</option>
+                  <option value="reject">會計退件</option>
+                  <option value="close">付款銷案</option>
+                </select>
+              </div>
+              <div>
+                <label>搜尋（單號／摘要／操作人）</label>
+                <input type="text" id="auditTrailSearchInput" placeholder="輸入關鍵字搜尋..." />
+              </div>
+            </div>
+            <div id="auditTrailList" class="timeline" style="margin-top:12px;"></div>
           </div>
         </section>
 

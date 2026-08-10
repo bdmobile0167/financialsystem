@@ -12,7 +12,7 @@ import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fe
 import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser } from '../src/modules/admin/adminApi.js';
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
-import { confirmCrossVerification } from './voucherVerification.js';
+import { runVoucherCrossVerification } from './voucherVerification.js';
 export async function renderCompanyInfo() {
     const data = await fetchCompanyData();
     // 進行 DOM 操作將資料顯示在網頁上
@@ -133,6 +133,110 @@ const STATUS_LABELS = {
 const state = { ...defaultState };
 
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
+// 多階段簽核流程指示器：把單據狀態轉換成「提交→主管→會計→付款結案」的視覺步驟
+function buildApprovalStepperHtml(status) {
+  const steps = [
+    { key: 'submit', label: '提交申請' },
+    { key: 'manager', label: '主管審核' },
+    { key: 'accounting', label: '會計審核' },
+    { key: 'closed', label: '付款結案' }
+  ];
+
+  let stepStates = ['done', 'pending', 'pending', 'pending'];
+  switch (status) {
+    case 'pending_review':
+      stepStates = ['done', 'current', 'pending', 'pending']; break;
+    case 'manager_rejected':
+      stepStates = ['done', 'rejected', 'pending', 'pending']; break;
+    case 'pending_accounting':
+      stepStates = ['done', 'done', 'current', 'pending']; break;
+    case 'accounting_rejected':
+      stepStates = ['done', 'done', 'rejected', 'pending']; break;
+    case 'approved':
+      stepStates = ['done', 'done', 'done', 'current']; break;
+    case 'closed':
+      stepStates = ['done', 'done', 'done', 'done']; break;
+    case 'cancelled':
+      return `<div class="badge secondary" style="padding:6px 12px;">此單據已撤銷</div>`;
+    default:
+      stepStates = ['done', 'pending', 'pending', 'pending'];
+  }
+
+  return `
+    <ul class="approval-stepper">
+      ${steps.map((s, i) => `
+        <li class="${stepStates[i]}">
+          <span class="step-dot">${stepStates[i] === 'done' ? '✓' : (stepStates[i] === 'rejected' ? '✕' : i + 1)}</span>
+          ${s.label}
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+// ===== Audit Trail Logs（全系統單據異動稽核軌跡） =====
+async function renderAuditTrail() {
+  const container = document.getElementById('auditTrailList');
+  if (!container) return;
+  container.innerHTML = '<p class="muted">載入中…</p>';
+
+  const actionFilter = document.getElementById('auditTrailActionFilter')?.value || '';
+  const keyword = (document.getElementById('auditTrailSearchInput')?.value || '').trim().toLowerCase();
+
+  try {
+    let query = supabase
+      .from('voucher_workflow_logs')
+      .select('*, profiles!actor_id(full_name), vouchers(voucher_no, summary)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (actionFilter) query = query.eq('action', actionFilter);
+
+    const { data: logs, error } = await query;
+    if (error) throw error;
+
+    const ACTION_LABELS = {
+      submit: '提交申請',
+      manager_approve: '主管核准',
+      manager_reject: '主管退件',
+      accounting_approve: '會計核准',
+      reject: '會計退件',
+      close: '付款銷案'
+    };
+
+    let filtered = logs || [];
+    if (keyword) {
+      filtered = filtered.filter(l => [
+        l.vouchers?.voucher_no, l.vouchers?.summary, l.profiles?.full_name, l.action, l.reject_reason
+      ].some(f => (f || '').toLowerCase().includes(keyword)));
+    }
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<p class="muted">沒有符合條件的稽核紀錄。</p>';
+      return;
+    }
+
+    container.innerHTML = filtered.map(l => {
+      const lineClass = l.action === 'close' ? 'closed' : (l.action?.includes('reject') ? 'rejected' : '');
+      return `
+        <li class="${lineClass}">
+          <div class="tl-title">
+            ${ACTION_LABELS[l.action] || l.action}
+            ${l.vouchers?.voucher_no ? `<a href="javascript:void(0)" onclick="viewVoucherDetail('${l.voucher_id}')" style="margin-left:6px; color:#2563eb; font-weight:600;">[${l.vouchers.voucher_no}]</a>` : ''}
+          </div>
+          <div class="tl-meta">
+            ${new Date(l.created_at).toLocaleString('zh-TW')} ｜ 操作人：${l.profiles?.full_name || '系統'}
+            ${l.vouchers?.summary ? ` ｜ ${l.vouchers.summary}` : ''}
+          </div>
+          ${l.reject_reason ? `<div class="tl-note">${l.reject_reason}</div>` : ''}
+        </li>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('讀取 Audit Trail 失敗:', err);
+    container.innerHTML = `<p class="muted">載入失敗：${err.message}</p>`;
+  }
+}
+
 function getStatusBadge(status) {
   switch (status) {
     case 'pending_review':
@@ -225,8 +329,10 @@ function applyRoleBasedTabVisibility() {
   const financialOnly = ['accounting', 'admin'];
   const reportsBtn = document.querySelector('[data-tab="reports"]');
   const equityBtn = document.querySelector('[data-tab="equity"]');
+  const auditTrailBtn = document.querySelector('[data-tab="auditTrail"]');
   if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
   if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  if (auditTrailBtn) auditTrailBtn.style.display = financialOnly.includes(role) ? '' : 'none';
 }
 
 function render() {
@@ -250,7 +356,11 @@ function render() {
   applyRoleBasedTabVisibility();
   renderDashboard();
   renderTransactionTable();
-  renderReports();
+  // 財報僅限 會計(accounting)/管理員(admin) 檢視；
+  // employee/manager 不觸發報表 DB 查詢，避免因 RLS 限制觸發 406 Not Acceptable
+  if (['accounting', 'admin'].includes(state.currentUser?.role)) {
+    renderReports();
+  }
   renderCompanyData();
   fillCompanyInfoForm();
   renderBusinessData();
@@ -258,7 +368,9 @@ function render() {
   renderBankAccounts();
   renderVoucherCenter();
   renderBudget();
-  renderEquityTab();
+  if (['accounting', 'admin'].includes(state.currentUser?.role)) {
+    renderEquityTab();
+  }
   renderTabs();
   populateProjectDepartmentSelect();
   renderProjectList();
@@ -1031,15 +1143,15 @@ async function renderJournalFiltered() {
     filtered.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${row.date}</td>
+        <td style="white-space:nowrap;">${row.date}</td>
         <td>${row.summary}</td>
         <td>${row.bank}</td>
-        <td>${row.debitAccount}</td>
-        <td>${Number(row.debitAmount).toLocaleString()}</td>
-        <td>${row.creditAccount}</td>
-        <td>${Number(row.creditAmount).toLocaleString()}</td>
+        <td><span style="color:#1d4ed8; font-weight:600;">借</span> ${row.debitAccount}</td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums;">${Number(row.debitAmount).toLocaleString()}</td>
+        <td><span style="color:#b45309; font-weight:600;">貸</span> ${row.creditAccount}</td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums;">${Number(row.creditAmount).toLocaleString()}</td>
         <td>${row.voucher || '-'}</td>
-        <td>${row.status}</td>
+        <td><span class="badge success">${row.status}</span></td>
       `;
       journalBody.appendChild(tr);
     });
@@ -1509,8 +1621,14 @@ function initializeEventsInternal() {
         setDefaultReportPeriod();
         renderReports();
       }
+      if (tab === 'auditTrail') {
+        renderAuditTrail();
+      }
     });
   });
+
+  safeListener('auditTrailSearchInput', 'input', () => renderAuditTrail());
+  safeListener('auditTrailActionFilter', 'change', () => renderAuditTrail());
 
   safeListener('voucherSearchInput', 'input', renderVoucherCenter);
   safeListener('journalSearchInput', 'input', renderJournalFiltered);
@@ -2205,6 +2323,24 @@ function renderVoucherCard(v) {
     </div>`;
 }
 
+// 簽核中心列表用的迷你進度點（不佔太多欄寬）
+function buildMiniStepperDots(status) {
+  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已撤銷</span>';
+  const stepStates = {
+    pending_review: ['done', 'current', 'pending', 'pending'],
+    manager_rejected: ['done', 'rejected', 'pending', 'pending'],
+    pending_accounting: ['done', 'done', 'current', 'pending'],
+    accounting_rejected: ['done', 'done', 'rejected', 'pending'],
+    approved: ['done', 'done', 'done', 'current'],
+    closed: ['done', 'done', 'done', 'done']
+  }[status] || ['done', 'pending', 'pending', 'pending'];
+
+  const colorOf = (s) => s === 'done' ? 'var(--accent)' : (s === 'current' ? 'var(--primary)' : (s === 'rejected' ? 'var(--danger)' : '#cbd5e1'));
+  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="提交→主管→會計→結案">
+    ${stepStates.map(s => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(s)}; display:inline-block;"></span>`).join('')}
+  </span>`;
+}
+
 async function renderVoucherWorkflowList() {
   const container = document.getElementById('voucherWorkflowList');
   if (!container) return;
@@ -2269,22 +2405,25 @@ async function renderVoucherWorkflowList() {
           <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${row.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${row.voucher_no || '未編號'}</a></td>
           <td>${row.summary || '-'}</td>
           <td>${row.voucher_lines?.length || 0} 筆</td>
-          <td>$${Number(row.total_amount || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-variant-numeric:tabular-nums;">$${Number(row.total_amount || 0).toLocaleString()}</td>
           <td>${getStatusBadge(vStatus)}</td>
-          <td>${actionButtons}</td>
+          <td>${buildMiniStepperDots(vStatus)}</td>
+          <td style="white-space:nowrap;">${actionButtons}</td>
         </tr>
       `;
     }).join('');
 
     container.innerHTML = `
+      <div style="overflow-x:auto;">
       <table>
         <thead>
           <tr>
             <th>單號</th>
             <th>摘要</th>
             <th>筆數</th>
-            <th>金額</th>
+            <th style="text-align:right;">金額</th>
             <th>狀態</th>
+            <th>進度</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -2292,6 +2431,7 @@ async function renderVoucherWorkflowList() {
           ${htmlContent}
         </tbody>
       </table>
+      </div>
     `;
 
   } catch (error) {
@@ -2327,29 +2467,41 @@ async function renderProjectList() {
       
       // 計算該專案已使用的金額 (已用 = 總預算 - 剩餘)
       const usedBudget = totalBudget - remainingBudget;
+      const usedPercent = totalBudget > 0 ? Math.round((usedBudget / totalBudget) * 100) : 0;
+      const barClass = usedPercent >= 100 ? 'over' : (usedPercent >= 70 ? 'warn' : '');
+      const percentColor = usedPercent >= 100 ? '#b91c1c' : (usedPercent >= 70 ? '#b45309' : '#15803d');
 
       return `
-        <div style="border:1px solid #ddd; padding:12px; margin:8px 0; border-radius:6px;" id="project-card-${p.id}">
-          <div style="margin-bottom: 6px;">
-            <strong>${p.project_code || '無編號'} - </strong>
-            <input type="text" id="edit-name-${p.id}" value="${p.name || ''}" placeholder="專案名稱" style="width: 180px; padding: 2px 6px;">
-          </div>
-          
-          <div style="margin-bottom: 6px;">
-            預算：<input type="number" id="edit-budget-${p.id}" value="${totalBudget}" style="width:110px;" oninput="calcRemainingPreview('${p.id}', ${usedBudget})"> 
-            | 剩餘：<span id="remaining-display-${p.id}">${remainingBudget.toLocaleString()}</span>
+        <div class="report-card" style="margin:8px 0; padding:14px 16px;" id="project-card-${p.id}">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px;">
+            <div>
+              <strong style="color:#64748b; font-size:12px;">${p.project_code || '無編號'}</strong>
+              <input type="text" id="edit-name-${p.id}" value="${p.name || ''}" placeholder="專案名稱" style="width: 180px; padding: 2px 6px; margin-left:6px; font-weight:600;">
+            </div>
+            <span class="badge ${usedPercent >= 100 ? 'danger' : (usedPercent >= 70 ? 'warning' : 'success')}">已用 ${usedPercent}%</span>
           </div>
 
-          <div>
-            部門：<select id="edit-dept-${p.id}">
-                    <option value="">無部門</option>
-                    ${deptOptions}
-                 </select>
+          <div class="progress-track"><div class="progress-fill ${barClass}" style="width:${Math.min(usedPercent, 100)}%;"></div></div>
+          <div class="progress-label">
+            <span>已用 <strong style="color:${percentColor};">$${usedBudget.toLocaleString()}</strong></span>
+            <span>剩餘 <strong id="remaining-display-${p.id}">$${remainingBudget.toLocaleString()}</strong> / 總預算 $${totalBudget.toLocaleString()}</span>
+          </div>
+
+          <div style="margin: 10px 0 6px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:13px;">
+            <label style="display:flex; align-items:center; gap:6px; margin:0;">預算
+              <input type="number" id="edit-budget-${p.id}" value="${totalBudget}" style="width:110px;" oninput="calcRemainingPreview('${p.id}', ${usedBudget})">
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; margin:0;">部門
+              <select id="edit-dept-${p.id}">
+                <option value="">無部門</option>
+                ${deptOptions}
+              </select>
+            </label>
           </div>
 
           <div style="margin-top: 8px;">
-              <button onclick="updateProject('${p.id}')" class="primary-btn">儲存修改</button>
-              <button onclick="deleteProject('${p.id}')" class="danger">刪除</button>
+              <button onclick="updateProject('${p.id}')" class="primary-btn" style="width:auto; padding:8px 16px;">儲存修改</button>
+              <button onclick="deleteProject('${p.id}')" class="danger" style="width:auto; padding:8px 16px;">刪除</button>
           </div>
         </div>
       `;
@@ -2375,7 +2527,8 @@ window.calcRemainingPreview = function(id, usedBudget) {
   const newBudget = Number(budgetInput.value) || 0;
   // 新剩餘金額 = 新預算 - 已使用金額
   const newRemaining = newBudget - usedBudget;
-  remainingDisplay.textContent = newRemaining.toLocaleString();
+  remainingDisplay.textContent = `$${newRemaining.toLocaleString()}`;
+  remainingDisplay.style.color = newRemaining < 0 ? '#b91c1c' : '';
 };
 
 // 3. 儲存專案修改（更新 Name、Total Budget 與 Department）
@@ -2647,13 +2800,28 @@ window.viewVoucherDetail = async (voucherId) => {
       </div>
     `).join('') || '<div class="muted" style="font-size:13px;">無發票/收據資訊</div>';
 
-    const logsHtml = (logs || []).map(l => `
-      <div style="font-size:13px; padding:6px 0; border-top:1px solid #f3f4f6;">
-        ${new Date(l.created_at).toLocaleString('zh-TW')}｜<strong>${l.profiles?.full_name || '系統'}</strong> 執行：${l.action}
-        ${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}
-        ${l.reject_reason ? `｜原因：${l.reject_reason}` : ''}
-      </div>
-    `).join('') || '<p class="muted" style="font-size:13px;">尚無審批紀錄。</p>';
+    const logsHtml = (logs || []).length
+      ? `<ul class="timeline">${logs.map(l => `
+          <li class="${l.action?.includes('reject') ? 'rejected' : (l.action === 'close' ? 'closed' : '')}">
+            <div class="tl-title">${l.profiles?.full_name || '系統'} 執行：${l.action}${l.to_status ? ` → ${STATUS_LABELS[l.to_status] || l.to_status}` : ''}</div>
+            <div class="tl-meta">${new Date(l.created_at).toLocaleString('zh-TW')}</div>
+            ${l.reject_reason ? `<div class="tl-note">${l.reject_reason}</div>` : ''}
+          </li>
+        `).join('')}</ul>`
+      : '<p class="muted" style="font-size:13px;">尚無審批紀錄。</p>';
+
+    // 勾稽核對（顯示用，第一筆明細已選科目時一併檢查科目有效性）
+    const firstAccountCode = (lines || []).find(l => l.account_code)?.account_code || null;
+    const verification = await runVoucherCrossVerification(voucherId, firstAccountCode);
+    const verifyHtml = `
+      <div class="verify-panel">
+        ${verification.notes.map(n => `
+          <div class="verify-item ${n.level}">
+            <span class="icon">${n.level === 'error' ? '❌' : (n.level === 'warn' ? '⚠️' : '✓')}</span>
+            <span>${n.text.replace(/^[❌⚠️✓]+\s*/, '')}</span>
+          </div>
+        `).join('')}
+      </div>`;
 
     modal.style.display = 'flex';
     modal.innerHTML = `
@@ -2663,6 +2831,8 @@ window.viewVoucherDetail = async (voucherId) => {
           <button onclick="document.getElementById('voucherDetailModal').style.display='none'" style="font-size:24px; cursor:pointer; background:none; border:none;">&times;</button>
         </div>
         
+        ${buildApprovalStepperHtml(vch.status)}
+
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:15px; font-size:14px; color:#4b5563;">
           <p style="margin:4px 0;"><strong>申請日期：</strong>${vch.tx_date || vch.created_at?.split('T')[0]}</p>
           <p style="margin:4px 0;"><strong>申請人：</strong>${vch.profiles?.full_name || '未知'}</p>
@@ -2691,8 +2861,13 @@ window.viewVoucherDetail = async (voucherId) => {
           ${invoicesHtml}
         </div>
 
+        <h4 style="margin:16px 0 8px; font-size:15px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">憑證與勾稽核對</h4>
+        <div style="margin-bottom:15px;">
+          ${verifyHtml}
+        </div>
+
         <h4 style="margin:16px 0 8px; font-size:15px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">審批歷程</h4>
-        <div style="margin-bottom:15px; max-height:150px; overflow-y:auto; background:#f9fafb; padding:8px; border-radius:6px;">
+        <div style="margin-bottom:15px; max-height:220px; overflow-y:auto; padding:8px 4px;">
           ${logsHtml}
         </div>
 
@@ -2984,7 +3159,7 @@ window.openAccountingReviewModal = async (voucherId) => {
             </select>
             <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'reviewAccountCode')" style="white-space:nowrap; padding:8px 12px;">✨ AI建議科目</button>
           </div>
-          <div id="aiSuggestExplain_reviewAccountCode" style="font-size:12px; color:#64748b; margin:-4px 0 8px;"></div>
+          <div id="aiSuggestExplain_reviewAccountCode" class="ai-suggest-box"></div>
 
           <label>付款銀行帳戶：</label>
           <select id="reviewBankAccount" style="width:100%; padding:8px; margin:8px 0;">
@@ -3045,12 +3220,70 @@ window.suggestAccountCodeAI = async (voucherId, selectElementId) => {
     const { accountCode, explanation } = result.suggestion;
     if (accountCode) select.value = accountCode;
     if (explainBox) {
-      explainBox.textContent = `${result.mode === 'ai' ? '🤖 AI' : '📐 規則'}建議：${explanation || ''}`;
+      explainBox.classList.add('pending-review');
+      explainBox.textContent = `${result.mode === 'ai' ? '🤖 AI' : '📐 規則'}建議：${explanation || ''}（僅供參考，請覆核後再送出）`;
     }
   } catch (err) {
-    if (explainBox) explainBox.textContent = `AI 建議失敗：${err.message}`;
+    if (explainBox) {
+      explainBox.classList.remove('pending-review');
+      explainBox.textContent = `AI 建議失敗：${err.message}`;
+    }
   }
 };
+
+// ===== 勾稽核對：樣式化確認 Modal（取代原生 alert/confirm） =====
+function showVerificationModal(notes, canProceed) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.style = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center;';
+
+    const iconOf = (level) => level === 'error' ? '❌' : (level === 'warn' ? '⚠️' : '✓');
+
+    modal.innerHTML = `
+      <div style="background:#fff; padding:22px; border-radius:14px; width:92%; max-width:480px; max-height:85vh; overflow:auto;">
+        <h3 style="margin-top:0;">勾稽核對結果</h3>
+        <div class="verify-panel">
+          ${notes.map(n => `
+            <div class="verify-item ${n.level}">
+              <span class="icon">${iconOf(n.level)}</span>
+              <span>${n.text.replace(/^[❌⚠️✓]+\s*/, '')}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div style="text-align:right; margin-top:16px;">
+          <button type="button" class="secondary" id="verifyModalCancelBtn">取消</button>
+          ${canProceed ? `<button type="button" class="primary-btn" id="verifyModalContinueBtn" style="width:auto; margin-left:8px; padding:10px 18px;">繼續歸帳</button>` : ''}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#verifyModalCancelBtn').addEventListener('click', () => {
+      modal.remove();
+      resolve(false);
+    });
+    const continueBtn = modal.querySelector('#verifyModalContinueBtn');
+    if (continueBtn) {
+      continueBtn.addEventListener('click', () => {
+        modal.remove();
+        resolve(true);
+      });
+    }
+  });
+}
+
+/**
+ * 勾稽核對主流程：
+ * - 有 ❌ error：Modal 只顯示「取消」，不能繼續
+ * - 只有 ⚠️ warn：Modal 顯示「取消／繼續歸帳」讓使用者自行決定
+ * - 全部 ✓：直接放行，不用彈窗打斷操作
+ */
+async function confirmCrossVerification(voucherId, accountCode) {
+  const { canProceed, notes } = await runVoucherCrossVerification(voucherId, accountCode);
+  if (canProceed && notes.every(n => n.level === 'ok')) return true;
+  return showVerificationModal(notes, canProceed);
+}
 
 /**
  * 1. 主管核准單據 (Approve)
@@ -3149,7 +3382,7 @@ window.openCloseVoucherModal = async (voucherId) => {
             </select>
             <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'closeAccountCode')" style="white-space:nowrap; padding:8px 12px;">✨ AI建議科目</button>
           </div>
-          <div id="aiSuggestExplain_closeAccountCode" style="font-size:12px; color:#64748b; margin:-4px 0 8px;"></div>
+          <div id="aiSuggestExplain_closeAccountCode" class="ai-suggest-box"></div>
 
           <label>付款銀行帳戶：</label>
           <select id="closeBankAccountId" style="width:100%; padding:8px; margin:8px 0;">
@@ -3468,7 +3701,7 @@ window.processPayment = async (voucherId, totalAmount) => {
     await supabase.from('voucher_workflow_logs').insert({
       voucher_id: voucherId,
       actor_id: user?.id,
-      action: '付款結案 (Closed)',
+      action: 'close',
       from_status: 'approved',
       to_status: 'closed',    });
 

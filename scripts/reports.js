@@ -260,7 +260,10 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
 }
 
 export async function buildCashflowStatement(transactions, startDate = null, endDate = null) {
-  try {    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');    const { data: bankAccount, error: bankErr } = await accountQuery.single();
+  try {    // 💡 修正：改用 maybeSingle() 取代 single()。
+    // 當 RLS 或權限使查詢回傳 0 筆時，single() 會回傳 HTTP 406 Not Acceptable，
+    // maybeSingle() 則回傳 { data: null }，避免不必要的錯誤並平滑降級為本地計算。
+    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');    const { data: bankAccount, error: bankErr } = await accountQuery.maybeSingle();
     if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
 
     let query = supabase
