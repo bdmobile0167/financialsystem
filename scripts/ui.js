@@ -2,7 +2,7 @@
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, getEquityAnalysis } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, getEquityAnalysis } from './reports.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
@@ -726,6 +726,54 @@ function applyReportPeriodPreset(preset) {
   renderReports();
 }
 
+let fundraisingSnapshot = { paidInCapital: 0, retainedEarnings: 0, totalEquity: 0, cashBalance: 0, monthlyRevenue: 0, monthlyExpense: 0 };
+
+function formatTwd(n) {
+  return `NT$ ${Math.round(Number(n || 0)).toLocaleString()}`;
+}
+
+function renderFundraisingSimulation() {
+  const resultsEl = document.getElementById('fsResults');
+  if (!resultsEl) return;
+
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setText('fsPaidInCapital', formatTwd(fundraisingSnapshot.paidInCapital));
+  setText('fsRetainedEarnings', formatTwd(fundraisingSnapshot.retainedEarnings));
+  setText('fsTotalEquity', formatTwd(fundraisingSnapshot.totalEquity));
+  setText('fsCashBalance', formatTwd(fundraisingSnapshot.cashBalance));
+
+  const expansionCost = Number(document.getElementById('fsExpansionCost')?.value || 0);
+  const revenueGrowth = Number(document.getElementById('fsRevenueGrowth')?.value || 0);
+  const bufferMonths = Number(document.getElementById('fsBufferMonths')?.value || 0);
+  const preMoney = Number(document.getElementById('fsPreMoney')?.value || 0);
+
+  const currentBurn = Math.max(0, fundraisingSnapshot.monthlyExpense - fundraisingSnapshot.monthlyRevenue);
+  const newExpense = fundraisingSnapshot.monthlyExpense + expansionCost;
+  const newRevenue = fundraisingSnapshot.monthlyRevenue + revenueGrowth;
+  const newBurn = Math.max(0, newExpense - newRevenue);
+
+  const currentRunway = currentBurn > 0 ? fundraisingSnapshot.cashBalance / currentBurn : null;
+  const projectedRunway = newBurn > 0 ? fundraisingSnapshot.cashBalance / newBurn : null;
+
+  const totalNeededCash = bufferMonths * newBurn;
+  const neededFundraising = Math.max(0, Math.ceil(totalNeededCash - fundraisingSnapshot.cashBalance));
+
+  const postMoney = preMoney + neededFundraising;
+  const dilutionPct = postMoney > 0 && neededFundraising > 0 ? (neededFundraising / postMoney) * 100 : 0;
+
+  resultsEl.innerHTML = `
+    <div class="fundraise-result-grid">
+      <div class="fundraise-result"><span>目前月淨燒錢率</span><strong>${formatTwd(currentBurn)} / 月</strong></div>
+      <div class="fundraise-result"><span>目前可撐月數</span><strong>${currentRunway === null ? '現金流為正' : currentRunway.toFixed(1) + ' 個月'}</strong></div>
+      <div class="fundraise-result"><span>擴張後月淨燒錢率</span><strong>${formatTwd(newBurn)} / 月</strong></div>
+      <div class="fundraise-result"><span>擴張後可撐月數</span><strong>${projectedRunway === null ? '現金流為正' : projectedRunway.toFixed(1) + ' 個月'}</strong></div>
+      <div class="fundraise-result highlight"><span>建議募資金額</span><strong>${formatTwd(neededFundraising)}</strong></div>
+      <div class="fundraise-result"><span>投後估值 (Post-money)</span><strong>${formatTwd(postMoney)}</strong></div>
+      <div class="fundraise-result"><span>預估股權稀釋比例</span><strong>${dilutionPct.toFixed(1)}%</strong></div>
+    </div>
+  `;
+}
+
 function switchReportTab(tab) {
   if (!tab) return;
   document.querySelectorAll('.report-tab-btn').forEach(btn => {
@@ -774,6 +822,9 @@ async function renderReports() {
   renderReportLetterhead('trialLetterhead', '試算表');
   renderTable('trialTable', await buildTrialBalance(periodTx, startDate, endDate));
   renderReportSignature('trialSignature');
+
+  fundraisingSnapshot = await buildFundraisingSnapshot(periodTx, startDate, endDate);
+  renderFundraisingSimulation();
 
   const analysis = getEquityAnalysis(periodTx);
   const note = document.getElementById('fundraisingNote');
@@ -1936,9 +1987,14 @@ function initializeEventsInternal() {
     btn.addEventListener('click', () => applyReportPeriodPreset(btn.dataset.preset));
   });
 
-  // 財報頁籤切換（損益表／資產負債表／現金流量表／權益變動表／試算表）
+  // 財報頁籤切換（損益表／資產負債表／現金流量表／權益變動表／試算表／募資精算）
   document.querySelectorAll('.report-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchReportTab(btn.dataset.reportTab));
+  });
+
+  // 募資精算模擬器：任一輸入變動時即時重新計算（不需重新整理或重新查詢資料庫）
+  ['fsExpansionCost', 'fsRevenueGrowth', 'fsBufferMonths', 'fsPreMoney'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', renderFundraisingSimulation);
   });
 
   // 「全部檢視」切換：畫面上一次顯示全部四大報表（列印時無論如何都會顯示全部）

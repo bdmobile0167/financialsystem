@@ -512,6 +512,9 @@
               <button type="button" class="report-tab-btn" data-report-tab="trial">
                 <span class="report-tab-dot" style="background:#475569;"></span>試算表
               </button>
+              <button type="button" class="report-tab-btn" data-report-tab="fundraising">
+                <span class="report-tab-dot" style="background:#9333ea;"></span>募資精算
+              </button>
             </div>
 
             <div class="form-grid no-print">
@@ -564,6 +567,52 @@
                 <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
                 <table id="trialTable"></table>
                 <div id="trialSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="fundraising" style="--accent-color:#9333ea;">
+                <div class="report-card-header"><span class="dot" style="background:#9333ea;"></span><h4>股東權益與募資精算</h4></div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">依資產負債表權益項目與現金水位，試算現金續航力(Runway)與月淨燒錢率，並提供互動式募資缺口與股權稀釋模擬。</p>
+
+                <div class="fundraise-stat-grid">
+                  <div class="fundraise-stat-card indigo">
+                    <span class="stat-label">股本 (Paid-in Capital)</span>
+                    <span class="stat-value" id="fsPaidInCapital">-</span>
+                  </div>
+                  <div class="fundraise-stat-card purple">
+                    <span class="stat-label">保留盈餘</span>
+                    <span class="stat-value" id="fsRetainedEarnings">-</span>
+                  </div>
+                  <div class="fundraise-stat-card slate">
+                    <span class="stat-label">股東權益總額</span>
+                    <span class="stat-value" id="fsTotalEquity">-</span>
+                  </div>
+                  <div class="fundraise-stat-card emerald">
+                    <span class="stat-label">現金水位</span>
+                    <span class="stat-value" id="fsCashBalance">-</span>
+                  </div>
+                </div>
+
+                <div class="fundraise-sim">
+                  <h5>互動式募資缺口模擬器</h5>
+                  <div class="fundraise-sim-inputs no-print">
+                    <div>
+                      <label>預估未來每月新增費用</label>
+                      <input type="number" id="fsExpansionCost" value="150000" />
+                    </div>
+                    <div>
+                      <label>預估未來每月新增營收</label>
+                      <input type="number" id="fsRevenueGrowth" value="100000" />
+                    </div>
+                    <div>
+                      <label>期望資金安全緩衝月數</label>
+                      <input type="number" id="fsBufferMonths" value="12" />
+                    </div>
+                    <div>
+                      <label>預估投前估值 (TWD)</label>
+                      <input type="number" id="fsPreMoney" value="30000000" />
+                    </div>
+                  </div>
+                  <div class="fundraise-sim-results" id="fsResults"></div>
+                </div>
               </div>
             </div>
           </div>

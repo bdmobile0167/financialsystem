@@ -426,6 +426,44 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
   }
 }
 
+/**
+ * 💡 新增：募資精算快照 — 提供「股東權益與募資缺口模擬器」所需的基礎數字
+ * （股本、保留盈餘、股東權益總額、現金水位、月均營收與月均費用）。
+ */
+export async function buildFundraisingSnapshot(transactions = [], startDate = null, endDate = null) {
+  try {
+    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+    const paidInCapital = rows.filter(r => r.code.startsWith('31')).reduce((s, r) => s + (r.creditTotal - r.debitTotal), 0);
+    const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((s, r) => s + (r.creditTotal - r.debitTotal), 0);
+    const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((s, r) => s + (r.debitTotal - r.creditTotal), 0);
+    const retainedEarnings = totalRevenue - totalExpense;
+    const totalEquity = paidInCapital + retainedEarnings;
+    const cashRow = rows.find(r => r.code === '1102');
+    const cashBalance = cashRow ? cashRow.debitTotal - cashRow.creditTotal : 0;
+
+    // 依有交易紀錄涵蓋的月份數，估算月均營收／費用
+    const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;
+    const monthlyRevenue = totalRevenue / months;
+    const monthlyExpense = totalExpense / months;
+
+    return { paidInCapital, retainedEarnings, totalEquity, cashBalance, monthlyRevenue, monthlyExpense, months };
+  } catch (err) {
+    console.warn('募資精算資料讀取失敗，降級使用本地計算:', err.message);
+    const analysis = buildEquityAnalysis(transactions);
+    const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;
+    const monthlyExpense = analysis.cashRunwayMonths ? analysis.cashBalance / analysis.cashRunwayMonths : 0;
+    return {
+      paidInCapital: analysis.openingCapital + analysis.capitalChange,
+      retainedEarnings: analysis.retainedEarnings,
+      totalEquity: analysis.endingEquity,
+      cashBalance: analysis.cashBalance,
+      monthlyRevenue: 0,
+      monthlyExpense,
+      months
+    };
+  }
+}
+
 export function getEquityAnalysis(transactions) {
   return buildEquityAnalysis(transactions);
 }

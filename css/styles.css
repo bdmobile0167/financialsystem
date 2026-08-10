@@ -876,6 +876,92 @@ td button {
   .report-tabbar { overflow-x: auto; flex-wrap: nowrap; }
 }
 
+/* ---- 股東權益與募資精算 ---- */
+.fundraise-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.fundraise-stat-card {
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fundraise-stat-card .stat-label { font-size: 11px; font-weight: 700; }
+.fundraise-stat-card .stat-value { font-size: 19px; font-weight: 800; font-family: 'Courier New', monospace; }
+.fundraise-stat-card.indigo { background: #eef2ff; border-color: #c7d2fe; }
+.fundraise-stat-card.indigo .stat-label { color: #4338ca; }
+.fundraise-stat-card.indigo .stat-value { color: #312e81; }
+.fundraise-stat-card.purple { background: #faf5ff; border-color: #e9d5ff; }
+.fundraise-stat-card.purple .stat-label { color: #7e22ce; }
+.fundraise-stat-card.purple .stat-value { color: #581c87; }
+.fundraise-stat-card.slate { background: #f8fafc; border-color: #e2e8f0; }
+.fundraise-stat-card.slate .stat-label { color: #475569; }
+.fundraise-stat-card.slate .stat-value { color: #0f172a; }
+.fundraise-stat-card.emerald { background: #ecfdf5; border-color: #a7f3d0; }
+.fundraise-stat-card.emerald .stat-label { color: #047857; }
+.fundraise-stat-card.emerald .stat-value { color: #064e3b; }
+
+.fundraise-sim {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.fundraise-sim h5 { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--text); }
+.fundraise-sim-inputs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.fundraise-sim-inputs label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+.fundraise-sim-inputs input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+}
+.fundraise-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.fundraise-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fundraise-result span { font-size: 11px; color: var(--muted); font-weight: 600; }
+.fundraise-result strong { font-size: 14px; color: var(--text); font-family: 'Courier New', monospace; }
+.fundraise-result.highlight {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-color: transparent;
+}
+.fundraise-result.highlight span { color: rgba(255,255,255,0.8); }
+.fundraise-result.highlight strong { color: #fff; font-size: 16px; }
+
+@media (max-width: 900px) {
+  .fundraise-stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .fundraise-sim-inputs { grid-template-columns: repeat(2, 1fr); }
+  .fundraise-result-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+  .fundraise-stat-grid { grid-template-columns: 1fr; }
+  .fundraise-sim-inputs { grid-template-columns: 1fr; }
+  .fundraise-result-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
   .approval-stepper { flex-wrap: wrap; gap: 10px 0; }
   .approval-stepper li::before { display: none; }
