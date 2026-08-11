@@ -323,19 +323,20 @@ function showMessage(text, isError = false) {
 // 1. 將這兩個函式獨立移到外面（全域範圍）
 function updateAdminNavVisibility() {
   const btn = document.getElementById('adminUsersNavBtn');
-  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
+  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'inline-flex' : 'none';
 }
 
 function applyRoleBasedTabVisibility() {
   const role = state.currentUser?.role;
   const financialOnly = ['accounting', 'admin'];
-  const reportsBtn = document.querySelector('[data-tab="reports"]');
-  const equityBtn = document.querySelector('[data-tab="equity"]');
-  const auditTrailBtn = document.querySelector('[data-tab="auditTrail"]');
-  if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (auditTrailBtn) auditTrailBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  ['reports', 'equity', 'auditTrail', 'transactions', 'bankAccounts', 'bankReconcile', 'voucherCenter'].forEach(tab => {
+    document.querySelectorAll(`[data-tab="${tab}"]`).forEach(el => {
+      const isTopNav = el.classList.contains('gb-tab-btn');
+      el.style.display = financialOnly.includes(role) ? (isTopNav ? 'inline-flex' : '') : 'none';
+    });
+  });
 }
+
 
 function render() {
   // 只給 Admin 顯示的區塊
@@ -1534,10 +1535,89 @@ function renderTabs() {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.style.display = 'none';
   });
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === state.activeTab));
+  // 頂部導覽（gb-tab-btn）與行動版側欄（gb-mobile-nav button）同步亮起
+  document.querySelectorAll('.gb-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+  });
+  document.querySelectorAll('.gb-mobile-nav button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+  });
   const currentPanel = document.getElementById(state.activeTab);
   if (currentPanel) currentPanel.style.display = 'block';
 }
+
+// 從頂部導覽同步生成行動版側欄選單
+function buildMobileNav() {
+  const container = document.getElementById('mobileNav');
+  if (!container) return;
+  const labels = {};
+  document.querySelectorAll('.gb-nav .gb-tab-btn').forEach(btn => {
+    labels[btn.dataset.tab] = btn.textContent.trim().replace(/\s*\d+$/, '');
+  });
+  container.innerHTML = Object.entries(labels)
+    .map(([tab, label]) => `<button class="gb-mobile-nav-item" data-tab="${tab}">${label}</button>`)
+    .join('') || '<p class="muted">尚無功能</p>';
+  container.querySelectorAll('.gb-mobile-nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activateTab(btn.dataset.tab);
+      document.getElementById('sidebar')?.classList.remove('open');
+      document.getElementById('sidebarOverlay')?.classList.remove('open');
+    });
+  });
+}
+
+// 統一切換頁籤：更新狀態、渲染面板、並依頁籤載入對應資料
+async function activateTab(tab) {
+  state.activeTab = tab;
+  renderTabs();
+  document.querySelectorAll('.gb-menu-toggle, #menuToggleBtn').forEach(el => {
+    if (el) el.classList.remove('open');
+  });
+
+  if (tab === 'bankReconcile') {
+    populateStatementBankAccountSelect();
+  }
+  if (tab === 'voucherWorkflow') {
+    populateVoucherFormOptions();
+    renderVoucherWorkflowList();
+  }
+  if (tab === 'adminUsers') {
+    populateInviteDepartmentSelect();
+    renderAdminUserTable();
+    renderAdminDepartmentList();
+  }
+  if (tab === 'budget') {
+    renderBudget();
+  }
+  if (tab === 'reports') {
+    setDefaultReportPeriod();
+    renderReports();
+  }
+  if (tab === 'auditTrail') {
+    renderAuditTrail();
+  }
+  if (tab === 'dashboard') {
+    renderDashboard();
+  }
+  if (tab === 'voucherCenter') {
+    renderVoucherCenter();
+  }
+  if (tab === 'transactions') {
+    renderTransactionTable();
+  }
+  if (tab === 'bankAccounts') {
+    renderBankAccounts();
+  }
+  if (tab === 'equity') {
+    renderEquityTab();
+  }
+  if (tab === 'settings') {
+    fillCompanyInfoForm();
+    const emailInput = document.getElementById('passwordUserEmail');
+    if (emailInput && state.currentUser) emailInput.value = state.currentUser.username || '';
+  }
+}
+
 
 function showApp() {
   if (!state.currentUser) {
@@ -1968,46 +2048,29 @@ function initializeEventsInternal() {
     e.target.value = '';
   });
 
-  // 在 initializeEventsInternal() 裡面尋找這段：
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab;
+  // 🔥 頂部橫向導覽（gb-tab-btn）— 取代原本的 .tab-btn 側邊欄按鈕
+  document.querySelectorAll('.gb-tab-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tab = btn.dataset.tab;
 
-      if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'bankReconcile' || tab === 'voucherCenter') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
 
-      state.activeTab = tab;
-      renderTabs();
+      await activateTab(tab);
       closeSidebar();
-
-      // ======== 把呼叫補在這裡 ========
-      if (tab === 'bankReconcile') {
-        populateStatementBankAccountSelect();
-      }
-
-      if (tab === 'voucherWorkflow') {
-        populateVoucherFormOptions();
-        renderVoucherWorkflowList();
-      }
-      if (tab === 'adminUsers') {
-        populateInviteDepartmentSelect();
-        renderAdminUserTable();
-        renderAdminDepartmentList();
-      }
-      if (tab === 'budget') {
-        renderBudget();
-      }
-      if (btn.dataset.tab === 'reports') {
-        setDefaultReportPeriod();
-        renderReports();
-      }
-      if (tab === 'auditTrail') {
-        renderAuditTrail();
-      }
     });
   });
+
+  // 🔥 行動版側欄按鈕
+  document.querySelectorAll('.gb-mobile-nav-item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await activateTab(btn.dataset.tab);
+      closeSidebar();
+    });
+  });
+
 
   safeListener('auditTrailSearchInput', 'input', () => renderAuditTrail());
   safeListener('auditTrailActionFilter', 'change', () => renderAuditTrail());
