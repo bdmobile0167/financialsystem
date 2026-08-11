@@ -1092,6 +1092,54 @@ td button {
 .adj-balance-ok { background: #dcfce7; color: #166534; }
 .adj-balance-bad { background: #fee2e2; color: #991b1b; }
 
+/* ---- 財報附註 ---- */
+.note-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.note-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.note-card-head .note-tag {
+  background: #9333ea;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.note-card-head h5 { margin: 0; font-size: 13px; font-weight: 700; }
+.note-card-value {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: #6b21a8;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.note-card p { margin: 0; font-size: 12.5px; color: #475569; line-height: 1.6; white-space: pre-wrap; }
+.note-card textarea {
+  width: 100%;
+  min-height: 70px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.note-edit-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.note-edit-btn:hover { background: var(--surface-strong); }
+
 @media (max-width: 900px) {
   .approval-stepper { flex-wrap: wrap; gap: 10px 0; }
   .approval-stepper li::before { display: none; }

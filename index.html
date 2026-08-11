@@ -521,6 +521,9 @@
               <button type="button" class="report-tab-btn" data-report-tab="adjustments">
                 <span class="report-tab-dot" style="background:#4f46e5;"></span>平行帳簿
               </button>
+              <button type="button" class="report-tab-btn" data-report-tab="notes">
+                <span class="report-tab-dot" style="background:#9333ea;"></span>財報附註
+              </button>
             </div>
 
             <div class="form-grid no-print">
@@ -718,6 +721,19 @@
                   <button type="button" id="addIfrsAdjustmentBtn" class="primary-btn" style="width:auto;">＋ 新增 IFRS 調整分錄</button>
                 </div>
                 <div id="ifrsAdjustmentsTableWrap">
+                  <p class="muted">載入中...</p>
+                </div>
+              </div>
+              <div class="report-card" data-report-tab="notes" style="--accent-color:#9333ea;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#9333ea;"></span>
+                  <h4>IFRS 財務報表附註揭露 &amp; 稽核數據包</h4>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">符合 IFRS 揭露規範之標準財報附註（可自行編輯維護），並支援一鍵匯出完整審計數據包供會計師查核。</p>
+                <div class="button-row no-print" style="margin-bottom:14px;">
+                  <button type="button" id="exportAuditPackageBtn" class="primary-btn" style="width:auto; background:linear-gradient(135deg,#9333ea,#7c3aed);">📦 匯出 CPA 完整審計數據包（JSON）</button>
+                </div>
+                <div id="financialNotesWrap">
                   <p class="muted">載入中...</p>
                 </div>
               </div>

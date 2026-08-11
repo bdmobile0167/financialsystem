@@ -493,6 +493,26 @@ export async function buildFundraisingSnapshot(transactions = [], startDate = nu
   }
 }
 
+/**
+ * 依科目代碼取得目前餘額（debitTotal - creditTotal），供財報附註等需要
+ * 帶入真實數字但不需要完整試算表格式的場景使用。
+ */
+export async function fetchAccountBalancesByCode(codes = [], startDate = null, endDate = null) {
+  try {
+    const { rows } = await fetchSupabaseTrialBalanceWithIds(startDate, endDate);
+    const map = {};
+    rows.forEach(r => { map[r.code] = Number(r.debitTotal || 0) - Number(r.creditTotal || 0); });
+    const result = {};
+    codes.forEach(c => { result[c] = map[c] || 0; });
+    return result;
+  } catch (err) {
+    console.warn('讀取科目餘額失敗:', err.message);
+    const zero = {};
+    codes.forEach(c => { zero[c] = 0; });
+    return zero;
+  }
+}
+
 export function getEquityAnalysis(transactions) {
   return buildEquityAnalysis(transactions);
 }

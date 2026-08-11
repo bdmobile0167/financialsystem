@@ -2,8 +2,9 @@
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, getEquityAnalysis } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis } from './reports.js';
 import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
+import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
@@ -961,6 +962,103 @@ async function openIfrsAdjustmentModal() {
   });
 }
 
+let latestReportSnapshot = null; // 供「匯出 CPA 完整審計數據包」使用，於 renderReports() 內更新
+
+async function renderFinancialNotes() {
+  const wrap = document.getElementById('financialNotesWrap');
+  if (!wrap) return;
+  try {
+    const notes = await fetchFinancialReportNotes();
+    const balances = await fetchAccountBalancesByCode(['1101', '1102', '1141', '1601', '1602']);
+    const dataDrivenValue = {
+      note4: `NT$ ${(balances['1101'] + balances['1102']).toLocaleString()}`,
+      note5: `NT$ ${balances['1141'].toLocaleString()}（尚未建立單獨的 IFRS 9 預期信用損失備抵科目）`,
+      note6: `NT$ ${(balances['1601'] + balances['1602']).toLocaleString()}（固定資產原始成本扣除累計折舊後淨額）`
+    };
+
+    wrap.innerHTML = notes.map(note => `
+      <div class="note-card" data-note-key="${note.note_key}">
+        <div class="note-card-head">
+          <span class="note-tag">${note.note_label}</span>
+          <h5>${note.title}</h5>
+          <button type="button" class="note-edit-btn no-print" data-key="${note.note_key}">編輯</button>
+        </div>
+        ${note.is_data_driven ? `<div class="note-card-value">${dataDrivenValue[note.note_key] || ''}</div>` : ''}
+        <div class="note-view">
+          <p>${(note.content || '（尚未填寫，請點選「編輯」補上說明）').replace(/</g, '&lt;')}</p>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    wrap.innerHTML = `<p style="color:#b91c1c;">讀取失敗：${err.message}</p>`;
+  }
+}
+
+function bindFinancialNoteEditButtons() {
+  document.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.note-edit-btn');
+    if (!editBtn) return;
+    const card = editBtn.closest('.note-card');
+    const key = editBtn.dataset.key;
+    const viewEl = card.querySelector('.note-view');
+
+    if (editBtn.textContent === '編輯') {
+      const currentText = viewEl.querySelector('p').textContent.replace('（尚未填寫，請點選「編輯」補上說明）', '');
+      viewEl.innerHTML = `<textarea>${currentText}</textarea>`;
+      editBtn.textContent = '儲存';
+    } else {
+      const textarea = viewEl.querySelector('textarea');
+      const newContent = textarea.value.trim();
+      editBtn.disabled = true;
+      try {
+        await updateFinancialReportNote(key, newContent);
+        viewEl.innerHTML = `<p>${(newContent || '（尚未填寫，請點選「編輯」補上說明）').replace(/</g, '&lt;')}</p>`;
+        editBtn.textContent = '編輯';
+      } catch (err) {
+        alert('儲存失敗：' + err.message);
+      }
+      editBtn.disabled = false;
+    }
+  });
+}
+
+function downloadJsonFile(filename, dataObj) {
+  const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportAuditPackage() {
+  const btn = document.getElementById('exportAuditPackageBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '匯出中...'; }
+  try {
+    const notes = await fetchFinancialReportNotes();
+    const adjustments = await fetchIfrsAdjustments();
+    const pkg = {
+      generatedAt: new Date().toISOString(),
+      reportPeriod: {
+        start: document.getElementById('reportPeriodStart')?.value || null,
+        end: document.getElementById('reportPeriodEnd')?.value || null
+      },
+      financialStatements: latestReportSnapshot,
+      ifrsAdjustmentsLayer: adjustments,
+      notesToFinancialStatements: notes
+    };
+    downloadJsonFile(`CPA_審計數據包_${new Date().toISOString().slice(0, 10)}.json`, pkg);
+    showMessage('已匯出審計數據包。');
+  } catch (err) {
+    alert('匯出失敗：' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📦 匯出 CPA 完整審計數據包（JSON）'; }
+  }
+}
+
 function switchReportTab(tab) {
   if (!tab) return;
   document.querySelectorAll('.report-tab-btn').forEach(btn => {
@@ -991,29 +1089,37 @@ async function renderReports() {
   }
 
   renderReportLetterhead('incomeLetterhead', '損益表');
-  renderTable('incomeTable', await buildIncomeStatement(periodTx, startDate, endDate));
+  const incomeStatement = await buildIncomeStatement(periodTx, startDate, endDate);
+  renderTable('incomeTable', incomeStatement);
   renderReportSignature('incomeSignature');
 
   renderReportLetterhead('balanceLetterhead', '資產負債表');
-  renderTable('balanceTable', await buildBalanceSheet(periodTx, startDate, endDate));
+  const balanceSheet = await buildBalanceSheet(periodTx, startDate, endDate);
+  renderTable('balanceTable', balanceSheet);
   renderReportSignature('balanceSignature');
 
   renderReportLetterhead('cashflowLetterhead', '現金流量表');
-  renderTable('cashflowTable', await buildCashflowStatement(periodTx, startDate, endDate));
+  const cashflowStatement = await buildCashflowStatement(periodTx, startDate, endDate);
+  renderTable('cashflowTable', cashflowStatement);
   renderReportSignature('cashflowSignature');
 
   renderReportLetterhead('equityLetterhead', '權益變動表');
-  renderTable('equityTable', await buildEquityStatement(periodTx, startDate, endDate));
+  const equityStatement = await buildEquityStatement(periodTx, startDate, endDate);
+  renderTable('equityTable', equityStatement);
   renderReportSignature('equitySignature');
 
   renderReportLetterhead('trialLetterhead', '試算表');
   const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
-  renderTable('trialTable', await buildTrialBalance(periodTx, startDate, endDate, includeAdjustments));
+  const trialBalance = await buildTrialBalance(periodTx, startDate, endDate, includeAdjustments);
+  renderTable('trialTable', trialBalance);
   renderReportSignature('trialSignature');
+
+  latestReportSnapshot = { incomeStatement, balanceSheet, cashflowStatement, equityStatement, trialBalance };
 
   fundraisingSnapshot = await buildFundraisingSnapshot(periodTx, startDate, endDate);
   renderFundraisingSimulation();
   renderIfrsAdjustments();
+  renderFinancialNotes();
 
   const analysis = getEquityAnalysis(periodTx);
   const note = document.getElementById('fundraisingNote');
@@ -2188,6 +2294,10 @@ function initializeEventsInternal() {
 
   // 平行帳簿：新增 IFRS 調整分錄
   safeListener('addIfrsAdjustmentBtn', 'click', () => openIfrsAdjustmentModal());
+
+  // 財報附註：編輯儲存（事件委派，只需綁定一次）
+  bindFinancialNoteEditButtons();
+  safeListener('exportAuditPackageBtn', 'click', () => exportAuditPackage());
 
   // 試算表：切換是否納入已核准的 IFRS 調整分錄
   safeListener('includeIfrsAdjustmentsToggle', 'change', () => renderReports());
