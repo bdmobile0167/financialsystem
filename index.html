@@ -515,6 +515,12 @@
               <button type="button" class="report-tab-btn" data-report-tab="fundraising">
                 <span class="report-tab-dot" style="background:#9333ea;"></span>募資精算
               </button>
+              <button type="button" class="report-tab-btn" data-report-tab="ifrs-rules">
+                <span class="report-tab-dot" style="background:#2563eb;"></span>IFRS 準則引擎
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="adjustments">
+                <span class="report-tab-dot" style="background:#4f46e5;"></span>平行帳簿
+              </button>
             </div>
 
             <div class="form-grid no-print">
@@ -565,6 +571,10 @@
               <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
                 <div id="trialLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
+                <label class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
+                  <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
+                  顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
+                </label>
                 <table id="trialTable"></table>
                 <div id="trialSignature" class="report-signature-row"></div>
               </div>
@@ -612,6 +622,103 @@
                     </div>
                   </div>
                   <div class="fundraise-sim-results" id="fsResults"></div>
+                </div>
+              </div>
+              <div class="report-card" data-report-tab="ifrs-rules" style="--accent-color:#2563eb;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#2563eb;"></span>
+                  <h4>IFRS 國際財務報導準則規則引擎</h4>
+                  <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;">2026 Accounting Standard Engine</span>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 16px;">系統依據國際會計準則規範進行交易判定、收入分攤、使用權資產折舊與減損評估之參考說明。</p>
+
+                <div class="ifrs-rules-grid">
+                  <div class="ifrs-rule-card ifrs-rule-blue">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 15 客戶合約之收入</span>
+                      <span class="ifrs-badge ifrs-badge-blue-solid">5-Step Model</span>
+                    </div>
+                    <p>規定收入認列 5 步驟模型：辨認客戶合約 ➔ 辨認履約義務 ➔ 決定交易價格 ➔ 分攤交易價格 ➔ 於滿足履約義務時認列收入。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 專案多階段合約分段認列（Over Time / Point in Time）</p>
+                      <p>✔ 自動生成【合約資產 Contract Asset】與【合約負債】</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-indigo">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 16 租賃（Leases）</span>
+                      <span class="ifrs-badge ifrs-badge-indigo-solid">ROU Model</span>
+                    </div>
+                    <p>承租人表內化處理，將所有營運租賃資產化為【使用權資產 (ROU Asset)】並折現認列【租賃負債 (Lease Liability)】。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 折現率 Discount Rate 計算租賃負債現值</p>
+                      <p>✔ 按月提列使用權資產折舊與租賃利息費用</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-emerald">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 9 金融工具</span>
+                      <span class="ifrs-badge ifrs-badge-emerald-solid">ECL Model</span>
+                    </div>
+                    <p>引入「預期信用損失 (Expected Credit Loss, ECL)」模型，按 3-Stage 評估應收帳款違約風險並提列備抵損失。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 階段 1：12 個月 ECL 矩陣試算（Stage 1）</p>
+                      <p>✔ 階段 2/3：存續期間 ECL 違約減損評價（Stage 2/3）</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-purple">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 18 財務報表表達與揭露</span>
+                      <span class="ifrs-badge ifrs-badge-purple-solid">Category Standard</span>
+                    </div>
+                    <p>將損益表明確分類為【營運 Operating】、【投資 Investing】與【籌資 Financing】三類損益，取代舊版單一分類。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 定義營業利益 (Operating Income) 統一計算標準</p>
+                      <p>✔ 規範管理層績效衡量指標 (MPMs) 附註揭露</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-amber">
+                    <div class="ifrs-rule-head">
+                      <span>IAS 21 匯率變動之影響</span>
+                      <span class="ifrs-badge ifrs-badge-amber-solid">FX Conversion</span>
+                    </div>
+                    <p>劃分【機能貨幣 (Functional Currency)】與【表達貨幣】，外幣貨幣性項目期末按資產負債表日即期匯率重估損益。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 即時擷取 USD/EUR/JPY 匯率自動轉算 TWD</p>
+                      <p>✔ 期末認列未實現兌換損益（Unrealized FX Gain/Loss）</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-slate">
+                    <div class="ifrs-rule-head">
+                      <span>IAS 16 不動產廠房設備 &amp; IAS 12 所得稅</span>
+                      <span class="ifrs-badge ifrs-badge-slate-solid">PPE &amp; Tax</span>
+                    </div>
+                    <p>按重大組成部分（Component Depreciation）提列折舊；按會計帳面與稅務基數差異認列【遞延所得稅資產/負債】。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 組成部分單獨折舊與殘值耐用年數定期檢視</p>
+                      <p>✔ 暫時性差異遞延所得稅（Deferred Tax）彙算</p>
+                    </div>
+                  </div>
+                </div>
+                <p class="muted" style="font-size:11px; margin-top:14px;">※ 本頁為準則規範參考說明，實際分錄仍依系統中已入帳之交易資料為準；若需將特定交易依上述準則調整入帳，請於「憑證」流程中註記對應科目。</p>
+              </div>
+              <div class="report-card" data-report-tab="adjustments" style="--accent-color:#4f46e5;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#4f46e5;"></span>
+                  <h4>平行帳簿與 IFRS 調整分錄層</h4>
+                  <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;" id="adjustmentsCountBadge">共 0 筆</span>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">原始總帳(Local GAAP)保留日常營運分錄；本頁獨立的「IFRS 調整分錄層」核准後，與原始總帳合併即為 IFRS 財報數字。已核准分錄不可修改，如需更正請開立沖銷分錄。</p>
+                <div class="button-row no-print" style="margin-bottom:12px;">
+                  <button type="button" id="addIfrsAdjustmentBtn" class="primary-btn" style="width:auto;">＋ 新增 IFRS 調整分錄</button>
+                </div>
+                <div id="ifrsAdjustmentsTableWrap">
+                  <p class="muted">載入中...</p>
                 </div>
               </div>
             </div>

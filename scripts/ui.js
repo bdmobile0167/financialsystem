@@ -3,6 +3,7 @@ import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSum
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, getEquityAnalysis } from './reports.js';
+import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
@@ -774,6 +775,192 @@ function renderFundraisingSimulation() {
   `;
 }
 
+function adjStatusChip(status) {
+  const map = {
+    draft: ['adj-status-draft', '草稿'],
+    approved: ['adj-status-approved', '已核准'],
+    reversed: ['adj-status-reversed', '已沖銷']
+  };
+  const [cls, label] = map[status] || ['adj-status-draft', status];
+  return `<span class="adj-status-chip ${cls}">${label}</span>`;
+}
+
+async function renderIfrsAdjustments() {
+  const wrap = document.getElementById('ifrsAdjustmentsTableWrap');
+  if (!wrap) return;
+  try {
+    const adjustments = await fetchIfrsAdjustments();
+    const badge = document.getElementById('adjustmentsCountBadge');
+    if (badge) badge.textContent = `共 ${adjustments.length} 筆`;
+
+    if (adjustments.length === 0) {
+      wrap.innerHTML = `<p class="muted">目前尚無 IFRS 調整分錄。</p>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <table class="adj-table">
+        <thead>
+          <tr>
+            <th>單號</th><th>準則規範</th><th>調整原因</th><th>日期</th>
+            <th>借方分錄</th><th>貸方分錄</th><th>狀態</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${adjustments.map(adj => {
+            const debitLines = (adj.ifrs_adjustment_lines || []).filter(l => Number(l.debit_amount) > 0);
+            const creditLines = (adj.ifrs_adjustment_lines || []).filter(l => Number(l.credit_amount) > 0);
+            const fmtLines = (lines, key) => lines.map(l =>
+              `${l.account?.code || ''} ${l.account?.name || ''}<br/><span class="mono">${formatTwd(l[key])}</span>`
+            ).join('<br/>');
+
+            let actions = '';
+            if (adj.status === 'draft') {
+              actions = `
+                <button type="button" class="secondary approve-adj-btn" data-id="${adj.id}" style="padding:4px 8px; font-size:11px;">核准</button>
+                <button type="button" class="secondary delete-adj-btn" data-id="${adj.id}" style="padding:4px 8px; font-size:11px; color:#b91c1c;">刪除草稿</button>
+              `;
+            } else if (adj.status === 'approved') {
+              actions = `<button type="button" class="secondary reverse-adj-btn" data-id="${adj.id}" style="padding:4px 8px; font-size:11px;">沖銷</button>`;
+            } else {
+              actions = `<span class="muted" style="font-size:11px;">${adj.reversal_reason || ''}</span>`;
+            }
+
+            return `
+              <tr>
+                <td class="mono">${adj.adjustment_no || '-'}</td>
+                <td>${adj.standard}</td>
+                <td>${adj.reason}</td>
+                <td class="mono">${adj.entry_date}</td>
+                <td>${fmtLines(debitLines, 'debit_amount')}</td>
+                <td>${fmtLines(creditLines, 'credit_amount')}</td>
+                <td>${adjStatusChip(adj.status)}</td>
+                <td>${actions}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    wrap.innerHTML = `<p style="color:#b91c1c;">讀取失敗：${err.message}</p>`;
+  }
+}
+
+let adjLineCounter = 0;
+
+function adjLineRowHtml(accounts) {
+  adjLineCounter++;
+  const rid = `adjline_${adjLineCounter}`;
+  return `
+    <div class="adj-line-row" id="${rid}">
+      <select class="adj-line-account">
+        <option value="">選擇科目...</option>
+        ${accounts.map(a => `<option value="${a.id}">${a.code} ${a.name}</option>`).join('')}
+      </select>
+      <input type="number" class="adj-line-debit" placeholder="借方金額" min="0" step="0.01" />
+      <input type="number" class="adj-line-credit" placeholder="貸方金額" min="0" step="0.01" />
+      <input type="text" class="adj-line-memo" placeholder="備註（選填）" />
+      <button type="button" class="adj-remove-line-btn" onclick="document.getElementById('${rid}').remove(); updateAdjBalanceIndicator();">✕</button>
+    </div>
+  `;
+}
+
+window.updateAdjBalanceIndicator = function updateAdjBalanceIndicator() {
+  const indicator = document.getElementById('adjBalanceIndicator');
+  if (!indicator) return;
+  let totalDebit = 0, totalCredit = 0;
+  document.querySelectorAll('.adj-line-row').forEach(row => {
+    totalDebit += Number(row.querySelector('.adj-line-debit')?.value || 0);
+    totalCredit += Number(row.querySelector('.adj-line-credit')?.value || 0);
+  });
+  const balanced = totalDebit === totalCredit && totalDebit > 0;
+  indicator.className = `adj-balance-indicator ${balanced ? 'adj-balance-ok' : 'adj-balance-bad'}`;
+  indicator.textContent = `借方合計 ${formatTwd(totalDebit)} ／ 貸方合計 ${formatTwd(totalCredit)}${balanced ? '　✔ 借貸平衡' : '　✕ 尚未平衡'}`;
+};
+
+async function openIfrsAdjustmentModal() {
+  const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+  adjLineCounter = 0;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; display:flex; align-items:center; justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:white; padding:24px; border-radius:14px; width:92%; max-width:760px; max-height:90vh; overflow:auto;">
+      <h3 style="margin-top:0;">新增 IFRS 調整分錄</h3>
+      <div class="form-grid">
+        <div>
+          <label>準則依據</label>
+          <input type="text" id="adjStandard" placeholder="例：IFRS 16 租賃準則" />
+        </div>
+        <div>
+          <label>調整分錄日期</label>
+          <input type="date" id="adjEntryDate" value="${new Date().toISOString().slice(0, 10)}" />
+        </div>
+      </div>
+      <label style="margin-top:10px; display:block;">調整原因說明</label>
+      <textarea id="adjReason" style="width:100%; height:60px; padding:8px;" placeholder="說明本次調整依據與原因..."></textarea>
+
+      <h4 style="margin-top:18px; margin-bottom:8px;">分錄明細</h4>
+      <div id="adjLinesContainer">
+        ${adjLineRowHtml(accounts)}
+        ${adjLineRowHtml(accounts)}
+      </div>
+      <button type="button" class="secondary" id="addAdjLineBtn" style="width:auto; margin-top:4px;">＋ 新增一行</button>
+      <div id="adjBalanceIndicator" class="adj-balance-indicator adj-balance-bad">借方合計 NT$ 0 ／ 貸方合計 NT$ 0　✕ 尚未平衡</div>
+
+      <div style="margin-top:20px; text-align:right;">
+        <button type="button" id="submitAdjBtn" class="primary-btn">建立草稿</button>
+        <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()" style="margin-left:10px;">取消</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.querySelector('#addAdjLineBtn').addEventListener('click', () => {
+    document.getElementById('adjLinesContainer').insertAdjacentHTML('beforeend', adjLineRowHtml(accounts));
+  });
+  modal.addEventListener('input', (e) => {
+    if (e.target.classList.contains('adj-line-debit') || e.target.classList.contains('adj-line-credit')) {
+      window.updateAdjBalanceIndicator();
+    }
+  });
+
+  modal.querySelector('#submitAdjBtn').addEventListener('click', async () => {
+    const standard = document.getElementById('adjStandard').value.trim();
+    const reason = document.getElementById('adjReason').value.trim();
+    const entryDate = document.getElementById('adjEntryDate').value;
+    if (!standard) { alert('請填寫準則依據'); return; }
+    if (!reason) { alert('請填寫調整原因'); return; }
+
+    const lines = [];
+    document.querySelectorAll('.adj-line-row').forEach(row => {
+      const account_id = row.querySelector('.adj-line-account').value;
+      const debit_amount = Number(row.querySelector('.adj-line-debit').value || 0);
+      const credit_amount = Number(row.querySelector('.adj-line-credit').value || 0);
+      const memo = row.querySelector('.adj-line-memo').value.trim();
+      if (account_id && (debit_amount > 0 || credit_amount > 0)) {
+        lines.push({ account_id, debit_amount, credit_amount, memo });
+      }
+    });
+
+    const btn = document.getElementById('submitAdjBtn');
+    btn.disabled = true;
+    btn.textContent = '處理中...';
+    try {
+      await createIfrsAdjustment({ standard, reason, entryDate, lines });
+      modal.remove();
+      showMessage('已建立調整分錄草稿，請於列表中核准後才會生效。');
+      renderIfrsAdjustments();
+    } catch (err) {
+      alert('建立失敗：' + err.message);
+      btn.disabled = false;
+      btn.textContent = '建立草稿';
+    }
+  });
+}
+
 function switchReportTab(tab) {
   if (!tab) return;
   document.querySelectorAll('.report-tab-btn').forEach(btn => {
@@ -820,11 +1007,13 @@ async function renderReports() {
   renderReportSignature('equitySignature');
 
   renderReportLetterhead('trialLetterhead', '試算表');
-  renderTable('trialTable', await buildTrialBalance(periodTx, startDate, endDate));
+  const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
+  renderTable('trialTable', await buildTrialBalance(periodTx, startDate, endDate, includeAdjustments));
   renderReportSignature('trialSignature');
 
   fundraisingSnapshot = await buildFundraisingSnapshot(periodTx, startDate, endDate);
   renderFundraisingSimulation();
+  renderIfrsAdjustments();
 
   const analysis = getEquityAnalysis(periodTx);
   const note = document.getElementById('fundraisingNote');
@@ -1995,6 +2184,48 @@ function initializeEventsInternal() {
   // 募資精算模擬器：任一輸入變動時即時重新計算（不需重新整理或重新查詢資料庫）
   ['fsExpansionCost', 'fsRevenueGrowth', 'fsBufferMonths', 'fsPreMoney'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', renderFundraisingSimulation);
+  });
+
+  // 平行帳簿：新增 IFRS 調整分錄
+  safeListener('addIfrsAdjustmentBtn', 'click', () => openIfrsAdjustmentModal());
+
+  // 試算表：切換是否納入已核准的 IFRS 調整分錄
+  safeListener('includeIfrsAdjustmentsToggle', 'change', () => renderReports());
+
+  // 平行帳簿：核准／沖銷／刪除草稿（事件委派，因為列表是動態產生的）
+  document.addEventListener('click', async (e) => {
+    const approveBtn = e.target.closest('.approve-adj-btn');
+    const reverseBtn = e.target.closest('.reverse-adj-btn');
+    const deleteBtn = e.target.closest('.delete-adj-btn');
+    if (!approveBtn && !reverseBtn && !deleteBtn) return;
+
+    const btn = approveBtn || reverseBtn || deleteBtn;
+    if (btn.disabled) return;
+    const id = btn.dataset.id;
+
+    try {
+      if (approveBtn) {
+        if (!confirm('確定要核准此筆 IFRS 調整分錄嗎？核准後將無法修改，只能開立沖銷分錄。')) return;
+        btn.disabled = true;
+        await approveIfrsAdjustment(id);
+        showMessage('已核准，IFRS 調整後試算表將自動納入此筆分錄。');
+      } else if (reverseBtn) {
+        const reason = prompt('請輸入沖銷原因：');
+        if (!reason || !reason.trim()) return;
+        btn.disabled = true;
+        await reverseIfrsAdjustment(id, reason);
+        showMessage('已沖銷此筆調整分錄。');
+      } else if (deleteBtn) {
+        if (!confirm('確定要刪除此草稿嗎？（已核准的分錄無法刪除）')) return;
+        btn.disabled = true;
+        await deleteIfrsAdjustmentDraft(id);
+        showMessage('已刪除草稿。');
+      }
+      renderIfrsAdjustments();
+    } catch (err) {
+      alert('操作失敗：' + err.message);
+      btn.disabled = false;
+    }
   });
 
   // 「全部檢視」切換：畫面上一次顯示全部四大報表（列印時無論如何都會顯示全部）

@@ -38,6 +38,17 @@ async function fetchSupabaseTrialBalance(startDate, endDate) {  let query = supa
   return { rows };
 }
 
+// 💡 與 fetchSupabaseTrialBalance 相同，但同時回傳 code -> account_id 對照表，
+// 供 buildTrialBalance 合併「平行帳簿 IFRS 調整分錄」時查找對應科目使用。
+async function fetchSupabaseTrialBalanceWithIds(startDate, endDate) {
+  const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+  const { data: accounts, error } = await supabase.from('accounts').select('id, code');
+  if (error) throw error;
+  const accountIdByCode = {};
+  accounts.forEach(a => { accountIdByCode[a.code] = a.id; });
+  return { rows, accountIdByCode };
+}
+
 export async function buildJournal(transactions = [], startDate = null, endDate = null) {
   try {
     let query = supabase
@@ -378,11 +389,29 @@ export async function checkBudgetSufficiency(projectCost = 0) {
 
 /**
  * 💡 新增：試算表（Trial Balance）— 依科目列出借方/貸方合計與餘額。
+ * includeAdjustments=true 時，會將「平行帳簿」中已核准的 IFRS 調整分錄一併加總，
+ * 呈現「Local GAAP 原始總帳 + IFRS 調整分錄層」合併後的數字。
  */
-export async function buildTrialBalance(transactions = [], startDate = null, endDate = null) {
+export async function buildTrialBalance(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
+  let adjustmentTotals = {};
+  if (includeAdjustments) {
+    try {
+      const { fetchApprovedAdjustmentTotals } = await import('../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js');
+      adjustmentTotals = await fetchApprovedAdjustmentTotals(startDate, endDate);
+    } catch (err) {
+      console.warn('讀取 IFRS 調整分錄失敗，僅顯示原始總帳數字:', err.message);
+    }
+  }
+
   try {
-    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const sorted = [...rows].sort((a, b) => String(a.code).localeCompare(String(b.code)));
+    const { rows, accountIdByCode } = await fetchSupabaseTrialBalanceWithIds(startDate, endDate);
+    const merged = rows.map(r => {
+      const adj = adjustmentTotals[accountIdByCode[r.code]];
+      const debitTotal = Number(r.debitTotal || 0) + Number(adj?.debitTotal || 0);
+      const creditTotal = Number(r.creditTotal || 0) + Number(adj?.creditTotal || 0);
+      return { ...r, debitTotal, creditTotal };
+    });
+    const sorted = [...merged].sort((a, b) => String(a.code).localeCompare(String(b.code)));
     const totalDebit = sorted.reduce((sum, r) => sum + Number(r.debitTotal || 0), 0);
     const totalCredit = sorted.reduce((sum, r) => sum + Number(r.creditTotal || 0), 0);
 
@@ -390,7 +419,7 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
       type: 'structured',
       sections: [
         {
-          title: '會計科目餘額明細',
+          title: includeAdjustments ? '會計科目餘額明細（已含 IFRS 調整分錄）' : '會計科目餘額明細',
           items: sorted.map(r => [
             `${r.name}（借:${Number(r.debitTotal || 0).toLocaleString()} / 貸:${Number(r.creditTotal || 0).toLocaleString()}）`,
             Number(r.debitTotal || 0) - Number(r.creditTotal || 0),

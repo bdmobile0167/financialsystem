@@ -962,6 +962,136 @@ td button {
   .fundraise-result-grid { grid-template-columns: 1fr; }
 }
 
+/* ---- IFRS 準則引擎（參考說明卡片） ---- */
+.ifrs-badge {
+  display: inline-block;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.ifrs-badge-blue { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+.ifrs-badge-blue-solid { background: #2563eb; color: #fff; }
+.ifrs-badge-indigo-solid { background: #4f46e5; color: #fff; }
+.ifrs-badge-emerald-solid { background: #059669; color: #fff; }
+.ifrs-badge-purple-solid { background: #9333ea; color: #fff; }
+.ifrs-badge-amber-solid { background: #d97706; color: #fff; }
+.ifrs-badge-slate-solid { background: #334155; color: #fff; }
+
+.ifrs-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.ifrs-rule-card {
+  border-radius: 12px;
+  border: 1px solid;
+  padding: 14px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ifrs-rule-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ifrs-rule-head span:first-child { font-weight: 700; font-size: 13px; }
+.ifrs-rule-card p { margin: 0; color: #475569; line-height: 1.5; }
+.ifrs-rule-notes {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ifrs-rule-blue { background: #eff6ff; border-color: #bfdbfe; }
+.ifrs-rule-blue .ifrs-rule-head span:first-child { color: #1e3a8a; }
+.ifrs-rule-blue .ifrs-rule-notes { border: 1px solid #dbeafe; }
+.ifrs-rule-indigo { background: #eef2ff; border-color: #c7d2fe; }
+.ifrs-rule-indigo .ifrs-rule-head span:first-child { color: #312e81; }
+.ifrs-rule-indigo .ifrs-rule-notes { border: 1px solid #e0e7ff; }
+.ifrs-rule-emerald { background: #ecfdf5; border-color: #a7f3d0; }
+.ifrs-rule-emerald .ifrs-rule-head span:first-child { color: #064e3b; }
+.ifrs-rule-emerald .ifrs-rule-notes { border: 1px solid #d1fae5; }
+.ifrs-rule-purple { background: #faf5ff; border-color: #e9d5ff; }
+.ifrs-rule-purple .ifrs-rule-head span:first-child { color: #581c87; }
+.ifrs-rule-purple .ifrs-rule-notes { border: 1px solid #f3e8ff; }
+.ifrs-rule-amber { background: #fffbeb; border-color: #fde68a; }
+.ifrs-rule-amber .ifrs-rule-head span:first-child { color: #78350f; }
+.ifrs-rule-amber .ifrs-rule-notes { border: 1px solid #fef3c7; }
+.ifrs-rule-slate { background: #f8fafc; border-color: #e2e8f0; }
+.ifrs-rule-slate .ifrs-rule-head span:first-child { color: #0f172a; }
+.ifrs-rule-slate .ifrs-rule-notes { border: 1px solid #f1f5f9; }
+
+@media (max-width: 900px) {
+  .ifrs-rules-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .ifrs-rules-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- 平行帳簿與調整分錄 ---- */
+.adj-status-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.adj-status-draft { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.adj-status-approved { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.adj-status-reversed { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+.adj-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.adj-table th {
+  background: #0f172a;
+  color: #fff;
+  text-align: left;
+  padding: 9px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.adj-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.adj-table tr:hover td { background: #f8fafc; }
+.adj-table .mono { font-family: 'Courier New', monospace; }
+
+.adj-line-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.4fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.adj-line-row select, .adj-line-row input {
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.adj-remove-line-btn {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.adj-balance-indicator {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-top: 6px;
+}
+.adj-balance-ok { background: #dcfce7; color: #166534; }
+.adj-balance-bad { background: #fee2e2; color: #991b1b; }
+
 @media (max-width: 900px) {
   .approval-stepper { flex-wrap: wrap; gap: 10px 0; }
   .approval-stepper li::before { display: none; }
