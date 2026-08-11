@@ -323,20 +323,19 @@ function showMessage(text, isError = false) {
 // 1. 將這兩個函式獨立移到外面（全域範圍）
 function updateAdminNavVisibility() {
   const btn = document.getElementById('adminUsersNavBtn');
-  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'inline-flex' : 'none';
+  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
 }
 
 function applyRoleBasedTabVisibility() {
   const role = state.currentUser?.role;
   const financialOnly = ['accounting', 'admin'];
-  ['reports', 'equity', 'auditTrail', 'transactions', 'bankAccounts', 'bankReconcile', 'voucherCenter'].forEach(tab => {
-    document.querySelectorAll(`[data-tab="${tab}"]`).forEach(el => {
-      const isTopNav = el.classList.contains('gb-tab-btn');
-      el.style.display = financialOnly.includes(role) ? (isTopNav ? 'inline-flex' : '') : 'none';
-    });
-  });
+  const reportsBtn = document.querySelector('[data-tab="reports"]');
+  const equityBtn = document.querySelector('[data-tab="equity"]');
+  const auditTrailBtn = document.querySelector('[data-tab="auditTrail"]');
+  if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  if (auditTrailBtn) auditTrailBtn.style.display = financialOnly.includes(role) ? '' : 'none';
 }
-
 
 function render() {
   // 只給 Admin 顯示的區塊
@@ -1535,89 +1534,10 @@ function renderTabs() {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.style.display = 'none';
   });
-  // 頂部導覽（gb-tab-btn）與行動版側欄（gb-mobile-nav button）同步亮起
-  document.querySelectorAll('.gb-tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
-  });
-  document.querySelectorAll('.gb-mobile-nav button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
-  });
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === state.activeTab));
   const currentPanel = document.getElementById(state.activeTab);
   if (currentPanel) currentPanel.style.display = 'block';
 }
-
-// 從頂部導覽同步生成行動版側欄選單
-function buildMobileNav() {
-  const container = document.getElementById('mobileNav');
-  if (!container) return;
-  const labels = {};
-  document.querySelectorAll('.gb-nav .gb-tab-btn').forEach(btn => {
-    labels[btn.dataset.tab] = btn.textContent.trim().replace(/\s*\d+$/, '');
-  });
-  container.innerHTML = Object.entries(labels)
-    .map(([tab, label]) => `<button class="gb-mobile-nav-item" data-tab="${tab}">${label}</button>`)
-    .join('') || '<p class="muted">尚無功能</p>';
-  container.querySelectorAll('.gb-mobile-nav-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activateTab(btn.dataset.tab);
-      document.getElementById('sidebar')?.classList.remove('open');
-      document.getElementById('sidebarOverlay')?.classList.remove('open');
-    });
-  });
-}
-
-// 統一切換頁籤：更新狀態、渲染面板、並依頁籤載入對應資料
-async function activateTab(tab) {
-  state.activeTab = tab;
-  renderTabs();
-  document.querySelectorAll('.gb-menu-toggle, #menuToggleBtn').forEach(el => {
-    if (el) el.classList.remove('open');
-  });
-
-  if (tab === 'bankReconcile') {
-    populateStatementBankAccountSelect();
-  }
-  if (tab === 'voucherWorkflow') {
-    populateVoucherFormOptions();
-    renderVoucherWorkflowList();
-  }
-  if (tab === 'adminUsers') {
-    populateInviteDepartmentSelect();
-    renderAdminUserTable();
-    renderAdminDepartmentList();
-  }
-  if (tab === 'budget') {
-    renderBudget();
-  }
-  if (tab === 'reports') {
-    setDefaultReportPeriod();
-    renderReports();
-  }
-  if (tab === 'auditTrail') {
-    renderAuditTrail();
-  }
-  if (tab === 'dashboard') {
-    renderDashboard();
-  }
-  if (tab === 'voucherCenter') {
-    renderVoucherCenter();
-  }
-  if (tab === 'transactions') {
-    renderTransactionTable();
-  }
-  if (tab === 'bankAccounts') {
-    renderBankAccounts();
-  }
-  if (tab === 'equity') {
-    renderEquityTab();
-  }
-  if (tab === 'settings') {
-    fillCompanyInfoForm();
-    const emailInput = document.getElementById('passwordUserEmail');
-    if (emailInput && state.currentUser) emailInput.value = state.currentUser.username || '';
-  }
-}
-
 
 function showApp() {
   if (!state.currentUser) {
@@ -1806,6 +1726,7 @@ window.addExcelRow = (prefillFile = null) => {
         <option value="無">無</option>
         <option value="發票">發票</option>
         <option value="收據">收據</option>
+        <option value="領據">領據</option>
       </select>
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
@@ -1816,6 +1737,8 @@ window.addExcelRow = (prefillFile = null) => {
         <option value="文具用品">文具用品</option>
         <option value="餐飲交際">餐飲交際</option>
         <option value="郵電通訊">郵電通訊</option>
+        <option value="設備與軟體授權">設備與軟體授權</option>
+        <option value="專業服務費">專業服務費</option>
         <option value="其他">其他（請說明）</option>
       </select>
       <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
@@ -2048,29 +1971,46 @@ function initializeEventsInternal() {
     e.target.value = '';
   });
 
-  // 🔥 頂部橫向導覽（gb-tab-btn）— 取代原本的 .tab-btn 側邊欄按鈕
-  document.querySelectorAll('.gb-tab-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const tab = btn.dataset.tab;
+  // 在 initializeEventsInternal() 裡面尋找這段：
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'bankReconcile' || tab === 'voucherCenter') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+      if ((tab === 'transactions' || tab === 'bankAccounts') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
 
-      await activateTab(tab);
+      state.activeTab = tab;
+      renderTabs();
       closeSidebar();
+
+      // ======== 把呼叫補在這裡 ========
+      if (tab === 'bankReconcile') {
+        populateStatementBankAccountSelect();
+      }
+
+      if (tab === 'voucherWorkflow') {
+        populateVoucherFormOptions();
+        renderVoucherWorkflowList();
+      }
+      if (tab === 'adminUsers') {
+        populateInviteDepartmentSelect();
+        renderAdminUserTable();
+        renderAdminDepartmentList();
+      }
+      if (tab === 'budget') {
+        renderBudget();
+      }
+      if (btn.dataset.tab === 'reports') {
+        setDefaultReportPeriod();
+        renderReports();
+      }
+      if (tab === 'auditTrail') {
+        renderAuditTrail();
+      }
     });
   });
-
-  // 🔥 行動版側欄按鈕
-  document.querySelectorAll('.gb-mobile-nav-item').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await activateTab(btn.dataset.tab);
-      closeSidebar();
-    });
-  });
-
 
   safeListener('auditTrailSearchInput', 'input', () => renderAuditTrail());
   safeListener('auditTrailActionFilter', 'change', () => renderAuditTrail());
@@ -3618,7 +3558,25 @@ window.accountingApproveAndClose = async (voucherId) => {
         voucher_id: voucherId, actor_id: user.id, action: 'close', from_status: 'approved', to_status: 'closed', reject_reason: note,      });
     }
 
-    showMessage('已核准並完成歸帳。');
+    // 通知受款人款項已匯出（Email，若受款人未登記信箱或寄送失敗都不影響歸帳結果，僅記錄於 console）
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const notifyRes = await fetch('/api/notify-payee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({ voucherId })
+      });
+      const notifyResult = await notifyRes.json();
+      if (notifyResult.sentCount > 0) {
+        showMessage(`已核准並完成歸帳，並寄出 ${notifyResult.sentCount} 封受款人通知信。`);
+      } else {
+        showMessage('已核准並完成歸帳。');
+      }
+    } catch (notifyErr) {
+      console.warn('受款人通知信寄送失敗（不影響歸帳結果）：', notifyErr.message);
+      showMessage('已核准並完成歸帳。');
+    }
+
     document.querySelector('.modal-backdrop')?.remove();
     renderVoucherWorkflowList();
     renderDashboard();
@@ -4472,6 +4430,7 @@ window.openResubmitModal = async (voucherId) => {
                           <option value="無" ${inv.invoice_type === '無' ? 'selected' : ''}>無</option>
                           <option value="發票" ${inv.invoice_type === '發票' ? 'selected' : ''}>發票</option>
                           <option value="收據" ${inv.invoice_type === '收據' ? 'selected' : ''}>收據</option>
+                          <option value="領據" ${inv.invoice_type === '領據' ? 'selected' : ''}>領據</option>
                         </select>
                       </td>
                       <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" value="${inv.invoice_number || ''}" placeholder="可留空" style="width:90%; padding:4px;" ${!inv.invoice_type || inv.invoice_type === '無' ? 'disabled' : ''}></td>
@@ -4482,6 +4441,8 @@ window.openResubmitModal = async (voucherId) => {
                           <option value="文具用品" ${l.description === '文具用品' ? 'selected' : ''}>文具用品</option>
                           <option value="餐飲交際" ${l.description === '餐飲交際' ? 'selected' : ''}>餐飲交際</option>
                           <option value="郵電通訊" ${l.description === '郵電通訊' ? 'selected' : ''}>郵電通訊</option>
+                          <option value="設備與軟體授權" ${l.description === '設備與軟體授權' ? 'selected' : ''}>設備與軟體授權</option>
+                          <option value="專業服務費" ${l.description === '專業服務費' ? 'selected' : ''}>專業服務費</option>
                           <option value="其他" style="background:#eee;">其他（請說明）</option>
                         </select>
                         <input type="text" class="grid-category-note" value="${l.description}" placeholder="請說明項目內容" style="width:96%; padding:4px; margin-top:4px;">
@@ -4507,6 +4468,7 @@ window.openResubmitModal = async (voucherId) => {
                         <option value="無">無</option>
                         <option value="發票">發票</option>
                         <option value="收據">收據</option>
+                        <option value="領據">領據</option>
                       </select>
                     </td>
                     <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
@@ -4517,6 +4479,8 @@ window.openResubmitModal = async (voucherId) => {
                         <option value="文具用品">文具用品</option>
                         <option value="餐飲交際">餐飲交際</option>
                         <option value="郵電通訊">郵電通訊</option>
+                        <option value="設備與軟體授權">設備與軟體授權</option>
+                        <option value="專業服務費">專業服務費</option>
                         <option value="其他">其他（請說明）</option>
                       </select>
                       <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">
@@ -4593,6 +4557,7 @@ window.addResubExcelRow = () => {
         <option value="無">無</option>
         <option value="發票">發票</option>
         <option value="收據">收據</option>
+        <option value="領據">領據</option>
       </select>
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="text" class="grid-inv-num" placeholder="可留空" style="width:90%; padding:4px;" disabled></td>
@@ -4603,6 +4568,8 @@ window.addResubExcelRow = () => {
         <option value="文具用品">文具用品</option>
         <option value="餐飲交際">餐飲交際</option>
         <option value="郵電通訊">郵電通訊</option>
+        <option value="設備與軟體授權">設備與軟體授權</option>
+        <option value="專業服務費">專業服務費</option>
         <option value="其他">其他（請說明）</option>
       </select>
       <input type="text" class="grid-category-note" placeholder="請說明項目內容" style="display:none; width:96%; padding:4px; margin-top:4px;">

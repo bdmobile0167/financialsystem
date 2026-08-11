@@ -7,16 +7,9 @@
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
-  <!-- ====================== 登入畫面 ====================== -->
   <div id="loginView" class="login-shell">
     <div class="card login-card">
-      <div class="gb-login-brand">
-        <div class="gb-brand-box">IFRS</div>
-        <div>
-          <h2>財務管理系統</h2>
-          <p class="muted">發票憑證勾稽・簽核過帳・四大財務報表</p>
-        </div>
-      </div>
+      <h2>財務管理系統登入</h2>
       <p class="muted">請輸入電子郵件與密碼進行登入。若本地測試，可使用任意帳號密碼。</p>
       <div id="loginMessage" class="message">登入後即可使用系統功能。</div>
       <form id="loginForm">
@@ -29,7 +22,6 @@
     </div>
   </div>
 
-  <!-- ====================== 強制改密碼 ====================== -->
   <div id="forcePasswordView" class="login-shell" style="display:none;">
     <div class="card">
       <h2>請設定新密碼</h2>
@@ -44,813 +36,914 @@
       </form>
     </div>
   </div>
-
-  <!-- ====================== 主應用 ====================== -->
+  
   <div id="appView" class="app-shell">
-    <!-- ══ 深色頂部導覽（套用 googleai Navbar 排版） ══ -->
-    <header class="gb-topbar">
-      <!-- 頂部工具列 -->
-      <div class="gb-topbar-utility">
-        <div class="gb-util-left">
-          <div class="gb-chip gb-chip-globe">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            <span class="gb-mono">IFRS 國際會計準則規範</span>
-          </div>
-          <div class="gb-util-hint" id="headerRoleHint">
-            機能幣別: <strong>TWD (新台幣)</strong>
-          </div>
-        </div>
-        <div class="gb-util-right">
-          <label style="font-size:12px; color:#94a3b8;">目前專案：</label>
-          <select id="globalProjectSelect" class="gb-select-dark"></select>
-          <div id="header-user-info" class="gb-header-user-info"></div>
-        </div>
-      </div>
-
-      <!-- 主標題列 -->
-      <div class="gb-topbar-main">
-        <div class="gb-brand">
-          <button id="menuToggleBtn" class="gb-menu-toggle" aria-label="開啟選單" aria-expanded="false">
-            <span></span><span></span><span></span>
-          </button>
-          <div class="gb-brand-box">IFRS</div>
-          <div>
-            <div class="gb-brand-title-row">
-              <h1>財務管理系統 FinCore</h1>
-              <span class="gb-version-badge" id="versionLabel">Demo v2.9.3</span>
-            </div>
-            <p class="gb-brand-sub">自動化分錄歸類・發票憑證即時雙向勾稽・專案簽核與完整稽核軌跡</p>
-          </div>
-        </div>
-
-        <div class="gb-topbar-actions">
-          <button id="invoiceSearchBtn" type="button" class="gb-btn-indigo" title="發票與進銷項憑證全文搜尋中心">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <span>發票即時查詢</span>
-          </button>
-          <div class="gb-notif-wrap">
-            <button id="notificationBellBtn" type="button" class="gb-notif-btn" aria-label="通知">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <span id="notificationBadge" style="display:none;"></span>
-            </button>
-            <div id="notificationPanel" class="gb-notif-panel" style="display:none;">
-              <div class="gb-notif-panel-head">
-                <strong style="font-size:13px;">待辦事項與簽核通知中心</strong>
-                <button id="markAllNotificationsReadBtn" type="button">全部標為已讀</button>
-              </div>
-              <div id="notificationList"></div>
-            </div>
-          </div>
-          <div class="gb-user-card" id="welcomeText">歡迎，使用者</div>
-        </div>
-      </div>
-
-      <!-- 橫向導覽（取代原側邊欄，套用 googleai Navbar Tab 風格） -->
-      <nav class="gb-nav" id="gbNav">
-        <div class="gb-nav-inner">
-          <button class="gb-tab-btn active" data-tab="dashboard">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            總覽儀表板
-          </button>
-          <button class="gb-tab-btn" data-tab="voucherWorkflow">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-            報支申請
-            <span id="navVoucherBadge" class="gb-nav-badge" style="display:none;">0</span>
-          </button>
-          <button class="gb-tab-btn" data-tab="transactions">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
-            交易管理
-          </button>
-          <button class="gb-tab-btn" data-tab="bankAccounts">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/></svg>
-            銀行帳戶
-          </button>
-          <button class="gb-tab-btn" data-tab="bankReconcile">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H3a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1z"/><path d="M3 9h18"/></svg>
-            銀行對帳
-          </button>
-          <button class="gb-tab-btn" data-tab="voucherCenter">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-            憑證中心
-          </button>
-          <button class="gb-tab-btn" data-tab="reports">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
-            四大財報
-          </button>
-          <button class="gb-tab-btn" data-tab="budget">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            專案預算
-          </button>
-          <button class="gb-tab-btn" data-tab="equity">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
-            股東權益
-          </button>
-          <button class="gb-tab-btn" data-tab="auditTrail">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Audit Trail
-          </button>
-          <button class="gb-tab-btn" data-tab="settings">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            設定
-          </button>
-          <button class="gb-tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            帳號管理
-          </button>
-        </div>
-      </nav>
-    </header>
-
-    <!-- ══ 主內容區 ══ -->
-    <main class="gb-container">
-
-      <!-- 行動版側邊選單（保留 mobile 相容） -->
-      <div id="sidebarOverlay" class="gb-sidebar-overlay"></div>
-      <aside class="gb-mobile-sidebar" id="sidebar">
-        <div class="gb-mobile-sidebar-brand">
+    <div class="container app-layout">
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+        <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
           <h2>財務系統</h2>
           <p class="muted">直覺式管理頁面</p>
         </div>
-        <nav id="mobileNav" class="gb-mobile-nav"></nav>
-        <div class="gb-mobile-sidebar-footer">
+        <nav class="side-nav">
+          <div class="nav-group">
+            <div class="nav-group-title">總覽</div>
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">記帳作業</div>
+            <button class="tab-btn" data-tab="transactions">交易管理</button>
+            <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
+            <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">財務報表</div>
+            <button class="tab-btn" data-tab="bankReconcile">銀行對帳</button>
+            <button class="tab-btn" data-tab="reports">四大財報</button>
+            <button class="tab-btn" data-tab="auditTrail">Audit Trail</button>
+            <button class="tab-btn" data-tab="voucherCenter">憑證中心</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">規劃分析</div>
+            <button class="tab-btn" data-tab="budget">預算管理</button>
+            <button class="tab-btn" data-tab="equity">股東權益／募資</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">系統</div>
+            <button class="tab-btn" data-tab="settings">設定</button>
+            <button class="tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
+          </div>
+        </nav>
+        <div class="sidebar-footer">
           <button id="logoutBtn" class="danger">登出</button>
         </div>
       </aside>
 
-      <!-- ============ Dashboard（卡片式，googleai 風格） ============ -->
-      <section id="dashboard" class="tab-panel active-panel"></section>
-
-      <!-- ============ 交易管理 ============ -->
-      <section id="transactions" class="tab-panel" style="display:none;">
-        <div class="panel transaction-panel">
-          <div class="panel-header">
-            <h3>新增交易</h3>
-          </div>
-          <form id="transactionForm">
-            <div class="form-grid">
-              <div>
-                <label>日期</label>
-                <input type="date" id="txDate" required />
-              </div>
-              <div>
-                <label>銀行帳戶</label>
-                <select id="txBankAccount" required></select>
-              </div>
-              <div>
-                <label>客戶/供應商</label>
-                <input type="text" id="txCustomer" placeholder="例如：臺銀" />
-              </div>
-              <div>
-                <label>明細</label>
-                <input type="text" id="txDetail" placeholder="例如：電信費" required />
-              </div>
-              <div>
-                <label>類型</label>
-                <select id="txType">
-                  <option value="支出">支出</option>
-                  <option value="收入">收入</option>
-                </select>
-              </div>
-              <div>
-                <label>交易分類（現金流量表用）</label>
-                <select id="txCategory">
-                  <option value="營業">營業活動</option>
-                  <option value="投資">投資活動（買賣資產/設備）</option>
-                  <option value="融資">融資活動（股東入資/還款/股利/借款）</option>
-                </select>
-              </div>
-              <div>
-                <label>金額</label>
-                <input type="number" id="txAmount" min="0" step="1" required />
-              </div>
-              <div>
-                <label>憑證類型</label>
-                <select id="txVoucherType">
-                  <option value="發票">發票（有統一發票號碼）</option>
-                  <option value="收據">收據（系統自動編號）</option>
-                  <option value="領據">領據（個人領據）</option>
-                  <option value="無">無憑證</option>
-                </select>
-              </div>
-              <div>
-                <label>發票號碼（僅發票需填寫，收據留空自動編號）</label>
-                <input type="text" id="txVoucher" placeholder="例如：AB12345678" />
-              </div>
-              <div class="full-width">
-                <label>憑證附件（圖片/PDF，1.5MB 以內）</label>
-                <input type="file" id="txAttachment" accept="image/*,.pdf" />
-              </div>
-              <div class="full-width">
-                <label>備註</label>
-                <textarea id="txRemark" rows="3" placeholder="可留空"></textarea>
-              </div>
+      <main class="main-content">
+        <header class="main-header">
+            <button id="menuToggleBtn" class="menu-toggle" aria-label="開啟選單" aria-expanded="false">
+                </span><span></span><span></span>
+            </button>
+            <div>
+                <h2>財務管理系統</h2>
+                <div id="welcomeText" class="muted">歡迎，使用者</div>
+                <div id="header-user-info" style="margin-left: 12px; display:flex; align-items:center; gap:8px;"></div>
+                <div style="position:relative; margin-left:8px;">
+                  <button id="notificationBellBtn" type="button" aria-label="通知" style="position:relative; background:none; border:none; cursor:pointer; font-size:20px; padding:6px;">
+                    🔔
+                    <span id="notificationBadge" style="display:none; position:absolute; top:0; right:0; background:#dc2626; color:#fff; border-radius:999px; font-size:11px; line-height:1; padding:3px 5px; min-width:16px; text-align:center;"></span>
+                  </button>
+                  <div id="notificationPanel" style="display:none; position:absolute; right:0; top:36px; width:320px; max-height:400px; overflow:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.15); z-index:1000;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #eee;">
+                      <strong style="font-size:14px;">通知</strong>
+                      <button id="markAllNotificationsReadBtn" type="button" style="background:none; border:none; color:#2563eb; font-size:12px; cursor:pointer;">全部標為已讀</button>
+                    </div>
+                    <div id="notificationList"></div>
+                  </div>
+                </div>
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+                  <label style="font-size:14px; color:#666;">目前專案：</label>
+                  <select id="globalProjectSelect" style="padding:6px 10px; border-radius:6px;"></select>
+                </div>
             </div>
-            <button type="submit" class="primary-btn" style="margin-top: 16px;">新增交易</button>
-          </form>
-          <div class="button-row">
-            <button id="loadSampleBtn" class="secondary">載入範例資料</button>
-            <button id="clearBtn" class="danger">清空交易資料</button>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>交易清單</h3>
-          <table>
-            <thead>
-              <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>金額</th><th>操作</th></tr>
-            </thead>
-            <tbody id="transactionTableBody"></tbody>
-          </table>
-        </div>
-      </section>
+        </header>
 
-      <!-- ============ 銀行帳戶 ============ -->
-      <section id="bankAccounts" class="tab-panel" style="display:none;">
-        <div class="grid grid-2">
-          <div class="panel">
-            <h3>新增銀行帳戶</h3>
-            <form id="bankAccountForm">
-              <label>銀行名稱</label>
-              <input type="text" id="bankName" placeholder="例如：玉山銀行" required />
-              <label>帳號末幾碼／代號</label>
-              <input type="text" id="bankAccountNumber" placeholder="例如：86187" required />
-              <label>顯示暱稱</label>
-              <input type="text" id="bankNickname" placeholder="例如：玉山187" />
-              <label>期初餘額</label>
-              <input type="number" id="bankOpeningBalance" value="0" />
-              <button type="submit" class="primary-btn" style="margin-top:10px;">新增帳戶</button>
-            </form>
+        <section id="dashboard" class="tab-panel active-panel">
+          <div class="summary">
+            <div class="summary-item">
+              <span class="muted">交易筆數</span>
+              <strong id="countValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">總收入</span>
+              <strong id="incomeValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">總支出</span>
+              <strong id="expenseValue">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="muted">本期淨利</span>
+              <strong id="profitValue">0</strong>
+            </div>
           </div>
-          <div class="panel">
-            <h3>目前銀行帳戶</h3>
+          <div class="panel" style="margin-top: 16px;">
+            <h3>最新交易</h3>
             <table>
-              <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>目前餘額</th><th>操作</th></tr></thead>
-              <tbody id="bankAccountTableBody"></tbody>
+              <thead>
+                <tr><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>金額</th><th>憑證</th></tr>
+              </thead>
+              <tbody id="dashboardTableBody"></tbody>
             </table>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- ============ 報支申請 ============ -->
-      <section id="voucherWorkflow" class="tab-panel" style="display:none;">
-        <div class="panel" style="margin-bottom: 20px;">
-          <h3>新增報支申請</h3>
-          <form id="voucherCreateForm" class="form-container">
-            <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
-              <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
-              <div style="display: flex; gap: 15px; margin-bottom: 10px;">
-                <div style="flex: 1;">
-                  <label>報支主旨 (必填)：</label>
-                  <input type="text" id="vTitle" placeholder="例如：20260720_AI應用計畫_業務費" required style="width: 100%;">
-                  <label style="margin-top:8px;">所屬部門</label>
-                  <select id="vDepartment" required></select>
-                  <label style="margin-top:8px;">指定審核主管（留空則整個部門的主管都能審）</label>
-                  <select id="vManagerPicker"><option value="">不指定</option></select>
+        <section id="transactions" class="tab-panel" style="display:none;">
+          <div class="panel transaction-panel">
+            <div class="panel-header">
+              <h3>新增交易</h3>
+            </div>
+            <form id="transactionForm">
+              <div class="form-grid">
+                <div>
+                  <label>日期</label>
+                  <input type="date" id="txDate" required />
+                </div>
+                <div>
+                  <label>銀行帳戶</label>
+                  <select id="txBankAccount" required></select>
+                </div>
+                <div>
+                  <label>客戶/供應商</label>
+                  <input type="text" id="txCustomer" placeholder="例如：臺銀" />
+                </div>
+                <div>
+                  <label>明細</label>
+                  <input type="text" id="txDetail" placeholder="例如：電信費" required />
+                </div>
+                <div>
+                  <label>類型</label>
+                  <select id="txType">
+                    <option value="支出">支出</option>
+                    <option value="收入">收入</option>
+                  </select>
+                </div>
+                <div>
+                  <label>交易分類（現金流量表用）</label>
+                  <select id="txCategory">
+                    <option value="營業">營業活動</option>
+                    <option value="投資">投資活動（買賣資產/設備）</option>
+                    <option value="融資">融資活動（股東入資/還款/股利/借款）</option>
+                  </select>
+                </div>
+                <div>
+                  <label>金額</label>
+                  <input type="number" id="txAmount" min="0" step="1" required />
+                </div>
+                <div>
+                  <label>憑證類型</label>
+                  <select id="txVoucherType">
+                    <option value="發票">發票（有統一發票號碼）</option>
+                    <option value="收據">收據（系統自動編號）</option>
+                    <option value="無">無憑證</option>
+                  </select>
+                </div>
+                <div>
+                  <label>發票號碼（僅發票需填寫，收據留空自動編號）</label>
+                  <input type="text" id="txVoucher" placeholder="例如：AB12345678" />
+                </div>
+                <div class="full-width">
+                  <label>憑證附件（圖片/PDF，1.5MB 以內）</label>
+                  <input type="file" id="txAttachment" accept="image/*,.pdf" />
+                </div>
+                <div class="full-width">
+                  <label>備註</label>
+                  <textarea id="txRemark" rows="3" placeholder="可留空"></textarea>
                 </div>
               </div>
-              <div style="display: flex; gap: 15px; margin-bottom: 10px;">
-                <div style="flex: 1;">
-                  <label>專案：</label>
-                  <select id="vProject" required><option value="">載入中...</option></select>
+              <button type="submit" class="primary-btn" style="margin-top: 16px;">新增交易</button>
+            </form>
+            <div class="button-row">
+              <button id="loadSampleBtn" class="secondary">載入範例資料</button>
+              <button id="clearBtn" class="danger">清空交易資料</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>交易清單</h3>
+            <table>
+              <thead>
+                <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>金額</th><th>操作</th></tr>
+              </thead>
+              <tbody id="transactionTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="bankAccounts" class="tab-panel" style="display:none;">
+          <div class="grid grid-2">
+            <div class="panel">
+              <h3>新增銀行帳戶</h3>
+              <form id="bankAccountForm">
+                <label>銀行名稱</label>
+                <input type="text" id="bankName" placeholder="例如：玉山銀行" required />
+                <label>帳號末幾碼／代號</label>
+                <input type="text" id="bankAccountNumber" placeholder="例如：86187" required />
+                <label>顯示暱稱</label>
+                <input type="text" id="bankNickname" placeholder="例如：玉山187" />
+                <label>期初餘額</label>
+                <input type="number" id="bankOpeningBalance" value="0" />
+                <button type="submit" class="primary-btn" style="margin-top:10px;">新增帳戶</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h3>目前銀行帳戶</h3>
+              <table>
+                <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>目前餘額</th><th>操作</th></tr></thead>
+                <tbody id="bankAccountTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="voucherWorkflow" class="tab-panel" style="display:none;">
+        <!-- 將原本的雙欄 (grid-2) 移除，讓填表區塊擁有完整寬度以容納多欄位表格 -->
+          
+          <div class="panel" style="margin-bottom: 20px;">
+            <h3>新增報支申請</h3>
+            
+            <!-- 補上完整的 form 標籤與新的表單結構 -->
+            <form id="voucherCreateForm" class="form-container">
+              <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+                <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                  <div style="flex: 1;">
+                    <label>報支主旨 (必填)：</label>
+                    <input type="text" id="vTitle" placeholder="例如：20260720_AI應用計畫_業務費" required style="width: 100%;">
+                    <label>所屬部門</label>
+                    <select id="vDepartment" required></select>
+                    <label>指定審核主管（留空則整個部門的主管都能審）</label>
+                    <select id="vManagerPicker"><option value="">不指定</option></select>
+                  </div>
                 </div>
-                <div style="flex: 1;">
-                  <label>行程起日：</label>
-                  <input type="date" id="vTripStart">
-                </div>
-                <div style="flex: 1;">
-                  <label>行程迄日：</label>
-                  <input type="date" id="vTripEnd">
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                  <div style="flex: 1;">
+                    <label>專案：</label>
+                    <select id="vProject" required><option value="">載入中...</option></select>
+                  </div>
+                  <div style="flex: 1;">
+                    <label>行程起日：</label>
+                    <input type="date" id="vTripStart">
+                  </div>
+                  <div style="flex: 1;">
+                    <label>行程迄日：</label>
+                    <input type="date" id="vTripEnd">
+                  </div>
                 </div>
               </div>
+
+              <div class="panel">
+                <h4>核銷明細</h4>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                  <thead>
+                    <tr style="background: #f1f5f9;">
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">單據年月</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">憑證類型</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">發票號碼</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 22%;">會計科目 / 項目說明</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">金額</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">付款人(身分證/統編)</th>
+                      <th style="padding: 8px; border: 1px solid #ddd; width: 20%;">操作與附件</th>
+                    </tr>
+                  </thead>
+                  <tbody id="excelLinesBody">
+                    <!-- 統一由 JavaScript 動態生成，確保每一列都有會計科目與附件 -->
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold; border: 1px solid #ddd;">總計金額：</td>
+                      <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="voucherTotalDisplay">$0</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <button type="button" class="secondary" onclick="addExcelRow()">+ 新增一列</button>
+                <label class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px;">
+                  📎 批次上傳發票/收據（依順序自動分配到各列）
+                  <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
+                </label>
+                <button type="submit" class="primary-btn" style="margin-top: 15px; width: 100%;">送出報支申請</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- 下方保留原本的清單區塊 -->
+          <div class="panel">
+            <h3>報支申請清單</h3>
+            <p class="muted">依照你的角色，自動只顯示你有權限看到的資料。</p>
+            <div id="voucherWorkflowList"></div>
+          </div>
+        </section>
+        </section>
+
+        <section id="voucherCenter" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <h3>憑證中心</h3>
+            <p class="muted">所有交易的憑證彙總，方便會計師依編號、對象、金額搜尋核對。</p>
+            <div class="search-row">
+              <input type="text" id="voucherSearchInput" placeholder="搜尋憑證編號、對象、銀行、明細..." />
+            </div>
+            <table>
+              <thead><tr><th>日期</th><th>類型</th><th>憑證編號</th><th>銀行帳戶</th><th>對象/明細</th><th>收支</th><th>金額</th></tr></thead>
+              <tbody id="voucherCenterTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- 將原本的 section 替換為以下內容 -->
+        <section id="budget" class="tab-panel" style="display:none;">
+          <div class="panel-header" style="margin-bottom: 20px;">
+            <h2>專案與預算管理</h2>
+            <p class="muted">由會計部門統一設定與控管各專案總預算。所有的預算增減都會留下完整紀錄與原因。</p>
+          </div>
+
+          <div class="grid grid-2">
+            <!-- 左側：新增專案 -->
+            <div class="panel">
+              <h3>新增專案</h3>
+              <form id="projectForm" class="form-container">
+                <div style="margin-bottom: 12px;">
+                  <label>專案名稱</label>
+                  <input type="text" id="projectName" placeholder="例如：2026 AI 應用開發案" required style="width: 100%;" />
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                  <div style="flex: 1;">
+                    <label>起始日期</label>
+                    <input type="date" id="projectStart" style="width: 100%;" />
+                  </div>
+                  <div style="flex: 1;">
+                    <label>結束日期</label>
+                    <input type="date" id="projectEnd" style="width: 100%;" />
+                  </div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <label>所屬部門</label>
+                  <select id="projectDepartment" style="width: 100%;"></select>
+                </div>
+                <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                  <label style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
+                  <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
+                  <input type="number" id="projectTotalBudget" placeholder="例如：500000" required style="width: 100%; font-size: 16px; margin-top: 8px;" />
+                </div>
+                <button type="submit" class="primary-btn" style="width: 100%;">建立專案</button>
+              </form>
             </div>
 
+            <!-- 右側：專案列表 -->
             <div class="panel">
-              <h4>核銷明細</h4>
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+              <h3>執行中專案總覽</h3>
+              <div id="projectList" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- 這裡將由 JS 動態生成專案卡片 -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 預算變更 Modal (放在 body 標籤結尾前) -->
+        <div id="editBudgetModal" class="login-shell" style="display:none; z-index: 9999;">
+          <div class="card" style="max-width: 600px; width: 90%;">
+            <h2>調整專案預算</h2>
+            <p id="editBudgetProjectName" style="font-weight: bold; margin-bottom: 16px;"></p>
+            
+            <form id="editBudgetForm" onsubmit="event.preventDefault(); submitBudgetChange();">
+              <input type="hidden" id="edit_budget_project_id" />
+              <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <div style="flex: 1; padding: 10px; background: #f1f5f9; border-radius: 8px;">
+                  <label>目前總預算</label>
+                  <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: #475569;">$0</div>
+                  <input type="hidden" id="current_budget_val" />
+                </div>
+                <div style="flex: 1;">
+                  <label>更新後總預算</label>
+                  <input type="number" id="new_budget_val" required style="width: 100%; font-size: 16px;" />
+                </div>
+              </div>
+              
+              <label>變更原因 (必填，供日後稽核)</label>
+              <input type="text" id="budget_change_reason" placeholder="例如：董事會決議追加行銷預算" required style="width: 100%; margin-bottom: 15px;" />
+              
+              <div style="display: flex; gap: 10px;">
+                <button type="submit" class="primary-btn">確認變更</button>
+                <button type="button" class="secondary" onclick="document.getElementById('editBudgetModal').style.display='none'">取消</button>
+              </div>
+            </form>
+
+            <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+              <h4>預算異動紀錄</h4>
+              <table style="width: 100%; font-size: 13px; margin-top: 8px;">
                 <thead>
-                  <tr style="background: #f1f5f9;">
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">單據年月</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 11%;">憑證類型</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">發票號碼</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 22%;">會計科目 / 項目說明</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">金額</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">付款人(身分證/統編)</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; width: 20%;">操作與附件</th>
+                  <tr style="background: #f8fafc;">
+                    <th style="padding: 6px;">時間</th>
+                    <th style="padding: 6px;">變更人</th>
+                    <th style="padding: 6px;">金額異動</th>
+                    <th style="padding: 6px;">原因</th>
                   </tr>
                 </thead>
-                <tbody id="excelLinesBody"></tbody>
-                <tfoot>
-                  <tr>
-                    <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold; border: 1px solid #ddd;">總計金額：</td>
-                    <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="voucherTotalDisplay">$0</td>
-                  </tr>
-                </tfoot>
+                <tbody id="budgetLogTableBody">
+                  <!-- JS 動態載入異動紀錄 -->
+                </tbody>
               </table>
-              <button type="button" class="secondary" onclick="addExcelRow()">+ 新增一列</button>
-              <label class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px;">
-                📎 批次上傳發票/收據（依順序自動分配到各列）
-                <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
-              </label>
-              <button type="submit" class="primary-btn" style="margin-top: 15px; width: 100%;">送出報支申請</button>
             </div>
-          </form>
-        </div>
-
-        <div class="panel">
-          <h3>報支申請清單</h3>
-          <p class="muted">依照你的角色，自動只顯示你有權限看到的資料。</p>
-          <div id="voucherWorkflowList"></div>
-        </div>
-      </section>
-
-      <!-- ============ 憑證中心 ============ -->
-      <section id="voucherCenter" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <h3>憑證中心</h3>
-          <p class="muted">所有交易的憑證彙總，方便會計師依編號、對象、金額搜尋核對。</p>
-          <div class="search-row">
-            <input type="text" id="voucherSearchInput" placeholder="搜尋憑證編號、對象、銀行、明細..." />
           </div>
-          <table>
-            <thead><tr><th>日期</th><th>類型</th><th>憑證編號</th><th>銀行帳戶</th><th>對象/明細</th><th>收支</th><th>金額</th></tr></thead>
-            <tbody id="voucherCenterTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ============ 專案與預算 ============ -->
-      <section id="budget" class="tab-panel" style="display:none;">
-        <div class="panel-header" style="margin-bottom: 20px;">
-          <h2>專案與預算管理</h2>
-          <p class="muted">由會計部門統一設定與控管各專案總預算。所有的預算增減都會留下完整紀錄與原因。</p>
         </div>
 
-        <div class="grid grid-2">
+        <section id="equity" class="tab-panel" style="display:none;">
           <div class="panel">
-            <h3>新增專案</h3>
-            <form id="projectForm" class="form-container">
-              <div style="margin-bottom: 12px;">
-                <label>專案名稱</label>
-                <input type="text" id="projectName" placeholder="例如：2026 AI 應用開發案" required style="width: 100%;" />
-              </div>
-              <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                <div style="flex: 1;">
-                  <label>起始日期</label>
-                  <input type="date" id="projectStart" style="width: 100%;" />
-                </div>
-                <div style="flex: 1;">
-                  <label>結束日期</label>
-                  <input type="date" id="projectEnd" style="width: 100%;" />
-                </div>
-              </div>
-              <div style="margin-bottom: 12px;">
-                <label>所屬部門</label>
-                <select id="projectDepartment" style="width: 100%;"></select>
-              </div>
-              <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <label style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
-                <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
-                <input type="number" id="projectTotalBudget" placeholder="例如：500000" required style="width: 100%; font-size: 16px; margin-top: 8px;" />
-              </div>
-              <button type="submit" class="primary-btn" style="width: 100%;">建立專案</button>
-            </form>
+            <h3>股東權益與募資健康度</h3>
+            <p class="muted">依實際分錄自動計算，判斷目前是否需要規劃增資。</p>
+            <table id="equityDetailTable"></table>
+            <p id="fundraisingNoteDetail" class="muted" style="margin-top:16px; font-size:15px; font-weight:600;"></p>
           </div>
+        </section>
 
+        <section id="bankReconcile" class="tab-panel" style="display:none;">
           <div class="panel">
-            <h3>執行中專案總覽</h3>
-            <div id="projectList" style="display: flex; flex-direction: column; gap: 12px;"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 預算變更 Modal -->
-      <div id="editBudgetModal" class="login-shell" style="display:none; z-index: 9999;">
-        <div class="card" style="max-width: 600px; width: 90%;">
-          <h2>調整專案預算</h2>
-          <p id="editBudgetProjectName" style="font-weight: bold; margin-bottom: 16px;"></p>
-
-          <form id="editBudgetForm" onsubmit="event.preventDefault(); submitBudgetChange();">
-            <input type="hidden" id="edit_budget_project_id" />
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-              <div style="flex: 1; padding: 10px; background: #f1f5f9; border-radius: 8px;">
-                <label>目前總預算</label>
-                <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: #475569;">$0</div>
-                <input type="hidden" id="current_budget_val" />
-              </div>
-              <div style="flex: 1;">
-                <label>更新後總預算</label>
-                <input type="number" id="new_budget_val" required style="width: 100%; font-size: 16px;" />
-              </div>
-            </div>
-
-            <label>變更原因 (必填，供日後稽核)</label>
-            <input type="text" id="budget_change_reason" placeholder="例如：董事會決議追加行銷預算" required style="width: 100%; margin-bottom: 15px;" />
-
-            <div style="display: flex; gap: 10px;">
-              <button type="submit" class="primary-btn">確認變更</button>
-              <button type="button" class="secondary" onclick="document.getElementById('editBudgetModal').style.display='none'">取消</button>
-            </div>
-          </form>
-
-          <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            <h4>預算異動紀錄</h4>
-            <table style="width: 100%; font-size: 13px; margin-top: 8px;">
-              <thead>
-                <tr style="background: #f8fafc;">
-                  <th style="padding: 6px;">時間</th>
-                  <th style="padding: 6px;">變更人</th>
-                  <th style="padding: 6px;">金額異動</th>
-                  <th style="padding: 6px;">原因</th>
-                </tr>
-              </thead>
-              <tbody id="budgetLogTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ 股東權益 ============ -->
-      <section id="equity" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <h3>股東權益與募資健康度</h3>
-          <p class="muted">依實際分錄自動計算，判斷目前是否需要規劃增資。</p>
-          <table id="equityDetailTable"></table>
-          <p id="fundraisingNoteDetail" class="muted" style="margin-top:16px; font-size:15px; font-weight:600;"></p>
-        </div>
-      </section>
-
-      <!-- ============ 銀行對帳 ============ -->
-      <section id="bankReconcile" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <h3>銀行對帳單匯入</h3>
-          <p class="muted">上傳銀行 PDF 對帳單，系統會自動解析並存入帳單庫，用於核對，跟報支核銷資料分開。</p>
-          <div class="form-grid">
-            <div>
-              <label>選擇對應銀行帳戶（系統內）</label>
-              <select id="statementBankAccountId">
-                <option value="">載入中...</option>
-              </select>
-              <small id="detectedParserText" style="color: #666; display: block; margin-top: 4px;"></small>
-            </div>
-            <div>
-              <label>PDF 對帳單檔案</label>
-              <input type="file" id="statementFileInput" accept="application/pdf" />
-            </div>
-          </div>
-          <button id="parseStatementBtn" class="primary-btn" style="margin-top:12px; width:auto;">解析 PDF</button>
-          <div id="statementPreviewArea" style="margin-top:16px;"></div>
-        </div>
-      </section>
-
-      <!-- ============ 四大財報（含 IFRS） ============ -->
-      <section id="reports" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <div class="financial-hero no-print">
-            <div>
-              <div class="financial-hero-eyebrow">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                <span>IFRS 國際會計準則財務報表系統</span>
-              </div>
-              <h2>四大財務報表</h2>
-              <p>依 IFRS 準則編製，可依期間篩選並切換各報表檢視，列印時將自動輸出全部報表。</p>
-            </div>
-            <div class="button-row financial-hero-actions">
-              <button id="showAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span id="showAllReportsBtnLabel">全部檢視</span>
-              </button>
-              <button id="printReportBtn" class="hero-btn hero-btn-ghost">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                <span>列印報表</span>
-              </button>
-              <button id="exportExcelBtn" class="hero-btn hero-btn-primary">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-                <span>匯出 Excel</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="report-tabbar no-print">
-            <button type="button" class="report-tab-btn active-tab" data-report-tab="income"><span class="report-tab-dot" style="background:#2563eb;"></span>損益表</button>
-            <button type="button" class="report-tab-btn" data-report-tab="balance"><span class="report-tab-dot" style="background:#0f766e;"></span>資產負債表</button>
-            <button type="button" class="report-tab-btn" data-report-tab="cashflow"><span class="report-tab-dot" style="background:#f59e0b;"></span>現金流量表</button>
-            <button type="button" class="report-tab-btn" data-report-tab="equity"><span class="report-tab-dot" style="background:#7c3aed;"></span>權益變動表</button>
-            <button type="button" class="report-tab-btn" data-report-tab="trial"><span class="report-tab-dot" style="background:#475569;"></span>試算表</button>
-            <button type="button" class="report-tab-btn" data-report-tab="fundraising"><span class="report-tab-dot" style="background:#9333ea;"></span>募資精算</button>
-            <button type="button" class="report-tab-btn" data-report-tab="ifrs-rules"><span class="report-tab-dot" style="background:#2563eb;"></span>IFRS 準則引擎</button>
-            <button type="button" class="report-tab-btn" data-report-tab="adjustments"><span class="report-tab-dot" style="background:#4f46e5;"></span>平行帳簿</button>
-            <button type="button" class="report-tab-btn" data-report-tab="notes"><span class="report-tab-dot" style="background:#9333ea;"></span>財報附註</button>
-          </div>
-
-          <div class="form-grid no-print">
-            <div>
-              <label>報表期間（起）</label>
-              <input type="date" id="reportPeriodStart" />
-            </div>
-            <div>
-              <label>報表期間（迄）</label>
-              <input type="date" id="reportPeriodEnd" />
-            </div>
-          </div>
-          <div class="button-row" style="margin-top:8px; flex-wrap:wrap;">
-            <button type="button" class="secondary period-preset-btn" data-preset="year">本年度</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="q1">第一季</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="q2">第二季</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="q3">第三季</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="q4">第四季</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="month">本月</button>
-            <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
-          </div>
-          <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
-
-          <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
-            <div class="report-card active-tab" data-report-tab="income" style="--accent-color:#2563eb;">
-              <div id="incomeLetterhead" class="report-letterhead"></div>
-              <div class="report-card-header"><span class="dot" style="background:#2563eb;"></span><h4>損益表</h4></div>
-              <table id="incomeTable"></table>
-              <div id="incomeSignature" class="report-signature-row"></div>
-            </div>
-            <div class="report-card" data-report-tab="balance" style="--accent-color:#0f766e;">
-              <div id="balanceLetterhead" class="report-letterhead"></div>
-              <div class="report-card-header"><span class="dot" style="background:#0f766e;"></span><h4>資產負債表</h4></div>
-              <table id="balanceTable"></table>
-              <div id="balanceSignature" class="report-signature-row"></div>
-            </div>
-            <div class="report-card" data-report-tab="cashflow" style="--accent-color:#f59e0b;">
-              <div id="cashflowLetterhead" class="report-letterhead"></div>
-              <div class="report-card-header"><span class="dot" style="background:#f59e0b;"></span><h4>現金流量表</h4></div>
-              <table id="cashflowTable"></table>
-              <div id="cashflowSignature" class="report-signature-row"></div>
-            </div>
-            <div class="report-card" data-report-tab="equity" style="--accent-color:#7c3aed;">
-              <div id="equityLetterhead" class="report-letterhead"></div>
-              <div class="report-card-header"><span class="dot" style="background:#7c3aed;"></span><h4>權益變動表</h4></div>
-              <table id="equityTable"></table>
-              <div id="equitySignature" class="report-signature-row"></div>
-            </div>
-            <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
-              <div id="trialLetterhead" class="report-letterhead"></div>
-              <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
-              <label class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
-                <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
-                顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
-              </label>
-              <table id="trialTable"></table>
-              <div id="trialSignature" class="report-signature-row"></div>
-            </div>
-            <div class="report-card" data-report-tab="fundraising" style="--accent-color:#9333ea;">
-              <div class="report-card-header"><span class="dot" style="background:#9333ea;"></span><h4>股東權益與募資精算</h4></div>
-              <p class="muted" style="font-size:12px; margin:2px 0 14px;">依資產負債表權益項目與現金水位，試算現金續航力(Runway)與月淨燒錢率，並提供互動式募資缺口與股權稀釋模擬。</p>
-              <div class="fundraise-stat-grid">
-                <div class="fundraise-stat-card indigo"><span class="stat-label">股本 (Paid-in Capital)</span><span class="stat-value" id="fsPaidInCapital">-</span></div>
-                <div class="fundraise-stat-card purple"><span class="stat-label">保留盈餘</span><span class="stat-value" id="fsRetainedEarnings">-</span></div>
-                <div class="fundraise-stat-card slate"><span class="stat-label">股東權益總額</span><span class="stat-value" id="fsTotalEquity">-</span></div>
-                <div class="fundraise-stat-card emerald"><span class="stat-label">現金水位</span><span class="stat-value" id="fsCashBalance">-</span></div>
-              </div>
-              <div class="fundraise-sim">
-                <h5>互動式募資缺口模擬器</h5>
-                <div class="fundraise-sim-inputs no-print">
-                  <div><label>預估未來每月新增費用</label><input type="number" id="fsExpansionCost" value="150000" /></div>
-                  <div><label>預估未來每月新增營收</label><input type="number" id="fsRevenueGrowth" value="100000" /></div>
-                  <div><label>期望資金安全緩衝月數</label><input type="number" id="fsBufferMonths" value="12" /></div>
-                  <div><label>預估投前估值 (TWD)</label><input type="number" id="fsPreMoney" value="30000000" /></div>
-                </div>
-                <div class="fundraise-sim-results" id="fsResults"></div>
-              </div>
-            </div>
-            <div class="report-card" data-report-tab="ifrs-rules" style="--accent-color:#2563eb;">
-              <div class="report-card-header">
-                <span class="dot" style="background:#2563eb;"></span>
-                <h4>IFRS 國際財務報導準則規則引擎</h4>
-                <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;">2026 Accounting Standard Engine</span>
-              </div>
-              <p class="muted" style="font-size:12px; margin:2px 0 16px;">系統依據國際會計準則規範進行交易判定、收入分攤、使用權資產折舊與減損評估之參考說明。</p>
-              <div class="ifrs-rules-grid">
-                <div class="ifrs-rule-card ifrs-rule-blue">
-                  <div class="ifrs-rule-head"><span>IFRS 15 客戶合約之收入</span><span class="ifrs-badge ifrs-badge-blue-solid">5-Step Model</span></div>
-                  <p>規定收入認列 5 步驟模型：辨認客戶合約 ➔ 辨認履約義務 ➔ 決定交易價格 ➔ 分攤交易價格 ➔ 於滿足履約義務時認列收入。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 專案多階段合約分段認列（Over Time / Point in Time）</p><p>✔ 自動生成【合約資產 Contract Asset】與【合約負債】</p></div>
-                </div>
-                <div class="ifrs-rule-card ifrs-rule-indigo">
-                  <div class="ifrs-rule-head"><span>IFRS 16 租賃（Leases）</span><span class="ifrs-badge ifrs-badge-indigo-solid">ROU Model</span></div>
-                  <p>承租人表內化處理，將所有營運租賃資產化為【使用權資產 (ROU Asset)】並折現認列【租賃負債 (Lease Liability)】。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 折現率 Discount Rate 計算租賃負債現值</p><p>✔ 按月提列使用權資產折舊與租賃利息費用</p></div>
-                </div>
-                <div class="ifrs-rule-card ifrs-rule-emerald">
-                  <div class="ifrs-rule-head"><span>IFRS 9 金融工具</span><span class="ifrs-badge ifrs-badge-emerald-solid">ECL Model</span></div>
-                  <p>引入「預期信用損失 (Expected Credit Loss, ECL)」模型，按 3-Stage 評估應收帳款違約風險並提列備抵損失。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 階段 1：12 個月 ECL 矩陣試算（Stage 1）</p><p>✔ 階段 2/3：存續期間 ECL 違約減損評價（Stage 2/3）</p></div>
-                </div>
-                <div class="ifrs-rule-card ifrs-rule-purple">
-                  <div class="ifrs-rule-head"><span>IFRS 18 財務報表表達與揭露</span><span class="ifrs-badge ifrs-badge-purple-solid">Category Standard</span></div>
-                  <p>將損益表明確分類為【營運 Operating】、【投資 Investing】與【籌資 Financing】三類損益，取代舊版單一分類。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 定義營業利益 (Operating Income) 統一計算標準</p><p>✔ 規範管理層績效衡量指標 (MPMs) 附註揭露</p></div>
-                </div>
-                <div class="ifrs-rule-card ifrs-rule-amber">
-                  <div class="ifrs-rule-head"><span>IAS 21 匯率變動之影響</span><span class="ifrs-badge ifrs-badge-amber-solid">FX Conversion</span></div>
-                  <p>劃分【機能貨幣 (Functional Currency)】與【表達貨幣】，外幣貨幣性項目期末按資產負債表日即期匯率重估損益。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 即時擷取 USD/EUR/JPY 匯率自動轉算 TWD</p><p>✔ 期末認列未實現兌換損益（Unrealized FX Gain/Loss）</p></div>
-                </div>
-                <div class="ifrs-rule-card ifrs-rule-slate">
-                  <div class="ifrs-rule-head"><span>IAS 16 不動產廠房設備 & IAS 12 所得稅</span><span class="ifrs-badge ifrs-badge-slate-solid">PPE & Tax</span></div>
-                  <p>按重大組成部分（Component Depreciation）提列折舊；按會計帳面與稅務基數差異認列【遞延所得稅資產/負債】。</p>
-                  <div class="ifrs-rule-notes"><p>✔ 組成部分單獨折舊與殘值耐用年數定期檢視</p><p>✔ 暫時性差異遞延所得稅（Deferred Tax）彙算</p></div>
-                </div>
-              </div>
-            </div>
-            <div class="report-card" data-report-tab="adjustments" style="--accent-color:#4f46e5;">
-              <div class="report-card-header">
-                <span class="dot" style="background:#4f46e5;"></span>
-                <h4>平行帳簿與 IFRS 調整分錄層</h4>
-                <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;" id="adjustmentsCountBadge">共 0 筆</span>
-              </div>
-              <p class="muted" style="font-size:12px; margin:2px 0 14px;">原始總帳(Local GAAP)保留日常營運分錄；本頁獨立的「IFRS 調整分錄層」核准後，與原始總帳合併即為 IFRS 財報數字。已核准分錄不可修改，如需更正請開立沖銷分錄。</p>
-              <div class="button-row no-print" style="margin-bottom:12px;">
-                <button type="button" id="addIfrsAdjustmentBtn" class="primary-btn" style="width:auto;">＋ 新增 IFRS 調整分錄</button>
-              </div>
-              <div id="ifrsAdjustmentsTableWrap"><p class="muted">載入中...</p></div>
-            </div>
-            <div class="report-card" data-report-tab="notes" style="--accent-color:#9333ea;">
-              <div class="report-card-header">
-                <span class="dot" style="background:#9333ea;"></span>
-                <h4>IFRS 財務報表附註揭露 & 稽核數據包</h4>
-              </div>
-              <p class="muted" style="font-size:12px; margin:2px 0 14px;">符合 IFRS 揭露規範之標準財報附註（可自行編輯維護），並支援一鍵匯出完整審計數據包供會計師查核。</p>
-              <div class="button-row no-print" style="margin-bottom:14px;">
-                <button type="button" id="exportAuditPackageBtn" class="primary-btn" style="width:auto; background:linear-gradient(135deg,#9333ea,#7c3aed);">📦 匯出 CPA 完整審計數據包（JSON）</button>
-              </div>
-              <div id="financialNotesWrap"><p class="muted">載入中...</p></div>
-            </div>
-          </div>
-        </div>
-        <div class="panel" style="margin-top: 16px;">
-          <h3>會計分錄（日記帳）</h3>
-          <div class="search-row">
-            <input type="text" id="journalSearchInput" placeholder="搜尋摘要、銀行、科目、憑證編號..." />
-          </div>
-          <div style="overflow-x:auto;">
-            <table>
-              <thead>
-                <tr><th>日期</th><th>摘要</th><th>銀行</th><th>借方科目</th><th style="text-align:right;">借方金額</th><th>貸方科目</th><th style="text-align:right;">貸方金額</th><th>憑證</th><th>狀態</th></tr>
-              </thead>
-              <tbody id="journalTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ Audit Trail ============ -->
-      <section id="auditTrail" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Audit Trail Logs（單據異動稽核軌跡）</h3>
-          </div>
-          <div class="form-grid" style="margin-bottom:10px;">
-            <div>
-              <label>動作類型</label>
-              <select id="auditTrailActionFilter">
-                <option value="">全部</option>
-                <option value="submit">提交申請</option>
-                <option value="manager_approve">主管核准</option>
-                <option value="manager_reject">主管退件</option>
-                <option value="accounting_approve">會計核准</option>
-                <option value="reject">會計退件</option>
-                <option value="close">付款銷案</option>
-              </select>
-            </div>
-            <div>
-              <label>搜尋（單號／摘要／操作人）</label>
-              <input type="text" id="auditTrailSearchInput" placeholder="輸入關鍵字搜尋..." />
-            </div>
-          </div>
-          <div id="auditTrailList" class="timeline" style="margin-top:12px;"></div>
-        </div>
-      </section>
-
-      <!-- ============ 帳號管理 ============ -->
-      <section id="adminUsers" class="tab-panel" style="display:none;">
-        <div class="grid grid-2">
-          <div class="panel">
-            <h3>開通新帳號</h3>
-            <form id="inviteUserForm">
-              <label>Email</label>
-              <input type="email" id="inviteEmail" required />
-              <label>姓名</label>
-              <input type="text" id="inviteFullName" required />
-              <label>角色</label>
-              <select id="inviteRole">
-                <option value="employee">一般專員</option>
-                <option value="manager">部門主管</option>
-                <option value="accounting">會計部門</option>
-                <option value="admin">管理員</option>
-              </select>
-              <label>可使用功能（多選）</label>
-              <div id="permissionCheckboxes"></div>
-              <label>部門</label>
-              <select id="inviteDepartment"></select>
-              <label>初始密碼（留空使用系統預設）</label>
-              <input type="text" id="invitePassword" placeholder="留空則自動使用 Bd@1234" />
-              <button type="submit" class="primary-btn" style="margin-top:10px;">開通帳號</button>
-            </form>
-            <div id="inviteResultBox" class="message" style="display:none; margin-top:10px;"></div>
-          </div>
-          <div class="panel">
-            <h3>所有使用者</h3>
-            <table>
-              <thead><tr><th>Email</th><th>姓名</th><th>角色</th><th>部門</th><th>狀態</th><th>操作</th></tr></thead>
-              <tbody id="adminUserTableBody"></tbody>
-            </table>
-          </div>
-          <div class="panel">
-            <h3>部門管理</h3>
-            <form id="departmentForm">
-              <input type="text" id="newDepartmentName" placeholder="部門名稱" required />
-              <button type="submit">新增部門</button>
-            </form>
-            <div id="departmentList"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ 設定 ============ -->
-      <section id="settings" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <h3>系統設定</h3>
-          <label>系統名稱</label>
-          <input id="systemName" value="財務管理系統" />
-          <button id="saveSettingsBtn" style="margin-top: 10px;" class="secondary">儲存設定</button>
-        </div>
-
-        <div class="panel" style="margin-top:16px;">
-          <h3>公司基本資料</h3>
-          <p class="muted">這裡的資料會套用到四大財報抬頭、公司登記文件產出。</p>
-          <form id="companyInfoForm">
+            <h3>銀行對帳單匯入</h3>
+            <p class="muted">上傳銀行 PDF 對帳單，系統會自動解析並存入帳單庫，用於核對，跟報支核銷資料分開。</p>
             <div class="form-grid">
-              <div><label>公司名稱（中文）</label><input type="text" id="companyNameZh" required /></div>
-              <div><label>公司名稱（英文）</label><input type="text" id="companyNameEn" /></div>
-              <div><label>統一編號</label><input type="text" id="companyTaxId" required /></div>
-              <div><label>公司電話</label><input type="text" id="companyPhone" /></div>
-              <div class="full-width"><label>公司地址</label><input type="text" id="companyAddress" /></div>
-              <div><label>代表人姓名</label><input type="text" id="companyRepresentative" /></div>
-              <div><label>董事人數</label><input type="number" id="companyBoardCount" min="0" /></div>
-              <div><label>資本總額</label><input type="number" id="companyTotalCapital" min="0" /></div>
-              <div><label>預定開業日期</label><input type="date" id="companyOpenDate" /></div>
+              <div>
+                <label>選擇對應銀行帳戶（系統內）</label>
+                <select id="statementBankAccountId">
+                  <option value="">載入中...</option>
+                </select>
+                <!-- 顯示自動偵測到的解析規則，讓使用者安心 -->
+                <small id="detectedParserText" style="color: #666; display: block; margin-top: 4px;"></small>
+              </div>
+              <div>
+                <label>PDF 對帳單檔案</label>
+                <input type="file" id="statementFileInput" accept="application/pdf" />
+              </div>
             </div>
-            <button type="submit" class="primary-btn" style="margin-top:14px;">儲存公司資料</button>
-          </form>
-        </div>
+            <button id="parseStatementBtn" class="primary-btn" style="margin-top:12px;">解析 PDF</button>
+            <div id="statementPreviewArea" style="margin-top:16px;"></div>
+          </div>
+        </section>
+        
+        <section id="reports" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <!-- 財報頁首橫幅 -->
+            <div class="financial-hero no-print">
+              <div>
+                <div class="financial-hero-eyebrow">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                  <span>IFRS 國際會計準則財務報表系統</span>
+                </div>
+                <h2>四大財務報表</h2>
+                <p>依 IFRS 準則編製，可依期間篩選並切換各報表檢視，列印時將自動輸出全部報表。</p>
+              </div>
+              <div class="button-row financial-hero-actions">
+                <button id="showAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span id="showAllReportsBtnLabel">全部檢視</span>
+                </button>
+                <button id="printReportBtn" class="hero-btn hero-btn-ghost">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  <span>列印報表</span>
+                </button>
+                <button id="exportExcelBtn" class="hero-btn hero-btn-primary">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                  <span>匯出 Excel</span>
+                </button>
+              </div>
+            </div>
 
-        <div class="panel" id="passwordCard" style="margin-top: 16px;">
-          <h3>密碼設定</h3>
-          <p class="muted">您可以隨時變更您的登入密碼。</p>
-          <form id="changePasswordForm">
-            <label>登入帳號</label>
-            <input id="passwordUserEmail" type="email" readonly />
-            <label>新密碼</label>
-            <input id="newPassword" type="password" placeholder="輸入新密碼" required />
-            <label>確認密碼</label>
-            <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required />
-            <button type="submit" class="secondary" style="margin-top: 10px;">儲存密碼</button>
-          </form>
-        </div>
+            <!-- 報表頁籤導覽 -->
+            <div class="report-tabbar no-print">
+              <button type="button" class="report-tab-btn active-tab" data-report-tab="income">
+                <span class="report-tab-dot" style="background:#2563eb;"></span>損益表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="balance">
+                <span class="report-tab-dot" style="background:#0f766e;"></span>資產負債表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="cashflow">
+                <span class="report-tab-dot" style="background:#f59e0b;"></span>現金流量表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="equity">
+                <span class="report-tab-dot" style="background:#7c3aed;"></span>權益變動表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="trial">
+                <span class="report-tab-dot" style="background:#475569;"></span>試算表
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="fundraising">
+                <span class="report-tab-dot" style="background:#9333ea;"></span>募資精算
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="ifrs-rules">
+                <span class="report-tab-dot" style="background:#2563eb;"></span>IFRS 準則引擎
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="adjustments">
+                <span class="report-tab-dot" style="background:#4f46e5;"></span>平行帳簿
+              </button>
+              <button type="button" class="report-tab-btn" data-report-tab="notes">
+                <span class="report-tab-dot" style="background:#9333ea;"></span>財報附註
+              </button>
+            </div>
 
-        <div class="panel" style="margin-top: 16px;">
-          <h3>事業項目與董監名單</h3>
-          <div id="businessInfoContent"></div>
-        </div>
+            <div class="form-grid no-print">
+              <div>
+                <label>報表期間（起）</label>
+                <input type="date" id="reportPeriodStart" />
+              </div>
+              <div>
+                <label>報表期間（迄）</label>
+                <input type="date" id="reportPeriodEnd" />
+              </div>
+            </div>
+            <div class="button-row" style="margin-top:8px; flex-wrap:wrap;">
+              <button type="button" class="secondary period-preset-btn" data-preset="year">本年度</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="q1">第一季</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="q2">第二季</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="q3">第三季</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="q4">第四季</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="month">本月</button>
+              <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
+            </div>
+            <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
+            <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
+              <div class="report-card active-tab" data-report-tab="income" style="--accent-color:#2563eb;">
+                <div id="incomeLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#2563eb;"></span><h4>損益表</h4></div>
+                <table id="incomeTable"></table>
+                <div id="incomeSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="balance" style="--accent-color:#0f766e;">
+                <div id="balanceLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#0f766e;"></span><h4>資產負債表</h4></div>
+                <table id="balanceTable"></table>
+                <div id="balanceSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="cashflow" style="--accent-color:#f59e0b;">
+                <div id="cashflowLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#f59e0b;"></span><h4>現金流量表</h4></div>
+                <table id="cashflowTable"></table>
+                <div id="cashflowSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="equity" style="--accent-color:#7c3aed;">
+                <div id="equityLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#7c3aed;"></span><h4>權益變動表</h4></div>
+                <table id="equityTable"></table>
+                <div id="equitySignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
+                <div id="trialLetterhead" class="report-letterhead"></div>
+                <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
+                <label class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
+                  <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
+                  顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
+                </label>
+                <table id="trialTable"></table>
+                <div id="trialSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="fundraising" style="--accent-color:#9333ea;">
+                <div class="report-card-header"><span class="dot" style="background:#9333ea;"></span><h4>股東權益與募資精算</h4></div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">依資產負債表權益項目與現金水位，試算現金續航力(Runway)與月淨燒錢率，並提供互動式募資缺口與股權稀釋模擬。</p>
 
-        <div class="panel" style="margin-top: 16px;">
-          <h3>使用者核准</h3>
-          <p class="muted">管理者可查看其他帳號的登入申請並核准。</p>
-          <table>
-            <thead><tr><th>帳號</th><th>申請時間</th><th>狀態</th><th>操作</th></tr></thead>
-            <tbody id="approvalTableBody"></tbody>
-          </table>
-        </div>
+                <div class="fundraise-stat-grid">
+                  <div class="fundraise-stat-card indigo">
+                    <span class="stat-label">股本 (Paid-in Capital)</span>
+                    <span class="stat-value" id="fsPaidInCapital">-</span>
+                  </div>
+                  <div class="fundraise-stat-card purple">
+                    <span class="stat-label">保留盈餘</span>
+                    <span class="stat-value" id="fsRetainedEarnings">-</span>
+                  </div>
+                  <div class="fundraise-stat-card slate">
+                    <span class="stat-label">股東權益總額</span>
+                    <span class="stat-value" id="fsTotalEquity">-</span>
+                  </div>
+                  <div class="fundraise-stat-card emerald">
+                    <span class="stat-label">現金水位</span>
+                    <span class="stat-value" id="fsCashBalance">-</span>
+                  </div>
+                </div>
 
-        <div class="panel" style="margin-top: 16px;">
-          <h3>匯出資料</h3>
-          <p class="muted">可把交易資料匯出為 JSON。</p>
-          <button id="exportBtn" class="secondary">匯出交易 JSON</button>
-        </div>
-      </section>
+                <div class="fundraise-sim">
+                  <h5>互動式募資缺口模擬器</h5>
+                  <div class="fundraise-sim-inputs no-print">
+                    <div>
+                      <label>預估未來每月新增費用</label>
+                      <input type="number" id="fsExpansionCost" value="150000" />
+                    </div>
+                    <div>
+                      <label>預估未來每月新增營收</label>
+                      <input type="number" id="fsRevenueGrowth" value="100000" />
+                    </div>
+                    <div>
+                      <label>期望資金安全緩衝月數</label>
+                      <input type="number" id="fsBufferMonths" value="12" />
+                    </div>
+                    <div>
+                      <label>預估投前估值 (TWD)</label>
+                      <input type="number" id="fsPreMoney" value="30000000" />
+                    </div>
+                  </div>
+                  <div class="fundraise-sim-results" id="fsResults"></div>
+                </div>
+              </div>
+              <div class="report-card" data-report-tab="ifrs-rules" style="--accent-color:#2563eb;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#2563eb;"></span>
+                  <h4>IFRS 國際財務報導準則規則引擎</h4>
+                  <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;">2026 Accounting Standard Engine</span>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 16px;">系統依據國際會計準則規範進行交易判定、收入分攤、使用權資產折舊與減損評估之參考說明。</p>
 
-      <!-- 登出按鈕（桌面版頂部右側亦提供） -->
-      <button id="logoutBtnTop" class="gb-logout-top" style="display:none;">登出</button>
-    </main>
+                <div class="ifrs-rules-grid">
+                  <div class="ifrs-rule-card ifrs-rule-blue">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 15 客戶合約之收入</span>
+                      <span class="ifrs-badge ifrs-badge-blue-solid">5-Step Model</span>
+                    </div>
+                    <p>規定收入認列 5 步驟模型：辨認客戶合約 ➔ 辨認履約義務 ➔ 決定交易價格 ➔ 分攤交易價格 ➔ 於滿足履約義務時認列收入。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 專案多階段合約分段認列（Over Time / Point in Time）</p>
+                      <p>✔ 自動生成【合約資產 Contract Asset】與【合約負債】</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-indigo">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 16 租賃（Leases）</span>
+                      <span class="ifrs-badge ifrs-badge-indigo-solid">ROU Model</span>
+                    </div>
+                    <p>承租人表內化處理，將所有營運租賃資產化為【使用權資產 (ROU Asset)】並折現認列【租賃負債 (Lease Liability)】。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 折現率 Discount Rate 計算租賃負債現值</p>
+                      <p>✔ 按月提列使用權資產折舊與租賃利息費用</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-emerald">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 9 金融工具</span>
+                      <span class="ifrs-badge ifrs-badge-emerald-solid">ECL Model</span>
+                    </div>
+                    <p>引入「預期信用損失 (Expected Credit Loss, ECL)」模型，按 3-Stage 評估應收帳款違約風險並提列備抵損失。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 階段 1：12 個月 ECL 矩陣試算（Stage 1）</p>
+                      <p>✔ 階段 2/3：存續期間 ECL 違約減損評價（Stage 2/3）</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-purple">
+                    <div class="ifrs-rule-head">
+                      <span>IFRS 18 財務報表表達與揭露</span>
+                      <span class="ifrs-badge ifrs-badge-purple-solid">Category Standard</span>
+                    </div>
+                    <p>將損益表明確分類為【營運 Operating】、【投資 Investing】與【籌資 Financing】三類損益，取代舊版單一分類。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 定義營業利益 (Operating Income) 統一計算標準</p>
+                      <p>✔ 規範管理層績效衡量指標 (MPMs) 附註揭露</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-amber">
+                    <div class="ifrs-rule-head">
+                      <span>IAS 21 匯率變動之影響</span>
+                      <span class="ifrs-badge ifrs-badge-amber-solid">FX Conversion</span>
+                    </div>
+                    <p>劃分【機能貨幣 (Functional Currency)】與【表達貨幣】，外幣貨幣性項目期末按資產負債表日即期匯率重估損益。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 即時擷取 USD/EUR/JPY 匯率自動轉算 TWD</p>
+                      <p>✔ 期末認列未實現兌換損益（Unrealized FX Gain/Loss）</p>
+                    </div>
+                  </div>
+
+                  <div class="ifrs-rule-card ifrs-rule-slate">
+                    <div class="ifrs-rule-head">
+                      <span>IAS 16 不動產廠房設備 &amp; IAS 12 所得稅</span>
+                      <span class="ifrs-badge ifrs-badge-slate-solid">PPE &amp; Tax</span>
+                    </div>
+                    <p>按重大組成部分（Component Depreciation）提列折舊；按會計帳面與稅務基數差異認列【遞延所得稅資產/負債】。</p>
+                    <div class="ifrs-rule-notes">
+                      <p>✔ 組成部分單獨折舊與殘值耐用年數定期檢視</p>
+                      <p>✔ 暫時性差異遞延所得稅（Deferred Tax）彙算</p>
+                    </div>
+                  </div>
+                </div>
+                <p class="muted" style="font-size:11px; margin-top:14px;">※ 本頁為準則規範參考說明，實際分錄仍依系統中已入帳之交易資料為準；若需將特定交易依上述準則調整入帳，請於「憑證」流程中註記對應科目。</p>
+              </div>
+              <div class="report-card" data-report-tab="adjustments" style="--accent-color:#4f46e5;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#4f46e5;"></span>
+                  <h4>平行帳簿與 IFRS 調整分錄層</h4>
+                  <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;" id="adjustmentsCountBadge">共 0 筆</span>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">原始總帳(Local GAAP)保留日常營運分錄；本頁獨立的「IFRS 調整分錄層」核准後，與原始總帳合併即為 IFRS 財報數字。已核准分錄不可修改，如需更正請開立沖銷分錄。</p>
+                <div class="button-row no-print" style="margin-bottom:12px;">
+                  <button type="button" id="addIfrsAdjustmentBtn" class="primary-btn" style="width:auto;">＋ 新增 IFRS 調整分錄</button>
+                </div>
+                <div id="ifrsAdjustmentsTableWrap">
+                  <p class="muted">載入中...</p>
+                </div>
+              </div>
+              <div class="report-card" data-report-tab="notes" style="--accent-color:#9333ea;">
+                <div class="report-card-header">
+                  <span class="dot" style="background:#9333ea;"></span>
+                  <h4>IFRS 財務報表附註揭露 &amp; 稽核數據包</h4>
+                </div>
+                <p class="muted" style="font-size:12px; margin:2px 0 14px;">符合 IFRS 揭露規範之標準財報附註（可自行編輯維護），並支援一鍵匯出完整審計數據包供會計師查核。</p>
+                <div class="button-row no-print" style="margin-bottom:14px;">
+                  <button type="button" id="exportAuditPackageBtn" class="primary-btn" style="width:auto; background:linear-gradient(135deg,#9333ea,#7c3aed);">📦 匯出 CPA 完整審計數據包（JSON）</button>
+                </div>
+                <div id="financialNotesWrap">
+                  <p class="muted">載入中...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <h3>會計分錄（日記帳）</h3>
+            <div class="search-row">
+              <input type="text" id="journalSearchInput" placeholder="搜尋摘要、銀行、科目、憑證編號..." />
+            </div>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr><th>日期</th><th>摘要</th><th>銀行</th><th>借方科目</th><th style="text-align:right;">借方金額</th><th>貸方科目</th><th style="text-align:right;">貸方金額</th><th>憑證</th><th>狀態</th></tr>
+                </thead>
+                <tbody id="journalTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section id="auditTrail" class="tab-panel" style="display:none;">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Audit Trail Logs（單據異動稽核軌跡）</h3>
+            </div>
+            <div class="form-grid" style="margin-bottom:10px;">
+              <div>
+                <label>動作類型</label>
+                <select id="auditTrailActionFilter">
+                  <option value="">全部</option>
+                  <option value="submit">提交申請</option>
+                  <option value="manager_approve">主管核准</option>
+                  <option value="manager_reject">主管退件</option>
+                  <option value="accounting_approve">會計核准</option>
+                  <option value="reject">會計退件</option>
+                  <option value="close">付款銷案</option>
+                </select>
+              </div>
+              <div>
+                <label>搜尋（單號／摘要／操作人）</label>
+                <input type="text" id="auditTrailSearchInput" placeholder="輸入關鍵字搜尋..." />
+              </div>
+            </div>
+            <div id="auditTrailList" class="timeline" style="margin-top:12px;"></div>
+          </div>
+        </section>
+
+        <section id="adminUsers" class="tab-panel" style="display:none;">
+          <div class="grid grid-2">
+            <div class="panel">
+              <h3>開通新帳號</h3>
+              <form id="inviteUserForm">
+                <label>Email</label>
+                <input type="email" id="inviteEmail" required />
+                <label>姓名</label>
+                <input type="text" id="inviteFullName" required />
+                <label>角色</label>
+                <select id="inviteRole">
+                  <option value="employee">一般專員</option>
+                  <option value="manager">部門主管</option>
+                  <option value="accounting">會計部門</option>
+                  <option value="admin">管理員</option>
+                </select>
+                <label>可使用功能（多選）</label>
+                <div id="permissionCheckboxes">
+                  <!-- 動態產生 checkbox -->
+                </div>
+                <label>部門</label>
+                <select id="inviteDepartment"></select>
+                <label>初始密碼（留空使用系統預設）</label>
+                <input type="text" id="invitePassword" placeholder="留空則自動使用 Bd@1234" />
+                <button type="submit" class="primary-btn" style="margin-top:10px;">開通帳號</button>
+              </form>
+              <div id="inviteResultBox" class="message" style="display:none; margin-top:10px;"></div>
+            </div>
+            <div class="panel">
+              <h3>所有使用者</h3>
+              <table>
+                <thead><tr><th>Email</th><th>姓名</th><th>角色</th><th>部門</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody id="adminUserTableBody"></tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <h3>部門管理</h3>
+              <form id="departmentForm">
+                <input type="text" id="newDepartmentName" placeholder="部門名稱" required />
+                <button type="submit">新增部門</button>
+              </form>
+              <div id="departmentList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings" class="tab-panel" style="display:none;">
+          
+          <!-- 1. 系統設定 -->
+          <div class="panel">
+            <h3>系統設定</h3>
+            <label>系統名稱</label>
+            <input id="systemName" value="財務管理系統" />
+            <button id="saveSettingsBtn" style="margin-top: 10px;" class="secondary">儲存設定</button>
+          </div>
+
+          <!-- 2. 公司基本資料（可編輯表單） -->
+          <div class="panel" style="margin-top:16px;">
+            <h3>公司基本資料</h3>
+            <p class="muted">這裡的資料會套用到四大財報抬頭、公司登記文件產出。</p>
+            <form id="companyInfoForm">
+              <div class="form-grid">
+                <div>
+                  <label>公司名稱（中文）</label>
+                  <input type="text" id="companyNameZh" required />
+                </div>
+                <div>
+                  <label>公司名稱（英文）</label>
+                  <input type="text" id="companyNameEn" />
+                </div>
+                <div>
+                  <label>統一編號</label>
+                  <input type="text" id="companyTaxId" required />
+                </div>
+                <div>
+                  <label>公司電話</label>
+                  <input type="text" id="companyPhone" />
+                </div>
+                <div class="full-width">
+                  <label>公司地址</label>
+                  <input type="text" id="companyAddress" />
+                </div>
+                <div>
+                  <label>代表人姓名</label>
+                  <input type="text" id="companyRepresentative" />
+                </div>
+                <div>
+                  <label>董事人數</label>
+                  <input type="number" id="companyBoardCount" min="0" />
+                </div>
+                <div>
+                  <label>資本總額</label>
+                  <input type="number" id="companyTotalCapital" min="0" />
+                </div>
+                <div>
+                  <label>預定開業日期</label>
+                  <input type="date" id="companyOpenDate" />
+                </div>
+              </div>
+              <button type="submit" class="primary-btn" style="margin-top:14px;">儲存公司資料</button>
+            </form>
+          </div>
+
+          <!-- 3. 密碼設定（已優化為 Form） -->
+          <div class="panel" id="passwordCard" style="margin-top: 16px;">
+            <h3>密碼設定</h3>
+            <p class="muted">您可以隨時變更您的登入密碼。</p>
+            <form id="changePasswordForm">
+              <label>登入帳號</label>
+              <input id="passwordUserEmail" type="email" readonly />
+              <label>新密碼</label>
+              <input id="newPassword" type="password" placeholder="輸入新密碼" required />
+              <label>確認密碼</label>
+              <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required />
+              <button type="submit" class="secondary" style="margin-top: 10px;">儲存密碼</button>
+            </form>
+          </div>
+
+          <!-- 4. 事業項目與董監名單 -->
+          <div class="panel" style="margin-top: 16px;">
+            <h3>事業項目與董監名單</h3>
+            <div id="businessInfoContent"></div>
+          </div>
+
+          <!-- 5. 使用者核准 -->
+          <div class="panel" style="margin-top: 16px;">
+            <h3>使用者核准</h3>
+            <p class="muted">管理者可查看其他帳號的登入申請並核准。</p>
+            <table>
+              <thead>
+                <tr><th>帳號</th><th>申請時間</th><th>狀態</th><th>操作</th></tr>
+              </thead>
+              <tbody id="approvalTableBody"></tbody>
+            </table>
+          </div>
+
+          <!-- 6. 匯出資料 -->
+          <div class="panel" style="margin-top: 16px;">
+            <h3>匯出資料</h3>
+            <p class="muted">可把交易資料匯出為 JSON。</p>
+            <button id="exportBtn" class="secondary">匯出交易 JSON</button>
+          </div>
+        </section>
+      </main>
+    </div>
   </div>
-
-  <!-- ====================== Modals ====================== -->
-  <!-- 銀行帳戶編輯 -->
+  <!-- 銀行帳戶編輯 Modal -->
   <div id="editBankModal" class="login-shell" style="display:none; z-index: 9999;">
     <div class="card">
       <h2>編輯銀行帳戶</h2>
       <form id="editBankForm" onsubmit="event.preventDefault(); saveBankEdit();">
         <input type="hidden" id="edit_bank_id" />
-        <label>銀行名稱</label><input type="text" id="edit_bank_name" required />
-        <label>帳戶名稱 (戶名)</label><input type="text" id="edit_account_name" />
-        <label>帳號</label><input type="text" id="edit_account_number" required />
-        <label>分行</label><input type="text" id="edit_branch" />
-        <label>幣別</label><input type="text" id="edit_currency" value="TWD" />
+        <label>銀行名稱</label>
+        <input type="text" id="edit_bank_name" required />
+        <label>帳戶名稱 (戶名)</label>
+        <input type="text" id="edit_account_name" />
+        <label>帳號</label>
+        <input type="text" id="edit_account_number" required />
+        <label>分行</label>
+        <input type="text" id="edit_branch" />
+        <label>幣別</label>
+        <input type="text" id="edit_currency" value="TWD" />
+        
         <div style="display: flex; gap: 10px; margin-top: 15px;">
           <button type="submit" class="primary-btn">儲存更新</button>
           <button type="button" class="secondary" onclick="document.getElementById('editBankModal').style.display='none'">取消</button>
@@ -858,74 +951,7 @@
       </form>
     </div>
   </div>
-
-  <!-- 付款人新增 -->
   <div id="addPayeeModalContainer"></div>
-
-  <!-- ══ 發票查詢中心（套用 googleai InvoiceSearchCenter 排版） ══ -->
-  <div id="invoiceSearchModal" class="gb-modal-backdrop" style="display:none;">
-    <div class="gb-modal">
-      <!-- 表頭 -->
-      <div class="gb-modal-head">
-        <div class="gb-modal-head-left">
-          <div class="gb-modal-head-icon">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          </div>
-          <div>
-            <h2>統一發票與稅務憑證智慧查詢中心</h2>
-            <p>快速查詢電子發票、三聯式發票與扣抵憑證，支援統一編號勾稽與營業稅 (VAT 401) 申報檔匯出。</p>
-          </div>
-        </div>
-        <button type="button" class="gb-modal-close" onclick="document.getElementById('invoiceSearchModal').style.display='none'">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
-
-      <!-- 搜尋與篩選 -->
-      <div class="gb-modal-filters">
-        <div class="gb-filter-search">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" id="invoiceSearchInput" placeholder="輸入發票號碼、廠商名稱、統一編號或單號..." />
-        </div>
-        <select id="invoiceSearchType" class="gb-filter-select">
-          <option value="all">所有發票與憑證類型</option>
-          <option value="發票">統一發票</option>
-          <option value="收據">免用發票收據</option>
-          <option value="領據">個人領據</option>
-          <option value="無">無憑證</option>
-        </select>
-        <select id="invoiceSearchStatus" class="gb-filter-select">
-          <option value="all">所有過帳狀態</option>
-          <option value="closed">已核銷過帳</option>
-          <option value="pending">簽核審核中</option>
-        </select>
-        <button type="button" id="invoiceExportCsvBtn" class="gb-btn-emerald">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          匯出 401 申報檔
-        </button>
-      </div>
-
-      <!-- 統計列 -->
-      <div class="gb-modal-stats">
-        <div><span>符合條件發票筆數</span><strong id="invoiceStatCount">0 筆</strong></div>
-        <div><span>銷售額小計 (未稅)</span><strong id="invoiceStatNet">NT$ 0</strong></div>
-        <div class="gb-stat-green"><span>營業稅 5% 小計 (可扣抵進項)</span><strong id="invoiceStatTax">NT$ 0</strong></div>
-        <div><span>發票含稅總金額</span><strong id="invoiceStatTotal">NT$ 0</strong></div>
-      </div>
-
-      <!-- 表格 -->
-      <div class="gb-modal-body">
-        <div id="invoiceSearchTableWrap"></div>
-      </div>
-
-      <!-- 底部 -->
-      <div class="gb-modal-foot">
-        <span>買受人統一編號：由「公司基本資料」帶入</span>
-        <button type="button" class="gb-btn-dark" onclick="document.getElementById('invoiceSearchModal').style.display='none'">關閉視窗</button>
-      </div>
-    </div>
-  </div>
-
   <script type="module" src="./scripts/main.js"></script>
 </body>
 </html>
