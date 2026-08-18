@@ -4,6 +4,50 @@
 
 ---
 
+## Demo v2.9.8 — 2026-08-18（ui.js 重構：移除重複宣告、修復初始化流程、強化 UI 功能模式）
+
+### Summary of Changes
+- **重複宣告全面清理**：移除 `scripts/ui.js` 內所有與 import 衝突的本地宣告，包括 `setText`、`safeListener`、`closeSidebar`、`openSidebar`，避免瀏覽器拋出 `SyntaxError: Identifier 'xxx' has already been declared`。
+- **初始化流程修復**：將 `initPage` 與 `initialize` 兩個 DOMContentLoaded 監聽器合併為單一路徑，由 `initPage` 依序呼叫 `initialize`，避免重複初始化與競態條件。
+- **UI 功能模式強化**：
+  - AuditTrail：強化表格設計，加入搜尋列、角色標籤、變更前後對照 (Delta) 欄位。
+  - Voucher Workflow：將簽核中心列表從表格改為卡片式佈局，每張卡片顯示單號、狀態徽章、迷你步驟點、金額與操作按鈕。
+  - Voucher Card：增強單據卡片設計，使用 Grid 佈局顯示日期、摘要、金額、筆數，視覺更清晰。
+- **建立模組化基礎**：陸續建立 `src/modules/voucher/voucherFormOptions.js`、`voucherFormLines.js`、`voucherWorkflowUI.js`、`reports/financialReports.js`、`company/companyData.js`、`transaction/transactionUI.js`、`core/app.js` 等獨立模組，為後續完整重構舖路。
+
+### Files Modified
+- `scripts/ui.js`
+- `src/modules/voucher/voucherWorkflowUI.js` (新增)
+- `src/modules/voucher/voucherFormOptions.js` (新增)
+- `src/modules/voucher/voucherFormLines.js` (新增)
+- `src/modules/reports/financialReports.js` (新增)
+- `src/modules/company/companyData.js` (新增)
+- `src/modules/transaction/transactionUI.js` (新增)
+- `src/modules/core/app.js` (新增)
+
+### Root Cause 分類
+- 屬於「重構遺留問題 + 初始化流程設計缺陷 + UX 強化」的綜合改進。
+
+---
+
+## Demo v2.9.7 — 2026-08-18（修復：renderDashboard 重複宣告導致系統無法啟動）
+
+### Summary of Changes
+- **緊急修復**：`scripts/ui.js` 第 20 行從 `src/modules/dashboard/dashboard.js` 匯入 `renderDashboard`，
+   但同一檔案第 827 行又重複宣告了同名函式，導致瀏覽器拋出 `SyntaxError: Identifier 'renderDashboard' has already been declared`，
+   **整個系統完全無法啟動**。
+- 移除 `scripts/ui.js` 內的重複本地函式宣告，保留 `dashboard.js` 匯出的版本（功能更完整的現代化 Dashboard 實作）。
+- 此為繼 BUG-004-002（`ROLE_LABELS` 重複宣告）、BUG-004-003（`renderUserManagementView` 重複宣告）之後，
+   同一重構模式再次發生的遺留問題。
+
+### Files Modified
+- `scripts/ui.js`
+
+### Root Cause 分類
+- 屬於「共用函式抽出到獨立模組後，忘記同步移除原本本地宣告」的典型重構遺留問題。
+
+---
+
 ## Demo v2.9.6 — 2026-08-18（修復：renderUserManagementView 重複宣告導致系統無法啟動）
 
 ### Summary of Changes

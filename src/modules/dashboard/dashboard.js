@@ -83,7 +83,7 @@ export async function renderDashboard() {
       v.applicant_id === user.id && (v.status === 'manager_rejected' || v.status === 'accounting_rejected')
     ).length;
 
-    // 5. 組裝畫面 - 參考 googleai 版本的卡片式設計
+    // 5. 組裝畫面 - 卡片式設計
     let html = `
       <!-- Role Banner - Clean Dark Minimalist Header -->
       <div class="bg-slate-900 p-6 rounded-xl text-white shadow-sm border border-slate-800 relative overflow-hidden mb-6">

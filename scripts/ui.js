@@ -75,6 +75,9 @@ async function initPage() {
     if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
     if (typeof renderBusinessData === 'function') renderBusinessData();
 
+    // 6. 繼續 app 初始化流程（載入 state、綁定事件、顯示主畫面）
+    await initialize();
+
   } catch (error) {
     console.error('載入失敗：', error);
   }
@@ -128,7 +131,7 @@ async function renderAdminUserTable() {
   }
 }
 
-// ===== 完整的使用者權限管理視圖 (參考 googleai 版本) =====
+// ===== 完整的使用者權限管理視圖 =====
 async function renderUserManagementView() {
   const container = document.getElementById('userManagementContainer');
   if (!container) return;
@@ -681,22 +684,83 @@ async function renderAuditTrail() {
       return;
     }
 
-    container.innerHTML = filtered.map(l => {
-      const lineClass = l.action === 'close' ? 'closed' : (l.action?.includes('reject') ? 'rejected' : '');
-      return `
-        <li class="${lineClass}">
-          <div class="tl-title">
-            ${ACTION_LABELS[l.action] || l.action}
-            ${l.vouchers?.voucher_no ? `<a href="javascript:void(0)" onclick="viewVoucherDetail('${l.voucher_id}')" style="margin-left:6px; color:#2563eb; font-weight:600;">[${l.vouchers.voucher_no}]</a>` : ''}
+    container.innerHTML = `
+      <div class="space-y-6">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <h2 class="text-lg font-bold text-slate-900">系統完整稽核軌跡 (Audit Trail Logs)</h2>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">
+              記錄專案修改、單據簽核、會計憑證生成與權限切換之所有操作，提供不可篡改之內部控制追蹤憑據。
+            </p>
           </div>
-          <div class="tl-meta">
-            ${new Date(l.created_at).toLocaleString('zh-TW')} ｜ 操作人：${l.profiles?.full_name || '系統'}
-            ${l.vouchers?.summary ? ` ｜ ${l.vouchers.summary}` : ''}
+          <div class="relative w-full sm:w-64">
+            <svg class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 0 0114 0z"></path></svg>
+            <input
+              type="text"
+              id="auditTrailSearchInput"
+              placeholder="搜尋操作人、動作、標的..."
+              value="${keyword}"
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
-          ${l.reject_reason ? `<div class="tl-note">${l.reject_reason}</div>` : ''}
-        </li>
-      `;
-    }).join('');
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-xs">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-900 text-white font-semibold text-[11px]">
+                <th class="p-3">時間戳記 (Timestamp)</th>
+                <th class="p-3">操作人員與角色</th>
+                <th class="p-3">動作名稱 (Action)</th>
+                <th class="p-3">詳細紀錄說明</th>
+                <th class="p-3">變更前後對照 (Delta)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${filtered.map(l => {
+                const roleLabel = l.actor_role === 'admin' ? '管理員' : l.actor_role === 'accounting' ? '會計' : l.actor_role === 'manager' ? '主管' : '員工';
+                const hasDelta = l.from_status || l.to_status;
+                return `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="p-3 font-mono text-slate-500 whitespace-nowrap text-[11px] tabular-nums">
+                      ${new Date(l.created_at).toLocaleString('zh-TW')}
+                    </td>
+                    <td class="p-3 font-medium text-slate-900 whitespace-nowrap">
+                      <div class="flex items-center space-x-1.5">
+                        <span>${l.profiles?.full_name || '系統'}</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono">${roleLabel}</span>
+                      </div>
+                    </td>
+                    <td class="p-3 font-bold text-indigo-700 whitespace-nowrap">
+                      ${ACTION_LABELS[l.action] || l.action}
+                    </td>
+                    <td class="p-3 text-slate-700 max-w-md leading-relaxed text-[11px]">
+                      ${l.vouchers?.voucher_no ? `<a href="javascript:void(0)" onclick="viewVoucherDetail('${l.voucher_id}')" style="color:#2563eb; font-weight:600;">[${l.vouchers.voucher_no}]</a>` : ''}
+                      ${l.vouchers?.summary ? ` ${l.vouchers.summary}` : ''}
+                      ${l.reject_reason ? `<div class="text-rose-600 mt-1">${l.reject_reason}</div>` : ''}
+                    </td>
+                    <td class="p-3 text-slate-600 font-mono text-[10px] tabular-nums">
+                      ${hasDelta ? `
+                        <div class="flex items-center space-x-1 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                          <span class="text-slate-400 line-through">${l.from_status || '-'}</span>
+                          <svg class="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                          <span class="text-emerald-700 font-bold">${l.to_status || '-'}</span>
+                        </div>
+                      ` : '<span class="text-slate-300">-</span>'}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('auditTrailSearchInput')?.addEventListener('input', () => renderAuditTrail());
   } catch (err) {
     console.error('讀取 Audit Trail 失敗:', err);
     container.innerHTML = `<p class="muted">載入失敗：${err.message}</p>`;
@@ -821,165 +885,6 @@ function renderBusinessData() {
       <ul>${directorRows}</ul>
     </div>
   `;
-}
-
-// ===== 5. 重構 Dashboard (確保替換掉舊的，不要出現包裝兩層的狀況) =====
-async function renderDashboard() {
-  const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
-  if (!container) return;
-
-  const user = state.currentUser;
-  if (!user || !user.id) {
-    container.innerHTML = '<p class="muted">請先登入</p>';
-    return;
-  }
-
-  const role = user.role;
-  const isPrivileged = ['admin', 'accounting'].includes(role); // 只有這兩種看全公司
-  const selectedProj = state.currentProjectId || 'all';
-
-  try {
-    // ---------- 1. 依角色抓報支單 ----------
-    let voucherQuery = supabase
-      .from('vouchers')
-      .select('*, profiles!applicant_id(full_name), departments(name)')
-      .order('created_at', { ascending: false });
-    if (!isPrivileged && user.department_id) {
-      voucherQuery = voucherQuery.eq('department_id', user.department_id);
-    }
-
-    const { data: vchs, error: vError } = await voucherQuery;
-    if (vError) throw vError;
-    const vouchers = vchs || [];
-
-    // ---------- 2. 依角色抓專案（預算來源） ----------
-    let projectQuery = supabase.from('projects').select('id, name, project_code, total_budget, remaining_budget, department_id');
-    if (!isPrivileged && user.department_id) {
-      // 一般員工／主管：只看自己部門的專案
-      projectQuery = projectQuery.eq('department_id', user.department_id);
-    }
-    const { data: projects } = await projectQuery;
-    const projectList = projects || [];
-
-    // 有選單一專案時，再過濾
-    const filteredProjects = selectedProj !== 'all'
-      ? projectList.filter(p => p.id === selectedProj)
-      : projectList;
-
-    const totalBudget = filteredProjects.reduce((s, p) => s + Number(p.total_budget || 0), 0);
-
-    let displayVouchers = vouchers;
-    if (selectedProj !== 'all') {
-      displayVouchers = vouchers.filter(v => v.project_id === selectedProj);
-    }
-
-    const projectIds = new Set(filteredProjects.map(p => p.id));
-    const totalSpent = displayVouchers
-      .filter(v =>
-        (!v.project_id || projectIds.has(v.project_id)) &&
-        ['approved', 'closed', 'pending_accounting'].includes(v.status)
-      )
-      .reduce((s, v) => s + Number(v.total_amount || 0), 0);
-
-    const totalRemaining = Math.max(0, totalBudget - totalSpent);
-
-        // ---------- 3. 待辦數字（狀態要統一） ----------
-        const pendingReview = displayVouchers.filter(v => v.status === 'pending_review').length;
-        const pendingAccounting = displayVouchers.filter(v => v.status === 'pending_accounting').length;
-        const pendingPayment = displayVouchers.filter(v => v.status === 'approved').length;
-        const rejectedCount = displayVouchers.filter(v =>
-          v.status === 'manager_rejected' || v.status === 'accounting_rejected'
-        ).length;
-
-    // ---------- 4. 畫面 ----------
-    let html = `
-      <div style="margin-bottom:20px;">
-        <h2 style="margin:0 0 4px;">財務總覽</h2>
-        <p class="muted">歡迎，${user.name || user.full_name || ''}（${role}）</p>
-      </div>
-    `;
-
-    // 待辦（所有角色都看得到「自己範圍內」的數字）
-    html += `
-      <div style="background:#fff; padding:16px; border-radius:8px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);">
-        <h3 style="margin:0 0 12px; font-size:15px;">今日待辦</h3>
-        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; text-align:center;">
-          <div><div style="font-size:22px; font-weight:700; color:#f59e0b;">${pendingReview}</div><div class="muted" style="font-size:12px;">待主管審核</div></div>
-          <div><div style="font-size:22px; font-weight:700; color:#3b82f6;">${pendingAccounting}</div><div class="muted" style="font-size:12px;">待會計核准</div></div>
-          <div><div style="font-size:22px; font-weight:700; color:#10b981;">${pendingPayment}</div><div class="muted" style="font-size:12px;">待付款</div></div>
-          <div><div style="font-size:22px; font-weight:700; color:#ef4444;">${rejectedCount}</div><div class="muted" style="font-size:12px;">退件</div></div>
-        </div>
-      </div>
-    `;
-
-    // 預算卡：有專案才顯示；沒有專案的人看到「尚無專案」
-    if (filteredProjects.length === 0) {
-      html += `
-        <div style="background:#fff; padding:16px; border-radius:8px; margin-bottom:16px;">
-          <p class="muted">目前沒有可檢視的專案預算。</p>
-        </div>
-      `;
-    } else {
-      html += `
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
-          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #28a745;">
-            <div class="muted" style="font-size:13px;">${isPrivileged && selectedProj === 'all' ? '全公司' : '範圍內'}專案預算</div>
-            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalBudget.toLocaleString()}</div>
-          </div>
-          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #dc3545;">
-            <div class="muted" style="font-size:13px;">已使用</div>
-            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalSpent.toLocaleString()}</div>
-          </div>
-          <div style="background:#fff; padding:16px; border-radius:8px; border-left:4px solid #007bff;">
-            <div class="muted" style="font-size:13px;">剩餘預算</div>
-            <div style="font-size:20px; font-weight:700; margin-top:6px;">$${totalRemaining.toLocaleString()}</div>
-          </div>
-        </div>
-      `;
-    }
-
-    // 核銷列表（只顯示自己權限範圍）
-    html += `
-      <div style="background:#fff; padding:16px; border-radius:8px;">
-        <h3 style="margin:0 0 12px; font-size:15px;">${isPrivileged ? '核銷明細' : '部門核銷進度'}</h3>
-        <table style="width:100%; border-collapse:collapse; font-size:14px;">
-          <thead>
-            <tr style="background:#f8f9fa; text-align:left;">
-              <th style="padding:8px;">單號</th>
-              <th style="padding:8px;">申請人</th>
-              <th style="padding:8px;">部門</th>
-              <th style="padding:8px;">摘要</th>
-              <th style="padding:8px;">金額</th>
-              <th style="padding:8px;">狀態</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${displayVouchers.length === 0
-              ? '<tr><td colspan="6" style="padding:16px; text-align:center;" class="muted">尚無資料</td></tr>'
-              : displayVouchers.map(v => `
-                <tr style="border-bottom:1px solid #eee;">
-                  <td style="padding:8px;">
-                    <a href="javascript:void(0)" onclick="viewVoucherDetail('${v.id}')" style="color:#2563eb; font-weight:600;">
-                      ${v.voucher_no || '未編號'}
-                    </a>
-                  </td>
-                  <td style="padding:8px;">${v.profiles?.full_name || '-'}</td>
-                  <td style="padding:8px;">${v.departments?.name || '-'}</td>
-                  <td style="padding:8px;">${v.summary || '-'}</td>
-                  <td style="padding:8px;">$${Number(v.total_amount || 0).toLocaleString()}</td>
-                  <td style="padding:8px;">${typeof getStatusBadge === 'function' ? getStatusBadge(v.status) : (v.status || '-')}</td>
-                </tr>
-              `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    container.innerHTML = html; // 只寫一次，不要 += 重複區塊
-  } catch (err) {
-    console.error('Dashboard 失敗:', err);
-    container.innerHTML = `<p style="color:red; padding:16px;">載入失敗：${err.message}</p>`;
-  }
 }
 
 function renderTransactionTable() {
@@ -1114,7 +1019,6 @@ function renderFundraisingSimulation() {
   const resultsEl = document.getElementById('fsResults');
   if (!resultsEl) return;
 
-  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   setText('fsPaidInCapital', formatTwd(fundraisingSnapshot.paidInCapital));
   setText('fsRetainedEarnings', formatTwd(fundraisingSnapshot.retainedEarnings));
   setText('fsTotalEquity', formatTwd(fundraisingSnapshot.totalEquity));
@@ -2189,28 +2093,9 @@ function initializeEvents() {
 }
 
 function initializeEventsInternal() {
-  const safeListener = (id, event, handler) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener(event, handler);
-  };
-
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
-
-  function closeSidebar() {
-    sidebarEl?.classList.remove('open');
-    sidebarOverlay?.classList.remove('open');
-    menuToggleBtn?.classList.remove('open');
-    menuToggleBtn?.setAttribute('aria-expanded', 'false');
-  }
-
-  function openSidebar() {
-    sidebarEl?.classList.add('open');
-    sidebarOverlay?.classList.add('open');
-    menuToggleBtn?.classList.add('open');
-    menuToggleBtn?.setAttribute('aria-expanded', 'true');
-  }
 
   menuToggleBtn?.addEventListener('click', () => {
     sidebarEl?.classList.contains('open') ? closeSidebar() : openSidebar();
@@ -3036,12 +2921,6 @@ async function initialize() {
     }
 }
 
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', initialize);
-} else {
-  initialize();
-}
-
 async function populateVoucherFormOptions() {
   try {
     const [accounts, banks, departments] = await Promise.all([
@@ -3190,18 +3069,43 @@ function renderVoucherCard(v) {
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="accounting">退件</button>`;
   }
 
+  const statusBadge = getStatusBadge(v.status);
+  const stepperDots = buildMiniStepperDots(v.status);
+
   return `
-    <div class="voucher-card">
-      <div class="voucher-card-header">
-        <strong>${v.voucher_no || '（產生中）'}</strong>
-        <span class="badge">${STATUS_LABELS[v.status] || v.status}</span>
+    <div class="voucher-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.06);">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong style="font-size:14px; color:#0f172a;">${v.voucher_no || '（產生中）'}</strong>
+          ${statusBadge}
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${stepperDots}
+        </div>
       </div>
-      <div class="muted">${v.tx_date}｜${v.summary || ''}｜金額 ${Number(v.total_amount).toLocaleString()}</div>
-      <div class="button-row" style="margin-top:8px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:13px; color:#475569;">
+        <div>
+          <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">日期</span>
+          <span style="font-weight:600; color:#1e293b;">${v.tx_date || '-'}</span>
+        </div>
+        <div>
+          <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">摘要</span>
+          <span style="font-weight:600; color:#1e293b;">${v.summary || '-'}</span>
+        </div>
+        <div>
+          <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">金額</span>
+          <span style="font-weight:700; color:#0f172a; font-size:15px;">$${Number(v.total_amount || 0).toLocaleString()}</span>
+        </div>
+        <div>
+          <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">筆數</span>
+          <span style="font-weight:600; color:#1e293b;">${v.voucher_lines?.length || 0} 筆明細</span>
+        </div>
+      </div>
+      <div class="button-row" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
         ${actions}
-        <button class="secondary view-history-btn" data-id="${v.id}">查看審批歷程</button>
+        <button class="secondary view-history-btn" data-id="${v.id}" style="font-size:12px; padding:6px 12px;">查看審批歷程</button>
       </div>
-      <div class="voucher-history" id="history-${v.id}" style="display:none; margin-top:8px;"></div>
+      <div class="voucher-history" id="history-${v.id}" style="display:none; margin-top:10px;"></div>
     </div>`;
 }
 
@@ -3222,8 +3126,8 @@ async function renderVoucherWorkflowList() {
 
     const htmlContent = vouchers.map(row => {
       let actionButtons = '';
-      const currentUserRole = state.currentUser?.role; 
-      const vStatus = row.status; 
+      const currentUserRole = state.currentUser?.role;
+      const vStatus = row.status;
 
       if (currentUserRole === 'employee') {
         if (['pending_review'].includes(vStatus)) {
@@ -3236,7 +3140,7 @@ async function renderVoucherWorkflowList() {
         } else {
           actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
-      } 
+      }
       else if (currentUserRole === 'manager') {
         if (vStatus === 'pending_review') {
           actionButtons = `
@@ -3246,7 +3150,7 @@ async function renderVoucherWorkflowList() {
         } else {
           actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
-      } 
+      }
       else if (['accounting', 'admin'].includes(currentUserRole)) {
         if (vStatus === 'pending_accounting') {
           actionButtons = `
@@ -3266,39 +3170,43 @@ async function renderVoucherWorkflowList() {
         }
       }
 
+      const statusBadge = getStatusBadge(vStatus);
+      const stepperDots = buildMiniStepperDots(vStatus);
+
       return `
-        <tr>
-          <td><a href="javascript:void(0)" onclick="viewVoucherDetail('${row.id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${row.voucher_no || '未編號'}</a></td>
-          <td>${row.summary || '-'}</td>
-          <td>${row.voucher_lines?.length || 0} 筆</td>
-          <td style="text-align:right; font-variant-numeric:tabular-nums;">$${Number(row.total_amount || 0).toLocaleString()}</td>
-          <td>${getStatusBadge(vStatus)}</td>
-          <td>${buildMiniStepperDots(vStatus)}</td>
-          <td style="white-space:nowrap;">${actionButtons}</td>
-        </tr>
+        <div class="voucher-workflow-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.06);">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <a href="javascript:void(0)" onclick="viewVoucherDetail('${row.id}')" style="color:#2563eb; font-weight:700; font-size:14px; text-decoration:none;">${row.voucher_no || '未編號'}</a>
+              ${statusBadge}
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              ${stepperDots}
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; font-size:13px; color:#475569; margin-bottom:12px;">
+            <div>
+              <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">摘要</span>
+              <span style="font-weight:600; color:#1e293b;">${row.summary || '-'}</span>
+            </div>
+            <div>
+              <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">金額</span>
+              <span style="font-weight:700; color:#0f172a; font-size:15px;">$${Number(row.total_amount || 0).toLocaleString()}</span>
+            </div>
+            <div>
+              <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">明細筆數</span>
+              <span style="font-weight:600; color:#1e293b;">${row.voucher_lines?.length || 0} 筆</span>
+            </div>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+            ${actionButtons}
+            <button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>
+          </div>
+        </div>
       `;
     }).join('');
 
-    container.innerHTML = `
-      <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>單號</th>
-            <th>摘要</th>
-            <th>筆數</th>
-            <th style="text-align:right;">金額</th>
-            <th>狀態</th>
-            <th>進度</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${htmlContent}
-        </tbody>
-      </table>
-      </div>
-    `;
+    container.innerHTML = htmlContent;
 
   } catch (error) {
     container.innerHTML = `<p class="muted">載入失敗：${error.message}</p>`;
@@ -5541,7 +5449,7 @@ function setDefaultReportPeriod() {
 // 假設這段是在初始化 Navigation Bar 或 Header
 async function renderHeader(user) {
   // 版本號顯示（固定）
-  const VERSION_LABEL = 'Demo v2.9.6';
+  const VERSION_LABEL = 'Demo v2.9.8';
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `

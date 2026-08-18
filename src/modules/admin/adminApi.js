@@ -51,7 +51,7 @@ export async function inviteNewUser(payload) {
   return result;
 }
 
-// 預設權限配置（依角色給予預設權限） - 參考 googleai 版本的細粒度權限
+// 預設權限配置（依角色給予預設權限）
 export const DEFAULT_PERMISSIONS = {
   admin: {
     canViewFinancials: true,
