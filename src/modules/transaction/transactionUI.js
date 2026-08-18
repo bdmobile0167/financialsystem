@@ -1,7 +1,7 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { showMessage, getBankNickname, populateBankSelect } from '../../utils/uiHelpers.js';
+import { showMessage, getBankNickname, populateBankSelect } from '../utils/uiHelpers.js';
 import { loadBankAccounts, getBankBalance } from '../bank/bankAccounts.js';
-import { fetchBankAccounts } from '../../voucher/voucherApi.js';
+import { fetchBankAccounts } from '../voucher/voucherApi.js';
 
 export async function renderTransactionTable() {
   let txs = window.state.transactions || [];

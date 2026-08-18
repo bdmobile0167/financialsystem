@@ -1,6 +1,6 @@
 import supabase from '../../../scripts/supabaseClient.js';
-import calcInvoiceTax from '../../taxCalc.js';
-import showMessage from '../../utils/uiHelpers.js';
+import calcInvoiceTax from '../../../scripts/taxCalc.js';
+import showMessage from '../utils/uiHelpers.js';
 
 let excelRowCounter = 0;
 

@@ -1,7 +1,7 @@
 import supabase from '../../../scripts/supabaseClient.js';
-import { showMessage } from '../../utils/uiHelpers.js';
+import { showMessage } from '../utils/uiHelpers.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments } from '../voucherApi.js';
-import { fetchProjects } from '../../project/project.js';
+import { fetchProjects } from '../project/project.js';
 
 export async function populateVoucherFormOptions() {
   try {

@@ -1,5 +1,5 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
-import { STATUS_LABELS, buildMiniStepperDots, getStatusBadge } from '../../utils/uiHelpers.js';
+import { STATUS_LABELS, buildMiniStepperDots, getStatusBadge } from '../utils/uiHelpers.js';
 import { fetchMyVouchers } from '../voucherApi.js';
 
 function renderVoucherCard(v) {

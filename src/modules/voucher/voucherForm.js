@@ -3,7 +3,7 @@ import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchProjects } fro
 import { resolveVoucherNumber } from './voucherNumbering.js';
 import { calcInvoiceTax } from '../../../scripts/taxCalc.js';
 import { saveAttachment, deleteAttachment } from './attachments.js';
-import { getStatusBadge, buildApprovalStepperHtml, maskPersonName, maskIdentifierString, maskPayeeName, showMessage, populateBankSelect } from '../../utils/uiHelpers.js';
+import { getStatusBadge, buildApprovalStepperHtml, maskPersonName, maskIdentifierString, maskPayeeName, showMessage, populateBankSelect } from '../utils/uiHelpers.js';
 
 let excelRowCounter = 0;
 const voucherLineAttachments = {}; // { rowId: File }

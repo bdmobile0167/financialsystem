@@ -1,6 +1,6 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { fetchAllUsers, updateUserProfile, toggleUserActive, updateUserPermissions, getDefaultPermissions, fetchDepartments, inviteNewUser } from '../admin/adminApi.js';
-import { showMessage } from '../../utils/uiHelpers.js';
+import { showMessage } from '../utils/uiHelpers.js';
 
 const ROLE_LABELS = { admin: '系統管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
 

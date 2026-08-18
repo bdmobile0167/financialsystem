@@ -3,7 +3,7 @@ import {
   getStatusBadge, 
   buildApprovalStepperHtml,
   showMessage 
-} from '../../utils/uiHelpers.js';
+} from '../utils/uiHelpers.js';
 
 export async function renderDashboard() {
   const container = document.getElementById('dashboardContainer') || document.getElementById('dashboard');
