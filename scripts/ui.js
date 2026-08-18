@@ -2909,8 +2909,36 @@ function initializeEventsInternal() {
 
 let voucherLines = [];
 
+async function loadTransactionsFromSupabase() {
+  try {
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('*')
+      .order('tx_date', { ascending: false });
+
+    if (error) throw error;
+
+    const dbTxs = (data || []).map(t => ({
+      id: t.id,
+      date: t.tx_date,
+      bankAccountId: t.bank_account_id,
+      detail: t.description || '',
+      type: t.type,
+      amount: Number(t.amount || 0),
+      source: 'supabase'
+    }));
+
+    // 以 DB 資料為準，覆寫 localStorage 可能殘留的舊資料
+    state.transactions = dbTxs;
+    saveState(state);
+  } catch (err) {
+    console.error('載入銀行交易失敗：', err);
+  }
+}
+
 async function initialize() {
     loadState(state);
+    await loadTransactionsFromSupabase();
     initializeEvents();
 
     const user = await getCurrentSessionUser();

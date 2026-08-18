@@ -49,9 +49,7 @@ export async function renderBankAccounts() {
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => {
-      const openingBalance = Number(a.opening_balance || 0);
-      const transactionNet = getBankBalance(a.id, window.state.transactions || []);
-      const totalBalance = openingBalance + transactionNet;
+      const totalBalance = getBankBalance(a, window.state.transactions || []);
 
       return `
         <tr>
