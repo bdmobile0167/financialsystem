@@ -53,29 +53,28 @@ async function initPage() {
   try {
     // 1. 取得目前登入者資訊
     const sessionUser = await getCurrentSessionUser();
-    if (!sessionUser) {
-      // 未登入或 session 失效，保留登入畫面
-      return;
+    
+    if (sessionUser) {
+      state.currentUser = sessionUser;
+
+      // 2. 目前不再使用多公司切換模式
+      state.myCompanies = [];
+
+      // 3. 渲染 Header (包含版本號)
+      await renderHeader(sessionUser);
+
+      // 4. 初始化公司設定
+      state.companyInfo = {};
+      state.structureSettings = {};
+
+      // 5. 執行既有的渲染函式（若有）
+      if (typeof renderCompanyData === 'function') renderCompanyData();
+      if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
+      if (typeof renderBusinessData === 'function') renderBusinessData();
     }
 
-    state.currentUser = sessionUser;
-
-    // 2. 目前不再使用多公司切換模式
-    state.myCompanies = [];
-
-    // 3. 渲染 Header (包含版本號)
-    await renderHeader(sessionUser);
-
-    // 4. 初始化公司設定
-    state.companyInfo = {};
-    state.structureSettings = {};
-
-    // 5. 執行既有的渲染函式（若有）
-    if (typeof renderCompanyData === 'function') renderCompanyData();
-    if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
-    if (typeof renderBusinessData === 'function') renderBusinessData();
-
-    // 6. 繼續 app 初始化流程（載入 state、綁定事件、顯示主畫面）
+    // 6. 一律繼續 app 初始化流程（載入 state、綁定事件、顯示主畫面或登入畫面）
+    //    注意：即使未登入，initialize() 內也會綁定 loginForm 事件，讓使用者可以登入。
     await initialize();
 
   } catch (error) {
@@ -84,7 +83,11 @@ async function initPage() {
 }
 
 // 頁面載入完成時執行
-document.addEventListener('DOMContentLoaded', initPage);
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initPage);
+} else {
+  initPage();
+}
 
 // ROLE_LABELS 已從 '../src/modules/utils/uiHelpers.js' 匯入（見檔案開頭 import），
 // 這裡原本重複宣告了一次同名常數，導致瀏覽器丟出
