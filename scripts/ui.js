@@ -84,7 +84,10 @@ async function initPage() {
 // 頁面載入完成時執行
 document.addEventListener('DOMContentLoaded', initPage);
 
-const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
+// ROLE_LABELS 已從 '../src/modules/utils/uiHelpers.js' 匯入（見檔案開頭 import），
+// 這裡原本重複宣告了一次同名常數，導致瀏覽器丟出
+// "SyntaxError: Identifier 'ROLE_LABELS' has already been declared" 讓整個模組初始化失敗。
+// 直接移除這行重複宣告即可，兩處定義內容原本就完全相同。
 
 async function populateInviteDepartmentSelect() {
   const select = document.getElementById('inviteDepartment');
@@ -627,83 +630,16 @@ window.handleResetPassword = async () => {
   }
 };
 
-function showToast(message, type = 'success') {
-  // 確保容器存在
-  let container = document.getElementById('toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toast-container';
-    document.body.appendChild(container);
-  }
 
-  // 建立通知元素
-  const toast = document.createElement('div');
-  toast.className = `toast-message`;
-  if (type === 'error') {
-    toast.style.backgroundColor = '#f44336'; // 錯誤改為紅色
-  }
-  toast.textContent = message;
-
-  container.appendChild(toast);
-
-  // 3秒後自動移除
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
-}
-
-const STATUS_LABELS = {
-  pending_review: '待主管審核',
-  manager_rejected: '主管退回',
-  pending_accounting: '待會計核准',
-  accounting_rejected: '會計退回',
-  approved: '已核准入帳',
-  cancelled: '已撤銷'
-};
 
 const state = { ...defaultState };
+// 讓抽出到 uiHelpers.js 的共用函式（例如 applyRoleBasedTabVisibility、updateAdminNavVisibility）
+// 也能讀到目前的登入使用者狀態。state 為 const 且只會原地修改屬性、不會整個重新賦值，
+// 所以這裡指派一次參考即可，之後對 state.xxx 的修改都會同步反映在 window.state 上。
+window.state = state;
 
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
 // 多階段簽核流程指示器：把單據狀態轉換成「提交→主管→會計→付款結案」的視覺步驟
-function buildApprovalStepperHtml(status) {
-  const steps = [
-    { key: 'submit', label: '提交申請' },
-    { key: 'manager', label: '主管審核' },
-    { key: 'accounting', label: '會計審核' },
-    { key: 'closed', label: '付款結案' }
-  ];
-
-  let stepStates = ['done', 'pending', 'pending', 'pending'];
-  switch (status) {
-    case 'pending_review':
-      stepStates = ['done', 'current', 'pending', 'pending']; break;
-    case 'manager_rejected':
-      stepStates = ['done', 'rejected', 'pending', 'pending']; break;
-    case 'pending_accounting':
-      stepStates = ['done', 'done', 'current', 'pending']; break;
-    case 'accounting_rejected':
-      stepStates = ['done', 'done', 'rejected', 'pending']; break;
-    case 'approved':
-      stepStates = ['done', 'done', 'done', 'current']; break;
-    case 'closed':
-      stepStates = ['done', 'done', 'done', 'done']; break;
-    case 'cancelled':
-      return `<div class="badge secondary" style="padding:6px 12px;">此單據已撤銷</div>`;
-    default:
-      stepStates = ['done', 'pending', 'pending', 'pending'];
-  }
-
-  return `
-    <ul class="approval-stepper">
-      ${steps.map((s, i) => `
-        <li class="${stepStates[i]}">
-          <span class="step-dot">${stepStates[i] === 'done' ? '✓' : (stepStates[i] === 'rejected' ? '✕' : i + 1)}</span>
-          ${s.label}
-        </li>
-      `).join('')}
-    </ul>
-  `;
-}
 
 // ===== Audit Trail Logs（全系統單據異動稽核軌跡） =====
 async function renderAuditTrail() {
@@ -768,103 +704,18 @@ async function renderAuditTrail() {
   }
 }
 
-function getStatusBadge(status) {
-  switch (status) {
-    case 'pending_review':
-      return `<span class="badge warning" style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待主管審核</span>`;
-    case 'pending_accounting':
-      return `<span class="badge warning" style="background:#fde047; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待會計核准</span>`;
-    case 'approved':
-      return `<span class="badge success" style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准待付款</span>`;
-    case 'manager_rejected':
-    case 'accounting_rejected':
-      return `<span class="badge danger" style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">已退件</span>`;
-    case 'closed':
-      return `<span class="badge secondary" style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已付款結案</span>`;
-    case 'cancelled':
-      return `<span class="badge secondary" style="background:#cbd5e1; color:#334155; padding:2px 8px; border-radius:12px; font-size:12px;">已撤銷</span>`;
-    default:
-      return `<span class="badge secondary" style="background:#eee; padding:2px 8px; border-radius:12px; font-size:12px;">${status || '未知'}</span>`;
-  }
-}
 
 // ===== 2. 姓名遮罩工具 (新增到全域) =====
 // ===== 智能姓名遮罩 (廠商不遮罩，個人遮罩) =====
-function maskPersonName(name, identifier) {
-  if (!name) return '';
-  // 如果是統編 (通常為 8 碼)，視為公司行號，顯示全名
-  if (identifier && identifier.length === 8 && !isNaN(identifier)) {
-    return name;
-  }
-  
-  // 否則視為個人，進行姓名打 O 處理
-  if (name.length === 2) return name[0] + 'O';
-  if (name.length === 3) return name[0] + 'O' + name[2];
-  if (name.length >= 4) return name[0] + 'O' + name.slice(2);
-  return name;
-}
 
 // ===== 身分證字號遮罩 (例如: U800****518) =====
-function maskIdentifierString(identifier) {
-  if (!identifier) return '';
-  // 如果是統編 (8 碼)，不遮罩
-  if (identifier.length === 8 && !isNaN(identifier)) {
-    return identifier;
-  }
-  // 台灣身分證通常為 10 碼 (例如: A123456789)
-  if (identifier.length >= 10) {
-    return identifier.substring(0, 4) + '****' + identifier.substring(identifier.length - 3);
-  }
-  return identifier;
-}
 
-function getBankNickname(bankAccountId, accounts = []) {
-  const account = accounts.find(a => a.id === bankAccountId);
-  return account ? account.nickname : '未設定';
-}
 
-function populateBankSelect(selectEl, accounts = []) {
-  if (!selectEl) return;
-  if (!accounts || !Array.isArray(accounts)) accounts = [];
-  if (accounts.length === 0) {
-    selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
-    return;
-  }
-  selectEl.innerHTML = accounts.map(a => 
-    `<option value="${a.id}">${a.nickname || a.bank_name || '未命名'}</option>`
-  ).join('');
-}
 
-function setText(selector, value) {
-  const element = document.querySelector(selector);
-  if (element) {
-    element.textContent = value;
-  }
-}
 
-function showMessage(text, isError = false) {
-  const el = document.getElementById('loginMessage');
-  if (!el) return;
-  el.className = `message ${isError ? 'error' : 'success'}`;
-  el.textContent = text;
-}
 
 // 1. 將這兩個函式獨立移到外面（全域範圍）
-function updateAdminNavVisibility() {
-  const btn = document.getElementById('adminUsersNavBtn');
-  if (btn) btn.style.display = state.currentUser?.role === 'admin' ? 'block' : 'none';
-}
 
-function applyRoleBasedTabVisibility() {
-  const role = state.currentUser?.role;
-  const financialOnly = ['accounting', 'admin'];
-  const reportsBtn = document.querySelector('[data-tab="reports"]');
-  const equityBtn = document.querySelector('[data-tab="equity"]');
-  const auditTrailBtn = document.querySelector('[data-tab="auditTrail"]');
-  if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (auditTrailBtn) auditTrailBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-}
 
 function render() {
   // 只給 Admin 顯示的區塊
@@ -1259,9 +1110,6 @@ function applyReportPeriodPreset(preset) {
 
 let fundraisingSnapshot = { paidInCapital: 0, retainedEarnings: 0, totalEquity: 0, cashBalance: 0, monthlyRevenue: 0, monthlyExpense: 0 };
 
-function formatTwd(n) {
-  return `NT$ ${Math.round(Number(n || 0)).toLocaleString()}`;
-}
 
 function renderFundraisingSimulation() {
   const resultsEl = document.getElementById('fsResults');
@@ -1551,17 +1399,6 @@ function bindFinancialNoteEditButtons() {
   });
 }
 
-function downloadJsonFile(filename, dataObj) {
-  const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
 async function exportAuditPackage() {
   const btn = document.getElementById('exportAuditPackageBtn');
@@ -3370,22 +3207,6 @@ function renderVoucherCard(v) {
 }
 
 // 簽核中心列表用的迷你進度點（不佔太多欄寬）
-function buildMiniStepperDots(status) {
-  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已撤銷</span>';
-  const stepStates = {
-    pending_review: ['done', 'current', 'pending', 'pending'],
-    manager_rejected: ['done', 'rejected', 'pending', 'pending'],
-    pending_accounting: ['done', 'done', 'current', 'pending'],
-    accounting_rejected: ['done', 'done', 'rejected', 'pending'],
-    approved: ['done', 'done', 'done', 'current'],
-    closed: ['done', 'done', 'done', 'done']
-  }[status] || ['done', 'pending', 'pending', 'pending'];
-
-  const colorOf = (s) => s === 'done' ? 'var(--accent)' : (s === 'current' ? 'var(--primary)' : (s === 'rejected' ? 'var(--danger)' : '#cbd5e1'));
-  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="提交→主管→會計→結案">
-    ${stepStates.map(s => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(s)}; display:inline-block;"></span>`).join('')}
-  </span>`;
-}
 
 async function renderVoucherWorkflowList() {
   const container = document.getElementById('voucherWorkflowList');
@@ -5705,13 +5526,6 @@ async function handleConfirmImportStatement() {
   }
 }
 
-function maskPayeeName(name) {
-  if (!name) return '';
-  const len = name.length;
-  if (len <= 1) return name;
-  if (len === 2) return name[0] + 'O';
-  return name[0] + 'O'.repeat(len - 2) + name[len - 1];
-}
 
 function setDefaultReportPeriod() {
   const startInput = document.getElementById('reportPeriodStart');
@@ -5728,7 +5542,7 @@ function setDefaultReportPeriod() {
 // 假設這段是在初始化 Navigation Bar 或 Header
 async function renderHeader(user) {
   // 版本號顯示（固定）
-  const VERSION_LABEL = 'Demo v2.9.4';
+  const VERSION_LABEL = 'Demo v2.9.5';
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `
