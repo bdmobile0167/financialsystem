@@ -103,6 +103,67 @@ button.danger:hover {
 }
 
 /* =========================================
+   2.5 通用卡片與網格系統
+   ========================================= */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 36px;
+}
+
+.grid {
+  display: grid;
+  gap: 24px;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active-panel {
+  display: block;
+}
+
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-container .panel {
+  margin-top: 16px;
+}
+
+.transaction-panel {
+  background: var(--primary-light);
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.transaction-panel p {
+  margin: 0;
+  font-size: 13px;
+  color: #3730a3;
+}
+
+/* =========================================
    3. 版面佈局
    ========================================= */
 .container {
@@ -137,13 +198,39 @@ button.danger:hover {
   display: block;
 }
 
+.nav-group {
+  margin-bottom: 4px;
+}
+
+.tab-btn {
+  width: 100%;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  transition: all 0.15s ease;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tab-btn:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--primary-light);
+  color: var(--primary-strong);
+  font-weight: 600;
+}
+
 .app-layout {
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 24px;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
   align-items: start;
 }
 
@@ -267,6 +354,39 @@ button.danger:hover {
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.summary-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.summary-item strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .panel h3 {
