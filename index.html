@@ -72,6 +72,7 @@
             <div class="nav-group-title">系統</div>
             <button class="tab-btn" data-tab="settings">設定</button>
             <button class="tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
+            <button class="tab-btn" data-tab="userManagement" id="userManagementNavBtn" style="display:none;">權限管理</button>
           </div>
         </nav>
         <div class="sidebar-footer">
@@ -141,71 +142,11 @@
         <section id="transactions" class="tab-panel" style="display:none;">
           <div class="panel transaction-panel">
             <div class="panel-header">
-              <h3>新增交易</h3>
+              <h3>交易總覽（唯讀總帳）</h3>
             </div>
-            <form id="transactionForm">
-              <div class="form-grid">
-                <div>
-                  <label>日期</label>
-                  <input type="date" id="txDate" required />
-                </div>
-                <div>
-                  <label>銀行帳戶</label>
-                  <select id="txBankAccount" required></select>
-                </div>
-                <div>
-                  <label>客戶/供應商</label>
-                  <input type="text" id="txCustomer" placeholder="例如：臺銀" />
-                </div>
-                <div>
-                  <label>明細</label>
-                  <input type="text" id="txDetail" placeholder="例如：電信費" required />
-                </div>
-                <div>
-                  <label>類型</label>
-                  <select id="txType">
-                    <option value="支出">支出</option>
-                    <option value="收入">收入</option>
-                  </select>
-                </div>
-                <div>
-                  <label>交易分類（現金流量表用）</label>
-                  <select id="txCategory">
-                    <option value="營業">營業活動</option>
-                    <option value="投資">投資活動（買賣資產/設備）</option>
-                    <option value="融資">融資活動（股東入資/還款/股利/借款）</option>
-                  </select>
-                </div>
-                <div>
-                  <label>金額</label>
-                  <input type="number" id="txAmount" min="0" step="1" required />
-                </div>
-                <div>
-                  <label>憑證類型</label>
-                  <select id="txVoucherType">
-                    <option value="發票">發票（有統一發票號碼）</option>
-                    <option value="收據">收據（系統自動編號）</option>
-                    <option value="無">無憑證</option>
-                  </select>
-                </div>
-                <div>
-                  <label>發票號碼（僅發票需填寫，收據留空自動編號）</label>
-                  <input type="text" id="txVoucher" placeholder="例如：AB12345678" />
-                </div>
-                <div class="full-width">
-                  <label>憑證附件（圖片/PDF，1.5MB 以內）</label>
-                  <input type="file" id="txAttachment" accept="image/*,.pdf" />
-                </div>
-                <div class="full-width">
-                  <label>備註</label>
-                  <textarea id="txRemark" rows="3" placeholder="可留空"></textarea>
-                </div>
-              </div>
-              <button type="submit" class="primary-btn" style="margin-top: 16px;">新增交易</button>
-            </form>
-            <div class="button-row">
-              <button id="loadSampleBtn" class="secondary">載入範例資料</button>
-              <button id="clearBtn" class="danger">清空交易資料</button>
+            <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+              <p style="margin:0; font-size:13px; color:#3730a3;">💡 新增交易請一律透過「報支申請」提出，會自動經過核簽流程並正確產生分錄；本頁僅供查詢已入帳的交易紀錄。</p>
+              <button type="button" class="primary-btn" style="width:auto;" onclick="document.querySelector('[data-tab=\'voucherWorkflow\']').click();">＋ 前往新增報支申請</button>
             </div>
           </div>
           <div class="panel">
@@ -310,6 +251,11 @@
                   📎 批次上傳發票/收據（依順序自動分配到各列）
                   <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
                 </label>
+                <label class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;">
+                  🤖 AI 掃描憑證自動帶入（新增一列並填好資料）
+                  <input type="file" id="aiScanReceiptUpload" accept="image/*" style="display:none;">
+                </label>
+                <span id="aiScanStatus" class="muted" style="margin-left:8px; font-size:12px;"></span>
                 <button type="submit" class="primary-btn" style="margin-top: 15px; width: 100%;">送出報支申請</button>
               </div>
             </form>
@@ -321,7 +267,6 @@
             <p class="muted">依照你的角色，自動只顯示你有權限看到的資料。</p>
             <div id="voucherWorkflowList"></div>
           </div>
-        </section>
         </section>
 
         <section id="voucherCenter" class="tab-panel" style="display:none;">
@@ -430,6 +375,61 @@
                 <tbody id="budgetLogTableBody">
                   <!-- JS 動態載入異動紀錄 -->
                 </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 專案成員管理 Modal -->
+        <div id="projectMembersModal" class="login-shell" style="display:none; z-index: 9999;">
+          <div class="card" style="max-width: 640px; width: 90%;">
+            <h2>專案成員管理</h2>
+            <p id="pmProjectName" style="font-weight: bold; margin-bottom: 12px;"></p>
+            <input type="hidden" id="pmProjectId" />
+
+            <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:14px;">
+              <div style="flex:1;">
+                <label>新增成員</label>
+                <select id="pmAddUserSelect" style="width:100%;"></select>
+              </div>
+              <div style="width:130px;">
+                <label>角色</label>
+                <select id="pmAddUserRole" style="width:100%;">
+                  <option value="member">一般成員</option>
+                  <option value="owner">專案負責人</option>
+                </select>
+              </div>
+              <button type="button" class="primary-btn" style="width:auto; padding:8px 16px;" onclick="addPendingProjectMember()">加入</button>
+            </div>
+
+            <table style="width:100%; font-size:13px; margin-bottom:16px;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:6px; text-align:left;">姓名</th>
+                  <th style="padding:6px; text-align:left;">角色</th>
+                  <th style="padding:6px; text-align:left;">部門</th>
+                  <th style="padding:6px;"></th>
+                </tr>
+              </thead>
+              <tbody id="pmMemberTableBody"></tbody>
+            </table>
+
+            <div style="display:flex; gap:10px;">
+              <button type="button" class="primary-btn" style="width:auto; padding:8px 16px;" onclick="saveProjectMembers()">儲存成員異動</button>
+              <button type="button" class="secondary" style="width:auto; padding:8px 16px;" onclick="closeProjectMembersModal()">取消</button>
+            </div>
+
+            <div style="margin-top:24px; border-top:1px solid #e2e8f0; padding-top:16px;">
+              <h4>成員異動紀錄</h4>
+              <table style="width:100%; font-size:12px; margin-top:8px;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="padding:6px;">時間</th>
+                    <th style="padding:6px;">操作人</th>
+                    <th style="padding:6px;">異動</th>
+                  </tr>
+                </thead>
+                <tbody id="pmAuditLogTableBody"></tbody>
               </table>
             </div>
           </div>
@@ -825,6 +825,10 @@
               <div id="departmentList"></div>
             </div>
           </div>
+        </section>
+
+        <section id="userManagement" class="tab-panel" style="display:none;">
+          <div id="userManagementContainer"></div>
         </section>
 
         <section id="settings" class="tab-panel" style="display:none;">

@@ -94,7 +94,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const { email, fullName, role = 'employee', departmentId = null, password } = req.body || {};
+    const { email, fullName, role = 'employee', departmentId = null, password, permissions = null, employeeId = null } = req.body || {};
     if (!email || !fullName) {
       res.status(400).json({ ok: false, message: '請提供 email 與姓名。' });
       return;
@@ -111,7 +111,8 @@ module.exports = async (req, res) => {
 
     const { error: insertProfileError } = await supabaseAdmin.from('profiles').insert({
       id: createdUser.user.id, email, full_name: fullName, role,
-      department_id: departmentId, active: true, must_change_password: true
+      department_id: departmentId, active: true, must_change_password: true,
+      permissions, employee_id: employeeId
     });
     if (insertProfileError) {
       res.status(400).json({ ok: false, message: `寫入使用者資料失敗：${insertProfileError.message}` });
