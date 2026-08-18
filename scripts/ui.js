@@ -18,7 +18,6 @@ import { runVoucherCrossVerification } from './voucherVerification.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
-import { renderUserManagementView } from '../src/modules/userManagement/userManagement.js';
 import { 
   showToast, 
   showMessage, 
@@ -5542,7 +5541,7 @@ function setDefaultReportPeriod() {
 // 假設這段是在初始化 Navigation Bar 或 Header
 async function renderHeader(user) {
   // 版本號顯示（固定）
-  const VERSION_LABEL = 'Demo v2.9.5';
+  const VERSION_LABEL = 'Demo v2.9.6';
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `

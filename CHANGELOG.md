@@ -4,6 +4,23 @@
 
 ---
 
+## Demo v2.9.6 — 2026-08-18（修復：renderUserManagementView 重複宣告導致系統無法啟動）
+
+### Summary of Changes
+- **緊急修復**：`scripts/ui.js` 第 21 行從 `src/modules/userManagement/userManagement.js` 匯入 `renderUserManagementView`，
+   但同一檔案第 133 行又重複宣告了同名函式，導致瀏覽器拋出 `SyntaxError: Identifier 'renderUserManagementView' has already been declared`，
+   **整個系統完全無法啟動**。
+- 移除 `scripts/ui.js` 頂層的匯入，保留檔案內已整合好的本地實作。
+- 此為繼 BUG-004-002（`ROLE_LABELS` 重複宣告）之後，同一重構模式再次發生的遺留問題。
+
+### Files Modified
+- `scripts/ui.js`
+
+### Root Cause 分類
+- 屬於「共用函式抽出到獨立模組後，忘記同步移除原本本地宣告」的典型重構遺留問題。
+
+---
+
 ## Demo v2.9.5 — 2026-08-18（修復：系統無法啟動的重複識別字錯誤）
 
 ### Summary of Changes
