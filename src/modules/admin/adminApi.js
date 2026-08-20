@@ -23,6 +23,9 @@ export async function updateUserPermissions(id, permissions) {
 
 export async function inviteNewUser(payload) {
   const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData?.session?.access_token) {
+    throw new Error('尚未取得登入權杖，請重新登入後再邀請使用者。');
+  }
 
   // 💡 確保傳給後端的 key 絕對正確，並且處理空字串轉 null
   const safePayload = {
@@ -177,8 +180,9 @@ export async function updateProjectMembers(projectId, members, actorId = null) {
   // 新增：新名單裡有、但原本沒有的成員
   const toAdd = (members || []).filter(m => !existingByUserId.has(m.user_id));
   if (toAdd.length > 0) {
-    const { error: insError } = await supabase.from('project_members').insert(
-      toAdd.map(m => ({ project_id: projectId, user_id: m.user_id, role: m.role || 'member', added_by: actorId }))
+    const { error: insError } = await supabase.from('project_members').upsert(
+      toAdd.map(m => ({ project_id: projectId, user_id: m.user_id, role: m.role || 'member', added_by: actorId })),
+      { onConflict: 'project_id,user_id', ignoreDuplicates: true }
     );
     if (insError) throw insError;
   }

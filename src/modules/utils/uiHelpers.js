@@ -257,6 +257,35 @@ export function safeListener(id, event, handler) {
   if (el) el.addEventListener(event, handler);
 }
 
+const actionLocks = new Set();
+
+export async function withActionLock(actionKey, button, asyncFn, options = {}) {
+  const key = actionKey || 'default-action';
+  if (actionLocks.has(key)) return null;
+  actionLocks.add(key);
+
+  const btn = button || null;
+  const originalText = btn ? btn.textContent : '';
+  const loadingText = options.loadingText || '處理中...';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.processing = '1';
+    if (loadingText) btn.textContent = loadingText;
+  }
+
+  try {
+    return await asyncFn();
+  } finally {
+    actionLocks.delete(key);
+    if (btn) {
+      btn.disabled = false;
+      btn.dataset.processing = '0';
+      if (loadingText) btn.textContent = originalText;
+    }
+  }
+}
+
 // 關閉側邊欄
 export function closeSidebar() {
   const sidebarEl = document.getElementById('sidebar');

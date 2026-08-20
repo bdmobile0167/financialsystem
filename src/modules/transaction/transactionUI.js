@@ -49,14 +49,17 @@ export async function renderBankAccounts() {
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => {
-      const totalBalance = getBankBalance(a, window.state.transactions || []);
+      const totalBalance = a.current_balance !== null && a.current_balance !== undefined
+        ? Number(a.current_balance || 0)
+        : null;
+      const balanceDisplay = totalBalance === null ? '尚無餘額資料' : totalBalance.toLocaleString();
 
       return `
         <tr>
           <td>${a.bank_name || a.bankName || '未命名'}</td>
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
-          <td>${totalBalance.toLocaleString()}</td>
+          <td>${balanceDisplay}</td>
           <td>
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
             <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>

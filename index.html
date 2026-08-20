@@ -10,7 +10,7 @@
   <div id="loginView" class="login-shell">
     <div class="card login-card">
       <h2>財務管理系統登入</h2>
-      <p class="muted">請輸入電子郵件與密碼進行登入。若本地測試，可使用任意帳號密碼。</p>
+      <p class="muted">請輸入電子郵件與密碼進行登入。</p>
       <div id="loginMessage" class="message">登入後即可使用系統功能。</div>
       <form id="loginForm">
         <label>電子郵件</label>
@@ -83,7 +83,7 @@
       <main class="main-content">
         <header class="main-header">
             <button id="menuToggleBtn" class="menu-toggle" aria-label="開啟選單" aria-expanded="false">
-                </span><span></span><span></span>
+                <span></span><span></span><span></span>
             </button>
             <div>
                 <h2>財務管理系統</h2>
@@ -484,9 +484,13 @@
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
                   <span id="showAllReportsBtnLabel">全部檢視</span>
                 </button>
-                <button id="printReportBtn" class="hero-btn hero-btn-ghost">
+                <button id="printReportBtn" type="button" class="hero-btn hero-btn-ghost">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  <span>列印報表</span>
+                  <span>列印目前財報</span>
+                </button>
+                <button id="printAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  <span>列印全部財報</span>
                 </button>
                 <button id="exportExcelBtn" class="hero-btn hero-btn-primary">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>

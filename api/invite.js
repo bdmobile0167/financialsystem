@@ -115,6 +115,22 @@ module.exports = async (req, res) => {
       permissions, employee_id: employeeId
     });
     if (insertProfileError) {
+      const createdUserId = createdUser?.user?.id;
+      if (createdUserId) {
+        const { error: rollbackError } = await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+        if (rollbackError) {
+          console.error('profiles 寫入失敗後 rollback auth user 也失敗:', {
+            authUserId: createdUserId,
+            profileError: insertProfileError,
+            rollbackError
+          });
+          res.status(500).json({
+            ok: false,
+            message: `寫入使用者資料失敗，且 rollback auth user 失敗：${insertProfileError.message} / ${rollbackError.message}`
+          });
+          return;
+        }
+      }
       res.status(400).json({ ok: false, message: `寫入使用者資料失敗：${insertProfileError.message}` });
       return;
     }

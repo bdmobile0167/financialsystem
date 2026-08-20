@@ -533,16 +533,37 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       throw new Error(`找不到對應的借方會計科目 (${accountCodeId})，請確認科目是否存在。`);
     }
 
-    // 💡 2. 查詢貸方科目 (1102 銀行存款)
-    const { data: creditAcc, error: creditAccError } = await supabase
-      .from('accounts')
-      .select('id, code')
-      .eq('code', '1102')
-      
-      .single();
+    const { data: bankAccountForLedger } = await supabase
+      .from('bank_accounts')
+      .select('*')
+      .eq('id', bankAccountId)
+      .maybeSingle();
+
+    const mappedLedgerAccountId = bankAccountForLedger?.account_id
+      || bankAccountForLedger?.accounting_account_id
+      || bankAccountForLedger?.ledger_account_id
+      || null;
+
+    // 優先使用銀行帳戶對應的會計科目；現有 schema 若尚未提供對應欄位，保留既有 1102 作為相容 fallback。
+    let creditAccResult;
+    if (mappedLedgerAccountId) {
+      creditAccResult = await supabase
+        .from('accounts')
+        .select('id, code')
+        .eq('id', mappedLedgerAccountId)
+        .single();
+    } else {
+      creditAccResult = await supabase
+        .from('accounts')
+        .select('id, code')
+        .eq('code', '1102')
+        .single();
+    }
+
+    const { data: creditAcc, error: creditAccError } = creditAccResult;
 
     if (creditAccError || !creditAcc) {
-      throw new Error('找不到貸方預設科目 (1102 銀行存款)，請確認 accounts 資料表是否有此代碼。');
+      throw new Error('找不到付款銀行對應的貸方科目，請確認 bank_accounts 是否有會計科目對應，或 accounts 是否存在 1102 銀行存款。');
     }
 
     // 💡 3. 寫入日記帳（同時帶入 id 與 code 確保相容性）

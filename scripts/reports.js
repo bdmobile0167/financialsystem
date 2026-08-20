@@ -1,6 +1,7 @@
 import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
 import { getCompanyInfo } from './companyContext.js';
+import { loadBankAccountBalances } from '../src/modules/bank/bankAccounts.js';
 
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -36,6 +37,43 @@ async function fetchSupabaseTrialBalance(startDate, endDate) {  let query = supa
     }));
 
   return { rows };
+}
+
+function isBankLedgerAccount(row) {
+  const code = String(row?.code || '');
+  const name = String(row?.name || '');
+  return code.startsWith('1102') || /銀行|存款|bank/i.test(name);
+}
+
+export async function buildBankReconciliation(startDate = null, endDate = null) {
+  const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+  const bankRows = rows.filter(isBankLedgerAccount);
+  const ledgerBalance = bankRows.reduce((sum, r) => sum + Number(r.debitTotal || 0) - Number(r.creditTotal || 0), 0);
+  let balances = [];
+  let balanceError = null;
+  try {
+    balances = await loadBankAccountBalances();
+  } catch (error) {
+    balanceError = error;
+    console.error('讀取 bank_account_balances 失敗，reconciliation 僅顯示總帳餘額:', error);
+  }
+  const actualBalance = (balances || []).reduce((sum, b) => {
+    const current = b.current_balance ?? b.balance ?? b.ending_balance;
+    return sum + Number(current || 0);
+  }, 0);
+
+  return {
+    actualBalance,
+    ledgerBalance,
+    difference: actualBalance - ledgerBalance,
+    balanceError: balanceError ? { message: balanceError.message, code: balanceError.code } : null,
+    ledgerAccounts: bankRows.map(r => ({
+      code: r.code,
+      name: r.name,
+      balance: Number(r.debitTotal || 0) - Number(r.creditTotal || 0)
+    })),
+    balanceRows: balances || []
+  };
 }
 
 // 💡 與 fetchSupabaseTrialBalance 相同，但同時回傳 code -> account_id 對照表，
@@ -154,17 +192,7 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
 
 export async function buildBalanceSheet(transactions, startDate = null, endDate = null) {
   try {    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    
-    // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
-    // 注意：bank_accounts.balance 是資料庫的 GENERATED 欄位（恆等於 opening_balance），
-    // 無法反映任何一筆銀行流水，因此改用「期初餘額 + 銀行流水收支」動態計算真實餘額
-    const { data: banks } = await supabase.from('bank_accounts').select('id, opening_balance');
-    const { data: bankTxs } = await supabase.from('bank_transactions').select('bank_account_id, type, amount');
-    const realBankBalance = (banks || []).reduce((sum, b) => {
-      const txs = (bankTxs || []).filter(t => t.bank_account_id === b.id);
-      const net = txs.reduce((s, t) => s + (t.type === '支出' ? -Number(t.amount || 0) : Number(t.amount || 0)), 0);
-      return sum + Number(b.opening_balance || 0) + net;
-    }, 0);
+    const reconciliation = await buildBankReconciliation(startDate, endDate);
 
     // 2. 依資產負債表代碼規範進行階層篩選
     const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
@@ -196,16 +224,7 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
           subsections: [
             { 
               title: '流動資產', 
-              items: currentAssetsRows.map(r => {
-                if (r.code === '1102') {
-                  // 畫面上同時顯示帳面餘額與真實餘額，方便會計抓漏
-                  const ledgerBalance = r.debitTotal - r.creditTotal;
-                  const discrepancy = realBankBalance - ledgerBalance;
-                  const note = discrepancy !== 0 ? ` (網銀實際: $${realBankBalance.toLocaleString()} / 差額: $${discrepancy.toLocaleString()})` : '';
-                  return [`${r.name}${note}`, ledgerBalance, r.code];
-                }
-                return [r.name, r.debitTotal - r.creditTotal, r.code];
-              }), 
+              items: currentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), 
               subtotal: currentAssetsTotal 
             },
             { title: '非流動資產', items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
@@ -227,7 +246,8 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
           ],
           total: totalLiabilitiesAndEquity
         }
-      ]
+      ],
+      reconciliation
     };
   } catch (err) {
     console.warn('資產負債表讀取 Supabase 失敗，降級使用本地計算:', err.message);
@@ -274,8 +294,10 @@ export async function buildCashflowStatement(transactions, startDate = null, end
   try {    // 💡 修正：改用 maybeSingle() 取代 single()。
     // 當 RLS 或權限使查詢回傳 0 筆時，single() 會回傳 HTTP 406 Not Acceptable，
     // maybeSingle() 則回傳 { data: null }，避免不必要的錯誤並平滑降級為本地計算。
-    let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');    const { data: bankAccount, error: bankErr } = await accountQuery.maybeSingle();
-    if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
+    const { data: bankAccounts, error: bankErr } = await supabase.from('accounts').select('id, code, name');
+    if (bankErr) throw bankErr;
+    const bankAccountIds = new Set((bankAccounts || []).filter(isBankLedgerAccount).map(a => a.id));
+    if (bankAccountIds.size === 0) throw new Error('找不到銀行存款科目');
 
     let query = supabase
       .from('journal_entries')
@@ -289,8 +311,8 @@ export async function buildCashflowStatement(transactions, startDate = null, end
     entries.forEach(entry => {
       const category = entry.vouchers?.category || '營業';
       if (!(category in totals)) totals[category] = 0;
-      if (entry.debit_account_id === bankAccount.id) totals[category] += Number(entry.debit_amount || 0);
-      if (entry.credit_account_id === bankAccount.id) totals[category] -= Number(entry.credit_amount || 0);
+      if (bankAccountIds.has(entry.debit_account_id)) totals[category] += Number(entry.debit_amount || 0);
+      if (bankAccountIds.has(entry.credit_account_id)) totals[category] -= Number(entry.credit_amount || 0);
     });
 
     const net = totals['營業'] + totals['投資'] + totals['融資'];
@@ -360,10 +382,9 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
  */
 export async function checkBudgetSufficiency(projectCost = 0) {
   try {
-    // 取得當前總資產(試算表)，只抓銀行存款 '1102'
+    // 取得當前總資產(試算表)，彙總所有銀行/存款類科目。
     const { rows } = await fetchSupabaseTrialBalance();
-    const bankRow = rows.find(r => r.code === '1102');
-    const currentCash = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
+    const currentCash = rows.filter(isBankLedgerAccount).reduce((sum, r) => sum + Number(r.debitTotal || 0) - Number(r.creditTotal || 0), 0);
 
     const isSufficient = currentCash >= projectCost;
     const shortage = isSufficient ? 0 : projectCost - currentCash;
@@ -467,8 +488,7 @@ export async function buildFundraisingSnapshot(transactions = [], startDate = nu
     const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((s, r) => s + (r.debitTotal - r.creditTotal), 0);
     const retainedEarnings = totalRevenue - totalExpense;
     const totalEquity = paidInCapital + retainedEarnings;
-    const cashRow = rows.find(r => r.code === '1102');
-    const cashBalance = cashRow ? cashRow.debitTotal - cashRow.creditTotal : 0;
+    const cashBalance = rows.filter(isBankLedgerAccount).reduce((sum, r) => sum + r.debitTotal - r.creditTotal, 0);
 
     // 依有交易紀錄涵蓋的月份數，估算月均營收／費用
     const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;

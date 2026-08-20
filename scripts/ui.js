@@ -35,6 +35,7 @@ import {
   updateAdminNavVisibility, 
   applyRoleBasedTabVisibility, 
   safeListener, 
+  withActionLock,
   closeSidebar, 
   openSidebar, 
   toggleSidebar,
@@ -642,6 +643,7 @@ const state = { ...defaultState };
 // 也能讀到目前的登入使用者狀態。state 為 const 且只會原地修改屬性、不會整個重新賦值，
 // 所以這裡指派一次參考即可，之後對 state.xxx 的修改都會同步反映在 window.state 上。
 window.state = state;
+let eventsInitialized = false;
 
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
 // 多階段簽核流程指示器：把單據狀態轉換成「提交→主管→會計→付款結案」的視覺步驟
@@ -1573,6 +1575,23 @@ function renderTable(id, rows) {
       `;
     }
 
+    if (rows.reconciliation) {
+      const r = rows.reconciliation;
+      htmlContent += `
+        <tr class="reconciliation-row">
+          <td colspan="3">
+            <div class="reconciliation-box">
+              <strong>銀行餘額勾稽</strong>
+              <span>實際銀行餘額：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              <span>總帳銀行科目餘額：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
+              <span class="${Number(r.difference || 0) === 0 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異：${Number(r.difference || 0).toLocaleString()}</span>
+              ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
     body.innerHTML = htmlContent;
     return;
   }
@@ -1650,16 +1669,17 @@ async function renderBankAccounts() {
     if (!accounts || !Array.isArray(accounts)) accounts = [];
 
     body.innerHTML = accounts.map(a => {
-      const openingBalance = Number(a.opening_balance || 0); // 取得該帳戶期初餘額
-      const transactionNet = getBankBalance(a.id, state.transactions || []); // 計算交易加減項
-      const totalBalance = openingBalance + transactionNet; // 總餘額
+      const totalBalance = a.current_balance !== null && a.current_balance !== undefined
+        ? Number(a.current_balance || 0)
+        : null;
+      const balanceDisplay = totalBalance === null ? '尚無餘額資料' : totalBalance.toLocaleString();
 
       return `
         <tr>
           <td>${a.bank_name || a.bankName || '未命名'}</td>
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
-          <td>${totalBalance.toLocaleString()}</td>
+          <td>${balanceDisplay}</td>
           <td>
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
             <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>
@@ -2096,6 +2116,9 @@ function initializeEvents() {
 }
 
 function initializeEventsInternal() {
+  if (eventsInitialized) return;
+  eventsInitialized = true;
+
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -2366,6 +2389,8 @@ function initializeEventsInternal() {
   if (addTransactionForm) {
     addTransactionForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = e.submitter || addTransactionForm.querySelector('button[type="submit"]');
+      await withActionLock('bank-transaction:add', submitBtn, async () => {
 
       const bankAccountId = document.getElementById('trans_bank_account_id').value;
       const transType = document.getElementById('trans_type').value;
@@ -2392,21 +2417,13 @@ function initializeEventsInternal() {
         alert('交易新增成功！');
         document.getElementById('addTransactionModal').style.display = 'none';
         e.target.reset();
-        
-        state.transactions.unshift({
-          date: transDate,
-          bankAccountId: bankAccountId,
-          detail: description,
-          type: transType,
-          amount: amount,
-          source: 'supabase'
-        });
-        saveState(state);
+        await reloadAppData();
         render();
       } catch (err) {
         alert(`新增交易失敗: ${err.message}`);
-        console.error(err);
+        console.error('新增銀行交易失敗:', err);
       }
+      });
     });
   }
 
@@ -2495,6 +2512,8 @@ function initializeEventsInternal() {
   if (bankForm) {
     bankForm.onsubmit = async (e) => {
       e.preventDefault();
+      const submitBtn = e.submitter || bankForm.querySelector('button[type="submit"]');
+      await withActionLock(`bank-account:${state.editingBankId || 'new'}`, submitBtn, async () => {
 
       const bankData = {
         bank_name: document.getElementById('bankName').value.trim(),
@@ -2530,6 +2549,7 @@ function initializeEventsInternal() {
           renderBankAccounts();
         }
       }
+      });
     };
   }
 
@@ -2537,9 +2557,11 @@ function initializeEventsInternal() {
     const deleteBtn = e.target.closest('.delete-bank-btn');
     if (deleteBtn) {
       if (confirm('確定刪除此銀行帳戶？')) {
-        await deleteBankAccount(deleteBtn.dataset.id);
-        renderBankAccounts();
-        showMessage('銀行帳戶已刪除。');
+        await withActionLock(`bank-account:delete:${deleteBtn.dataset.id}`, deleteBtn, async () => {
+          await deleteBankAccount(deleteBtn.dataset.id);
+          renderBankAccounts();
+          showMessage('銀行帳戶已刪除。');
+        });
       }
       return;
     }
@@ -2591,12 +2613,27 @@ function initializeEventsInternal() {
     showMessage('交易已新增並已儲存。');
   });
 
-  safeListener('printReportBtn', 'click', () => {
+  function printReports(mode = 'current') {
     state.activeTab = 'reports';
     renderTabs();
+    const activeTab = document.querySelector('.report-tab-btn.active-tab')?.dataset.reportTab || 'income';
+    document.body.classList.add(mode === 'all' ? 'print-reports-all' : `print-report-${activeTab}`);
+    const cleanup = () => {
+      document.body.classList.remove('print-reports-all', 'print-report-income', 'print-report-balance', 'print-report-cashflow', 'print-report-equity', 'print-report-trial');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     setTimeout(() => {
       window.print();
     }, 100);
+  }
+
+  safeListener('printReportBtn', 'click', () => {
+    printReports('current');
+  });
+
+  safeListener('printAllReportsBtn', 'click', () => {
+    printReports('all');
   });
 
   document.querySelectorAll('.period-preset-btn').forEach(btn => {
@@ -2677,32 +2714,38 @@ function initializeEventsInternal() {
   safeListener('inviteUserForm', 'submit', async (e) => { 
     e.preventDefault();
     const resultBox = document.getElementById('inviteResultBox');
-    try {
-      const result = await inviteNewUser({
-        email: document.getElementById('inviteEmail').value.trim(),
-        fullName: document.getElementById('inviteFullName').value.trim(),
-        role: document.getElementById('inviteRole').value,
-        departmentId: document.getElementById('inviteDepartment').value,
-        password: document.getElementById('invitePassword').value.trim()
-      });
-      resultBox.style.display = 'block';
-      resultBox.className = result.emailSent ? 'message success' : 'message error';
-      resultBox.textContent = result.emailSent
-        ? `帳號已建立，邀請信已寄至 ${result.credentials.email}（信中含登入網址與初始密碼，使用者登入後系統會強制要求設定新密碼）。`
-        : `帳號已建立：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（邀請信寄送失敗：${result.emailError || '未知原因'}，請自行告知使用者）`;
-      e.target.reset();
-      renderAdminUserTable();
-    } catch (error) {
-      resultBox.style.display = 'block';
-      resultBox.className = 'message error';
-      resultBox.textContent = `開通失敗：${error.message}`;
-    }
+    const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
+    await withActionLock('invite-user', submitBtn, async () => {
+      try {
+        const result = await inviteNewUser({
+          email: document.getElementById('inviteEmail').value.trim(),
+          fullName: document.getElementById('inviteFullName').value.trim(),
+          role: document.getElementById('inviteRole').value,
+          departmentId: document.getElementById('inviteDepartment').value,
+          password: document.getElementById('invitePassword').value.trim()
+        });
+        resultBox.style.display = 'block';
+        resultBox.className = result.emailSent ? 'message success' : 'message warning';
+        resultBox.textContent = result.emailSent
+          ? `帳號已建立，邀請信已寄至 ${result.credentials.email}（使用者登入後系統會強制要求設定新密碼）。`
+          : `帳號已建立但通知信失敗：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（${result.emailError || '未知原因'}）`;
+        e.target.reset();
+        await renderAdminUserTable();
+      } catch (error) {
+        console.error('邀請使用者失敗:', error);
+        resultBox.style.display = 'block';
+        resultBox.className = 'message error';
+        resultBox.textContent = `開通失敗：${error.message}`;
+      }
+    });
   });
 
   const excelVoucherForm = document.getElementById('voucherCreateForm');
   if (excelVoucherForm) {
     excelVoucherForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = e.submitter || excelVoucherForm.querySelector('button[type="submit"]');
+      await withActionLock('voucher:create', submitBtn, async () => {
 
       try {
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
@@ -2809,6 +2852,7 @@ function initializeEventsInternal() {
           }
         }
 
+        await reloadAppData();
         renderDashboard();
         if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
 
@@ -2816,11 +2860,14 @@ function initializeEventsInternal() {
         console.error(err);
         alert('送出報支單失敗：' + err.message);
       }
+      });
     });
   }
 
   safeListener('projectForm', 'submit', async (e) => {
     e.preventDefault();
+    const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
+    await withActionLock('project:create', submitBtn, async () => {
     if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
       showMessage('僅會計部門與 Admin 可建立專案', true);
       return;
@@ -2882,6 +2929,7 @@ function initializeEventsInternal() {
     } catch (err) {
       showMessage('建立專案失敗：' + err.message, true);
     }
+    });
   });
 
   safeListener('departmentForm', 'submit', async (e) => {
@@ -2909,36 +2957,8 @@ function initializeEventsInternal() {
 
 let voucherLines = [];
 
-async function loadTransactionsFromSupabase() {
-  try {
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .select('*')
-      .order('tx_date', { ascending: false });
-
-    if (error) throw error;
-
-    const dbTxs = (data || []).map(t => ({
-      id: t.id,
-      date: t.tx_date,
-      bankAccountId: t.bank_account_id,
-      detail: t.description || '',
-      type: t.type,
-      amount: Number(t.amount || 0),
-      source: 'supabase'
-    }));
-
-    // 以 DB 資料為準，覆寫 localStorage 可能殘留的舊資料
-    state.transactions = dbTxs;
-    saveState(state);
-  } catch (err) {
-    console.error('載入銀行交易失敗：', err);
-  }
-}
-
 async function initialize() {
     loadState(state);
-    await loadTransactionsFromSupabase();
     initializeEvents();
 
     const user = await getCurrentSessionUser();
@@ -3422,14 +3442,29 @@ window.updatePendingMemberRole = (userId, role) => {
 
 window.saveProjectMembers = async () => {
   const projectId = document.getElementById('pmProjectId').value;
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    const result = await saveProjectMembersApi(projectId, pmPendingMembers, user?.id || null);
-    showMessage(`成員名單已更新（新增 ${result.added} 位、移除 ${result.removed} 位）。`);
-    renderPmAuditLog(projectId);
-  } catch (err) {
-    alert('儲存失敗：' + err.message);
-  }
+  const btn = document.querySelector('#projectMembersModal button[onclick="saveProjectMembers()"]');
+  await withActionLock(`project-members:save:${projectId}`, btn, async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const result = await saveProjectMembersApi(projectId, pmPendingMembers, user?.id || null);
+      const [users, members] = await Promise.all([fetchAllUsers(), fetchProjectMembers(projectId)]);
+      pmPendingMembers = (members || []).map(m => {
+        const u = users.find(u => u.id === m.user_id);
+        return {
+          user_id: m.user_id,
+          full_name: m.user?.full_name || u?.full_name || u?.email || '（使用者已刪除）',
+          department: u?.department?.name || '',
+          role: m.role || 'member'
+        };
+      });
+      renderPmMemberTable();
+      showMessage(`成員名單已更新（新增 ${result.added} 位、移除 ${result.removed} 位）。`);
+      renderPmAuditLog(projectId);
+    } catch (err) {
+      console.error('儲存專案成員失敗:', err);
+      alert(`儲存失敗：${err.code ? err.code + ' - ' : ''}${err.message}`);
+    }
+  });
 };
 
 async function renderPmAuditLog(projectId) {
@@ -4729,49 +4764,8 @@ async function promptRejectReason() {
   return presets[preset.trim()] || preset.trim();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const projectForm = document.getElementById('projectForm');
-  
-  if (projectForm) {
-    projectForm.addEventListener('submit', async (e) => {
-      e.preventDefault(); // 防止網頁重新整理
-
-      // 取得表單欄位數值
-      const name = document.getElementById('projectName').value.trim();
-      const startDate = document.getElementById('projectStart').value;
-      const endDate = document.getElementById('projectEnd').value;
-      const departmentId = document.getElementById('projectDepartment').value;
-      const totalBudget = parseFloat(document.getElementById('projectTotalBudget').value);
-
-      if (!name || isNaN(totalBudget)) {
-        alert('請填寫完整的專案名稱與總預算！');
-        return;
-      }
-
-      try {
-        // 呼叫 budget.js 的建立專案 API
-        await createProject({
-          name: name,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          department_id: departmentId || null,
-          total_budget: totalBudget
-        });
-
-        alert('專案建立成功！');
-        projectForm.reset(); // 清空表單輸入框
-        
-        // 重新渲染專案列表（更新右側清單）
-        if (typeof window.renderProjectList === 'function') {
-          window.renderProjectList();
-        }
-      } catch (error) {
-        console.error('建立專案失敗：', error);
-        alert('建立專案失敗：' + (error.message || '未知錯誤'));
-      }
-    });
-  }
-});
+// projectForm 的 submit 事件統一由 initializeEventsInternal() 以 safeListener 綁定。
+// 這裡原本還有一段 DOMContentLoaded 綁定，會造成專案快速送出時重複新增。
 
 // 用於暫存修改表單中各列所選擇的附件檔案
 let resubLineAttachments = {};
@@ -5480,7 +5474,7 @@ function setDefaultReportPeriod() {
 // 假設這段是在初始化 Navigation Bar 或 Header
 async function renderHeader(user) {
   // 版本號顯示（固定）
-  const VERSION_LABEL = 'Demo v2.9.8';
+  const VERSION_LABEL = 'Demo v2.9.10';
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `

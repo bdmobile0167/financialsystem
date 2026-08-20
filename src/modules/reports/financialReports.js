@@ -8,6 +8,7 @@ import {
   buildCashflowStatement,
   buildEquityStatement,
   buildTrialBalance,
+  buildBankReconciliation,
   buildFundraisingSnapshot,
   fetchAccountBalancesByCode,
   getEquityAnalysis
@@ -113,6 +114,23 @@ function renderTable(id, rows) {
           <td>本期淨利 (Net Profit)</td>
           <td style="text-align: right; color: ${rows.netProfit >= 0 ? '#16a34a' : '#dc2626'};">${Number(rows.netProfit || 0).toLocaleString()}</td>
           <td>-</td>
+        </tr>
+      `;
+    }
+
+    if (rows.reconciliation) {
+      const r = rows.reconciliation;
+      htmlContent += `
+        <tr class="reconciliation-row">
+          <td colspan="3">
+            <div class="reconciliation-box">
+              <strong>銀行餘額勾稽</strong>
+              <span>實際銀行餘額：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              <span>總帳銀行科目餘額：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
+              <span class="${Number(r.difference || 0) === 0 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異：${Number(r.difference || 0).toLocaleString()}</span>
+              ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}
+            </div>
+          </td>
         </tr>
       `;
     }

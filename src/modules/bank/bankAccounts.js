@@ -2,7 +2,39 @@ import { supabase } from '../../../scripts/supabaseClient.js';
 
 export async function loadBankAccounts() {  let q = supabase.from('bank_accounts').select('*').order('bank_name');  const { data, error } = await q;
   if (error) throw error;
+  return attachBankAccountBalances(data || []);
+}
+
+export async function loadBankAccountBalances() {
+  const { data, error } = await supabase.from('bank_account_balances').select('*');
+  if (error) throw error;
   return data || [];
+}
+
+export async function attachBankAccountBalances(accounts = []) {
+  let balances = [];
+  try {
+    balances = await loadBankAccountBalances();
+  } catch (error) {
+    console.warn('讀取 bank_account_balances 失敗，銀行目前餘額將顯示為空值:', error);
+  }
+
+  const byBankAccountId = new Map();
+  balances.forEach(row => {
+    const key = row.bank_account_id || row.account_id || row.bank_id || row.id;
+    if (key) byBankAccountId.set(key, row);
+  });
+
+  return accounts.map(account => {
+    const balance = byBankAccountId.get(account.id);
+    const currentBalance = balance?.current_balance ?? balance?.balance ?? balance?.ending_balance ?? null;
+    return {
+      ...account,
+      balance_record: balance || null,
+      current_balance: currentBalance,
+      actual_current_balance: currentBalance
+    };
+  });
 }
 
 export async function addBankAccount(account) {
@@ -36,13 +68,18 @@ export async function deleteBankAccount(id) {
  */
 export function getBankBalance(bankAccount, transactions = []) {
   if (!bankAccount) return 0;
+  if (typeof bankAccount === 'object' && bankAccount.current_balance !== null && bankAccount.current_balance !== undefined) {
+    return Number(bankAccount.current_balance || 0);
+  }
+
+  const bankAccountId = typeof bankAccount === 'object' ? bankAccount.id : bankAccount;
   
   // 1. 取得期初餘額 (若無則預設為 0)
-  const openingBalance = Number(bankAccount.opening_balance || 0);
+  const openingBalance = typeof bankAccount === 'object' ? Number(bankAccount.opening_balance || 0) : 0;
   
   // 2. 計算該帳戶歷年/當期所有交易的淨額 (收入加、支出減)
   const netTransactions = transactions
-    .filter(tx => tx.bank_account_id === bankAccount.id || tx.bankAccountId === bankAccount.id)
+    .filter(tx => tx.bank_account_id === bankAccountId || tx.bankAccountId === bankAccountId)
     .reduce((sum, tx) => {
       const amt = Number(tx.amount || 0);
       return tx.type === '收入' ? sum + amt : sum - amt;

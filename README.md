@@ -1,28 +1,54 @@
-Demo v2.9.3 — Netlify frontend for 財務管理系統
+# Financial System Frontend
 
-Summary
-- Version: Demo v2.9.3
-- Purpose: Incremental multi-tenant migration and cleanup. This release replaces hard-coded, local company data with runtime Supabase-based queries and introduces UI version display.
+Version: `Demo v2.9.10`  
+Internal version: `0.2.14`
 
-Key Changes
-- Multi-tenant foundations: prepared DB migrations and backfill scripts (see `netlify/db/migrations/`).
-- Remote company data: frontend now fetches company info and structure settings from Supabase using `netlify/scripts/companyContext.js`.
-- Removed reliance on local hard-coded company data: `netlify/scripts/company-data.js` compatibility exports are deprecated and set to empty.
-- Header improvements: added dynamic company switcher for super_admin users and a visible version label `Demo v2.9.3` in the header.
-- `state.js` no longer seeds structure settings from local files; it defaults to empty and expects remote settings.
-- Reports and equity modules updated to read company opening capital from Supabase at runtime.
+This is the deployable frontend used by Vercel. The GitHub-facing app code and release notes live in this `netlify/` folder. The sibling `../docs/` folder is local project documentation and is not expected to be uploaded to GitHub.
 
-Developer Notes
-- Important: Run DB migrations and backfill in staging before enabling RLS in production. See `netlify/db/RLS_APPLY_ROLLBACK.md` for guidance.
-- Temporary: Supabase anon key was temporarily used during development; rotate and set proper runtime env vars before production.
+## Latest Update
 
-How to run locally (quick)
-1. Ensure you have a Supabase project and set the client URL and anon key in `netlify/scripts/supabaseClient.js` or environment-based loader.
-2. Open `index.html` in a static server (e.g., `npx serve netlify`), or deploy to Netlify configured with the environment variables.
+- Banking current balances read from `public.bank_account_balances`.
+- Formal financial reports still use `journal_entries` / trial balance as the accounting source.
+- Bank reconciliation shows actual bank balance, ledger bank-account balance, and unreconciled difference.
+- Project members can be added, removed, and saved per project with Supabase re-fetch after writes.
+- Invite user flow rolls back the Auth user if `profiles` insert fails.
+- Financial reports support printing the current report or all reports.
+- Critical write actions use action locks to reduce duplicate submissions.
+- Supabase migration `p0_rls_policy_hardening_v2` has been applied to project `imlmclalgbfxhhnpsyam`.
 
-Files of interest
-- `netlify/scripts/companyContext.js` — functions to fetch `companies` and `company_settings`.
-- `netlify/scripts/ui.js` — UI init and header rendering (contains version label).
-- `netlify/db/migrations/` — SQL migrations and RLS policy templates.
+## Documentation
 
-If you want, I can update `supabaseClient.js` to read from environment variables and remove any remaining hard-coded keys.
+- Changelog: `CHANGELOG.md`
+- Local-only project docs: `../docs/`
+
+Only `netlify/CHANGELOG.md` should be maintained as the GitHub-facing changelog. Do not add a second deploy changelog under `docs/`.
+
+## Local Development
+
+Use any static server from the repository root or from this folder. Example:
+
+```powershell
+cd netlify
+python -m http.server 8123
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8123/
+```
+
+For isolated local login and smoke testing, use the ignored `local-test/` folder at the repository root. That folder is intentionally excluded from GitHub.
+
+## Deployment Notes
+
+- This project is pushed to GitHub and deployed by Vercel.
+- Do not place Supabase `service_role` keys in frontend files.
+- Keep runtime secrets in the deployment provider environment variables.
+- After every production-facing change, update `CHANGELOG.md`, this README, and the local `../docs/` files when they are relevant.
+
+## Supabase Notes
+
+- Public Supabase project ref currently used by the frontend: `imlmclalgbfxhhnpsyam`.
+- `bank_account_balances` is a `security_invoker=true` view.
+- Remaining Supabase follow-up is tracked in `../docs/TASKS_PENDING.md`.
