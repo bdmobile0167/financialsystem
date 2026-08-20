@@ -8,7 +8,25 @@ export async function loadBankAccounts() {  let q = supabase.from('bank_accounts
 export async function loadBankAccountBalances() {
   const { data, error } = await supabase.from('bank_account_balances').select('*');
   if (error) throw error;
-  return data || [];
+  const rows = data || [];
+  const bankIds = [...new Set(rows.map(row => row.bank_account_id || row.account_id || row.bank_id || row.id).filter(Boolean))];
+  if (bankIds.length === 0) return rows;
+
+  const { data: accounts, error: accountError } = await supabase
+    .from('bank_accounts')
+    .select('id, bank_name, nickname, account_number, account_id, accounting_account_id, ledger_account_id')
+    .in('id', bankIds);
+  if (accountError) {
+    console.warn('讀取銀行帳戶名稱失敗，僅回傳 bank_account_balances：', accountError);
+    return rows;
+  }
+
+  const accountById = new Map((accounts || []).map(account => [account.id, account]));
+  return rows.map(row => {
+    const bankId = row.bank_account_id || row.account_id || row.bank_id || row.id;
+    const account = accountById.get(bankId);
+    return account ? { ...account, ...row, bank_account: account } : row;
+  });
 }
 
 export async function attachBankAccountBalances(accounts = []) {

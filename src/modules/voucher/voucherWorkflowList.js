@@ -133,7 +133,7 @@ export function renderVoucherCard(v) {
       <div class="muted">${v.tx_date}｜${v.summary || ''}｜金額 ${Number(v.total_amount).toLocaleString()}</div>
       <div class="button-row" style="margin-top:8px;">
         ${actions}
-        <button class="secondary view-history-btn" data-id="${v.id}">查看審批歷程</button>
+        ${actions.includes('view-history-btn') ? '' : `<button class="secondary view-history-btn" data-id="${v.id}">查看審批歷程</button>`}
       </div>
       <div class="voucher-history" id="history-${v.id}" style="display:none; margin-top:8px;"></div>
     </div>`;

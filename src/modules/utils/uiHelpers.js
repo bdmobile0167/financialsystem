@@ -1,6 +1,3 @@
-// 通用 UI 輔助函數
-
-// 顯示 Toast 訊息
 export function showToast(message, type = 'success') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -11,7 +8,7 @@ export function showToast(message, type = 'success') {
   }
 
   const toast = document.createElement('div');
-  toast.className = `toast-message`;
+  toast.className = 'toast-message';
   toast.style.cssText = `
     padding: 12px 20px;
     border-radius: 8px;
@@ -22,26 +19,16 @@ export function showToast(message, type = 'success') {
     animation: slideIn 0.3s ease-out;
     max-width: 350px;
   `;
-  
-  if (type === 'error') {
-    toast.style.backgroundColor = '#ef4444';
-  } else if (type === 'warning') {
-    toast.style.backgroundColor = '#f59e0b';
-  } else {
-    toast.style.backgroundColor = '#10b981';
-  }
-  
+  toast.style.backgroundColor = type === 'error' ? '#ef4444' : (type === 'warning' ? '#f59e0b' : '#10b981');
   toast.textContent = message;
   container.appendChild(toast);
 
-  // 3秒後自動移除
   setTimeout(() => {
     toast.style.animation = 'slideOut 0.3s ease-in forwards';
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
 
-// 顯示訊息（用於表單提交結果等）
 export function showMessage(text, isError = false) {
   const el = document.getElementById('loginMessage') || document.getElementById('inviteResultBox') || document.getElementById('forcePasswordMessage');
   if (!el) {
@@ -53,59 +40,43 @@ export function showMessage(text, isError = false) {
   el.style.display = 'block';
 }
 
-// 設定文字內容
 export function setText(selector, value) {
   const element = document.querySelector(selector);
-  if (element) {
-    element.textContent = value;
-  }
+  if (element) element.textContent = value;
 }
 
-// 取得銀行帳戶暱稱
 export function getBankNickname(bankAccountId, accounts = []) {
   const account = accounts.find(a => a.id === bankAccountId);
-  return account ? account.nickname : '未設定';
+  return account ? (account.nickname || account.bank_name || account.account_number || '-') : '未設定';
 }
 
-// 填充銀行下拉選單
 export function populateBankSelect(selectEl, accounts = []) {
   if (!selectEl) return;
-  if (!accounts || !Array.isArray(accounts)) accounts = [];
-  if (accounts.length === 0) {
-    selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    selectEl.innerHTML = '<option value="">尚未建立銀行帳戶</option>';
     return;
   }
-  selectEl.innerHTML = accounts.map(a => 
-    `<option value="${a.id}">${a.nickname || a.bank_name || '未命名'}</option>`
-  ).join('');
+  selectEl.innerHTML = accounts
+    .map(a => `<option value="${a.id}">${a.nickname || a.bank_name || a.account_number || '銀行帳戶'}</option>`)
+    .join('');
 }
 
-// 智能姓名遮罩 (廠商不遮罩，個人遮罩)
 export function maskPersonName(name, identifier) {
   if (!name) return '';
-  if (identifier && identifier.length === 8 && !isNaN(identifier)) {
-    return name;
-  }
-  
+  if (identifier && identifier.length === 8 && !Number.isNaN(Number(identifier))) return name;
   if (name.length === 2) return name[0] + 'O';
   if (name.length === 3) return name[0] + 'O' + name[2];
   if (name.length >= 4) return name[0] + 'O' + name.slice(2);
   return name;
 }
 
-// 身分證字號遮罩
 export function maskIdentifierString(identifier) {
   if (!identifier) return '';
-  if (identifier.length === 8 && !isNaN(identifier)) {
-    return identifier;
-  }
-  if (identifier.length >= 10) {
-    return identifier.substring(0, 4) + '****' + identifier.substring(identifier.length - 3);
-  }
+  if (identifier.length === 8 && !Number.isNaN(Number(identifier))) return identifier;
+  if (identifier.length >= 10) return identifier.substring(0, 4) + '****' + identifier.substring(identifier.length - 3);
   return identifier;
 }
 
-// 付款人姓名遮罩
 export function maskPayeeName(name) {
   if (!name) return '';
   const len = name.length;
@@ -114,78 +85,53 @@ export function maskPayeeName(name) {
   return name[0] + 'O'.repeat(len - 2) + name[len - 1];
 }
 
-// 狀態標籤
 export const STATUS_LABELS = {
   pending_review: '待主管審核',
-  manager_rejected: '主管退回',
-  pending_accounting: '待會計核准',
-  accounting_rejected: '會計退回',
-  approved: '已核准入帳',
-  cancelled: '已撤銷'
+  manager_rejected: '主管退件',
+  pending_accounting: '待會計審核',
+  accounting_rejected: '會計退件',
+  approved: '已核准待付款',
+  closed: '已付款結案',
+  cancelled: '已取消'
 };
 
 export function getStatusBadge(status) {
-  switch (status) {
-    case 'pending_review':
-      return `<span class="badge warning" style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待主管審核</span>`;
-    case 'pending_accounting':
-      return `<span class="badge warning" style="background:#fde047; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px;">待會計核准</span>`;
-    case 'approved':
-      return `<span class="badge success" style="background:#bbf7d0; color:#166534; padding:2px 8px; border-radius:12px; font-size:12px;">已核准待付款</span>`;
-    case 'manager_rejected':
-    case 'accounting_rejected':
-      return `<span class="badge danger" style="background:#fecaca; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px;">已退件</span>`;
-    case 'closed':
-      return `<span class="badge secondary" style="background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px; font-size:12px;">已付款結案</span>`;
-    case 'cancelled':
-      return `<span class="badge secondary" style="background:#cbd5e1; color:#334155; padding:2px 8px; border-radius:12px; font-size:12px;">已撤銷</span>`;
-    default:
-      return `<span class="badge secondary" style="background:#eee; padding:2px 8px; border-radius:12px; font-size:12px;">${status || '未知'}</span>`;
-  }
+  const label = STATUS_LABELS[status] || status || '未知';
+  const className = {
+    pending_review: 'warning',
+    pending_accounting: 'warning',
+    approved: 'success',
+    manager_rejected: 'danger',
+    accounting_rejected: 'danger',
+    closed: 'secondary',
+    cancelled: 'secondary'
+  }[status] || 'secondary';
+  return `<span class="badge ${className}" style="padding:2px 8px; border-radius:12px; font-size:12px;">${label}</span>`;
 }
 
-// 角色標籤
-export const ROLE_LABELS = { admin: '管理員', accounting: '會計部門', manager: '部門主管', employee: '一般專員' };
+export const ROLE_LABELS = {
+  admin: '管理員',
+  accounting: '會計部門',
+  manager: '部門主管',
+  employee: '一般專員'
+};
 
-// 建立審核步驟 HTML
-export function buildApprovalStepperHtml(status) {
-  const steps = [
-    { key: 'submit', label: '提交申請' },
-    { key: 'manager', label: '主管審核' },
-    { key: 'accounting', label: '會計審核' },
-    { key: 'closed', label: '付款結案' }
-  ];
+const WORKFLOW_STEPS = [
+  { key: 'submit', label: '提交申請' },
+  { key: 'manager', label: '主管審核' },
+  { key: 'accounting', label: '會計審核' },
+  { key: 'closed', label: '付款結案' }
+];
 
-  let stepStates = ['done', 'pending', 'pending', 'pending'];
-  switch (status) {
-    case 'pending_review':
-      stepStates = ['done', 'current', 'pending', 'pending']; break;
-    case 'manager_rejected':
-      stepStates = ['done', 'rejected', 'pending', 'pending']; break;
-    case 'pending_accounting':
-      stepStates = ['done', 'done', 'current', 'pending']; break;
-    case 'accounting_rejected':
-      stepStates = ['done', 'done', 'rejected', 'pending']; break;
-    case 'approved':
-      stepStates = ['done', 'done', 'done', 'current']; break;
-    case 'closed':
-      stepStates = ['done', 'done', 'done', 'done']; break;
-    case 'cancelled':
-      return `<div class="badge secondary" style="padding:6px 12px;">此單據已撤銷</div>`;
-    default:
-      stepStates = ['done', 'pending', 'pending', 'pending'];
-  }
-
-  return `
-    <ul class="approval-stepper" style="display:flex; gap:8px; list-style:none; padding:0; margin:12px 0; flex-wrap:wrap;">
-      ${steps.map((s, i) => `
-        <li class="${stepStates[i]}" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:20px; font-size:12px; font-weight:600; ${getStepStyle(stepStates[i])}">
-          <span class="step-dot" style="width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px;">${stepStates[i] === 'done' ? '✓' : (stepStates[i] === 'rejected' ? '✕' : i + 1)}</span>
-          ${s.label}
-        </li>
-      `).join('')}
-    </ul>
-  `;
+function getWorkflowStepStates(status) {
+  return {
+    pending_review: ['done', 'current', 'pending', 'pending'],
+    manager_rejected: ['done', 'rejected', 'pending', 'pending'],
+    pending_accounting: ['done', 'done', 'current', 'pending'],
+    accounting_rejected: ['done', 'done', 'rejected', 'pending'],
+    approved: ['done', 'done', 'done', 'current'],
+    closed: ['done', 'done', 'done', 'done']
+  }[status] || ['done', 'pending', 'pending', 'pending'];
 }
 
 function getStepStyle(state) {
@@ -197,30 +143,38 @@ function getStepStyle(state) {
   }
 }
 
-// 迷你步驟點
-export function buildMiniStepperDots(status) {
-  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已撤銷</span>';
-  const stepStates = {
-    pending_review: ['done', 'current', 'pending', 'pending'],
-    manager_rejected: ['done', 'rejected', 'pending', 'pending'],
-    pending_accounting: ['done', 'done', 'current', 'pending'],
-    accounting_rejected: ['done', 'done', 'rejected', 'pending'],
-    approved: ['done', 'done', 'done', 'current'],
-    closed: ['done', 'done', 'done', 'done']
-  }[status] || ['done', 'pending', 'pending', 'pending'];
+export function buildApprovalStepperHtml(status) {
+  if (status === 'cancelled') return '<div class="badge secondary" style="padding:6px 12px;">已取消</div>';
+  const stepStates = getWorkflowStepStates(status);
+  return `
+    <ul class="approval-stepper" style="display:flex; gap:8px; list-style:none; padding:0; margin:12px 0; flex-wrap:wrap;">
+      ${WORKFLOW_STEPS.map((step, index) => {
+        const state = stepStates[index];
+        const mark = state === 'done' ? '✓' : (state === 'rejected' ? '!' : index + 1);
+        return `
+          <li class="${state}" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:20px; font-size:12px; font-weight:600; ${getStepStyle(state)}">
+            <span class="step-dot" style="width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px;">${mark}</span>
+            ${step.label}
+          </li>
+        `;
+      }).join('')}
+    </ul>
+  `;
+}
 
-  const colorOf = (s) => s === 'done' ? '#10b981' : (s === 'current' ? '#3b82f6' : (s === 'rejected' ? '#ef4444' : '#cbd5e1'));
-  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="提交→主管→會計→結案">
-    ${stepStates.map(s => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(s)}; display:inline-block;"></span>`).join('')}
+export function buildMiniStepperDots(status) {
+  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已取消</span>';
+  const stepStates = getWorkflowStepStates(status);
+  const colorOf = state => state === 'done' ? '#10b981' : (state === 'current' ? '#3b82f6' : (state === 'rejected' ? '#ef4444' : '#cbd5e1'));
+  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="提交、主管、會計、付款">
+    ${stepStates.map(state => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(state)}; display:inline-block;"></span>`).join('')}
   </span>`;
 }
 
-// 格式化金額
 export function formatTwd(n) {
   return `NT$ ${Math.round(Number(n || 0)).toLocaleString()}`;
 }
 
-// 下載 JSON 檔案
 export function downloadJsonFile(filename, dataObj) {
   const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -233,25 +187,52 @@ export function downloadJsonFile(filename, dataObj) {
   URL.revokeObjectURL(url);
 }
 
-// 更新管理員導航可見性
+function isAccountingOrAdmin(user) {
+  return ['accounting', 'admin', 'super_admin'].includes(user?.role) || user?.department === '財務部' || user?.department_name === '財務部';
+}
+
+function hasPermission(user, permissionKey) {
+  if (!user) return false;
+  if (isAccountingOrAdmin(user)) return true;
+  return user.permissions?.[permissionKey] === true;
+}
+
+function setTabVisible(tab, visible) {
+  document.querySelectorAll(`[data-tab="${tab}"]`).forEach(el => {
+    el.style.display = visible ? '' : 'none';
+  });
+}
+
 export function updateAdminNavVisibility() {
-  const btn = document.getElementById('adminUsersNavBtn');
-  if (btn) btn.style.display = window.state?.currentUser?.role === 'admin' ? 'block' : 'none';
+  const user = window.state?.currentUser;
+  const isAdmin = ['admin', 'super_admin'].includes(user?.role);
+  const canManageUsers = isAdmin || hasPermission(user, 'canManageUsers');
+  const adminUsersBtn = document.getElementById('adminUsersNavBtn');
+  const userManagementBtn = document.getElementById('userManagementNavBtn');
+  if (adminUsersBtn) adminUsersBtn.style.display = canManageUsers ? '' : 'none';
+  if (userManagementBtn) userManagementBtn.style.display = canManageUsers ? '' : 'none';
 }
 
-// 套用角色基礎分頁可見性
 export function applyRoleBasedTabVisibility() {
-  const role = window.state?.currentUser?.role;
-  const financialOnly = ['accounting', 'admin'];
-  const reportsBtn = document.querySelector('[data-tab="reports"]');
-  const equityBtn = document.querySelector('[data-tab="equity"]');
-  const auditTrailBtn = document.querySelector('[data-tab="auditTrail"]');
-  if (reportsBtn) reportsBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (equityBtn) equityBtn.style.display = financialOnly.includes(role) ? '' : 'none';
-  if (auditTrailBtn) auditTrailBtn.style.display = financialOnly.includes(role) ? '' : 'none';
+  const user = window.state?.currentUser;
+  const canFinance = hasPermission(user, 'canViewFinancials');
+  const canReports = hasPermission(user, 'canViewReports') || canFinance;
+  const canBank = hasPermission(user, 'canViewBankAccounts');
+  const canReconcile = hasPermission(user, 'canReconcileBank') || canBank;
+  const canProjects = hasPermission(user, 'canManageProjects');
+  const canLedger = hasPermission(user, 'canViewJournalLedger');
+  const canVouchers = hasPermission(user, 'canViewVouchers') || canProjects;
+
+  setTabVisible('transactions', canLedger || canFinance);
+  setTabVisible('bankAccounts', canBank);
+  setTabVisible('bankReconcile', canReconcile);
+  setTabVisible('budget', canProjects);
+  setTabVisible('reports', canReports);
+  setTabVisible('equity', canReports);
+  setTabVisible('auditTrail', canLedger || canFinance);
+  setTabVisible('voucherCenter', canVouchers || canFinance);
 }
 
-// 安全綁定事件監聽器
 export function safeListener(id, event, handler) {
   const el = document.getElementById(id);
   if (el) el.addEventListener(event, handler);
@@ -286,7 +267,6 @@ export async function withActionLock(actionKey, button, asyncFn, options = {}) {
   }
 }
 
-// 關閉側邊欄
 export function closeSidebar() {
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -297,7 +277,6 @@ export function closeSidebar() {
   menuToggleBtn?.setAttribute('aria-expanded', 'false');
 }
 
-// 開啟側邊欄
 export function openSidebar() {
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -308,12 +287,8 @@ export function openSidebar() {
   menuToggleBtn?.setAttribute('aria-expanded', 'true');
 }
 
-// 切換側邊欄
 export function toggleSidebar() {
   const sidebarEl = document.getElementById('sidebar');
-  if (sidebarEl?.classList.contains('open')) {
-    closeSidebar();
-  } else {
-    openSidebar();
-  }
+  if (sidebarEl?.classList.contains('open')) closeSidebar();
+  else openSidebar();
 }

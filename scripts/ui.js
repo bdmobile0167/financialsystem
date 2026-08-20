@@ -114,7 +114,15 @@ async function renderAdminUserTable() {
     body.innerHTML = users.map(u => `
       <tr>
         <td>${u.email}</td>
-        <td>${u.full_name || '-'}</td>
+        <td>
+          <input
+            type="text"
+            class="compact-input"
+            value="${u.full_name || ''}"
+            placeholder="姓名"
+            onchange="updateUserProfile('${u.id}', 'full_name', this.value)"
+          />
+        </td>
         <td>
           <select class="role-select" onchange="updateUserProfile('${u.id}', 'role', this.value)">
             ${Object.entries(ROLE_LABELS).map(([val, label]) => `<option value="${val}" ${u.role === val ? 'selected' : ''}>${label}</option>`).join('')}
@@ -127,8 +135,16 @@ async function renderAdminUserTable() {
             ${depts.map(d => `<option value="${d.id}" ${u.department_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
           </select>
         </td>
-        <td>${u.active === false ? '<span class="badge wait">已停用</span>' : '<span class="badge">啟用中</span>'}</td>
-        <td><button class="secondary toggle-active-btn" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? '啟用' : '停用'}</button></td>
+        <td>${u.active === false ? '<span class="badge wait">已停用</span>' : '<span class="badge success">啟用中</span>'}</td>
+        <td>
+          <button
+            class="${u.active === false ? 'secondary' : 'danger'}"
+            style="width:auto; padding:6px 12px;"
+            onclick="toggleAdminUserActive('${u.id}', ${u.active !== false})"
+          >
+            ${u.active === false ? '啟用' : '停用'}
+          </button>
+        </td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">尚無使用者資料。</td></tr>';
   } catch (error) {
     body.innerHTML = `<tr><td colspan="6" class="muted">載入失敗：${error.message}</td></tr>`;
@@ -558,6 +574,18 @@ window.toggleUserPermission = async (userId, permKey) => {
   }
 };
 
+window.toggleAdminUserActive = async (userId, currentlyActive) => {
+  try {
+    if (currentlyActive && !confirm('確定要停用此使用者嗎？停用後將無法正常使用系統功能。')) return;
+    await toggleUserActive(userId, !currentlyActive);
+    showMessage(currentlyActive ? '使用者已停用。' : '使用者已啟用。');
+    await renderAdminUserTable();
+  } catch (error) {
+    console.error('切換使用者狀態失敗:', error);
+    alert('切換使用者狀態失敗：' + error.message);
+  }
+};
+
 window.openCreateUserModal = () => {
   document.getElementById('createUserModal').style.display = 'flex';
 };
@@ -645,6 +673,16 @@ const state = { ...defaultState };
 window.state = state;
 let eventsInitialized = false;
 
+function isAccountingOrAdminUser(user = state.currentUser) {
+  return ['accounting', 'admin', 'super_admin'].includes(user?.role) || user?.department === '財務部' || user?.department_name === '財務部';
+}
+
+function userHasPermission(permissionKey, user = state.currentUser) {
+  if (!user) return false;
+  if (isAccountingOrAdminUser(user)) return true;
+  return user.permissions?.[permissionKey] === true;
+}
+
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====
 // 多階段簽核流程指示器：把單據狀態轉換成「提交→主管→會計→付款結案」的視覺步驟
 
@@ -702,7 +740,7 @@ async function renderAuditTrail() {
             </p>
           </div>
           <div class="relative w-full sm:w-64">
-            <svg class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 0 0114 0z"></path></svg>
+                <svg class="audit-icon audit-icon-search" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             <input
               type="text"
               id="auditTrailSearchInput"
@@ -786,6 +824,11 @@ async function renderAuditTrail() {
 
 
 function render() {
+  const canViewFinancials = userHasPermission('canViewFinancials');
+  const canViewReports = userHasPermission('canViewReports') || canViewFinancials;
+  const canViewBankAccounts = userHasPermission('canViewBankAccounts');
+  const canManageProjects = userHasPermission('canManageProjects');
+
   // 只給 Admin 顯示的區塊
   const adminOnlyElements = ['departmentForm', 'inviteUserForm', /* 其他 Admin 專屬 ID */];
   adminOnlyElements.forEach(id => {
@@ -805,25 +848,35 @@ function render() {
   updateAdminNavVisibility();
   applyRoleBasedTabVisibility();
   renderDashboard();
-  renderTransactionTable();
+  if (userHasPermission('canViewJournalLedger') || canViewFinancials) {
+    renderTransactionTable();
+  }
   // 財報僅限 會計(accounting)/管理員(admin) 檢視；
   // employee/manager 不觸發報表 DB 查詢，避免因 RLS 限制觸發 406 Not Acceptable
-  if (['accounting', 'admin'].includes(state.currentUser?.role)) {
+  if (canViewReports) {
     renderReports();
   }
   renderCompanyData();
   fillCompanyInfoForm();
   renderBusinessData();
   updateSettings();
-  renderBankAccounts();
-  renderVoucherCenter();
-  renderBudget();
-  if (['accounting', 'admin'].includes(state.currentUser?.role)) {
+  if (canViewBankAccounts) {
+    renderBankAccounts();
+  }
+  if (userHasPermission('canViewVouchers') || canManageProjects || canViewFinancials) {
+    renderVoucherCenter();
+  }
+  if (canManageProjects) {
+    renderBudget();
+    renderProjectList();
+  }
+  if (canViewReports) {
     renderEquityTab();
   }
   renderTabs();
-  populateProjectDepartmentSelect();
-  renderProjectList();
+  if (canManageProjects) {
+    populateProjectDepartmentSelect();
+  }
   loadAndRenderProjects();
 }
 
@@ -908,24 +961,35 @@ function renderTransactionTable() {
     return;
   }
   
-  txs.forEach((tx, index) => {
+  const sortedTxs = [...txs].sort((a, b) => {
+    const dateCompare = String(b.date || b.tx_date || '').localeCompare(String(a.date || a.tx_date || ''));
+    if (dateCompare !== 0) return dateCompare;
+    return String(a.voucher || a.voucher_no || a.voucher_id || '').localeCompare(String(b.voucher || b.voucher_no || b.voucher_id || ''));
+  });
+
+  sortedTxs.forEach((tx, index) => {
     const row = document.createElement('tr');
     
-    // 憑證顯示：若有 voucher_id 則可點擊彈出，否則顯示文字或待補
-    const voucherDisplay = tx.voucher_id ? 
-      `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || '檢視憑證'}</a>` : 
-      (tx.voucher ? `<span class="badge">${tx.voucher}</span>` : '<span class="badge wait">無憑證</span>');
+    const txStatus = tx.status || tx.voucher_status || tx.payment_status || '';
+    const requiresVoucher = ['approved', 'closed', 'paid'].includes(txStatus) || !!tx.voucher_id;
+    const voucherDisplay = tx.voucher_id
+      ? `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || tx.voucher_no || '檢視憑證'}</a>`
+      : (tx.voucher || tx.voucher_no
+          ? `<span class="badge">${tx.voucher || tx.voucher_no}</span>`
+          : (requiresVoucher
+              ? '<span class="badge danger">憑證異常</span>'
+              : '<span class="badge wait">無憑證</span>'));
 
     // 嚴格對應 HTML Header: 憑證 | 日期 | 銀行 | 明細 | 類型 | 分類 | 金額 | 操作
     row.innerHTML = `
       <td>${voucherDisplay}</td>
-      <td>${tx.date}</td>
+      <td>${tx.date || tx.tx_date || '-'}</td>
       <td>${getBankNickname(tx.bankAccountId) || tx.bank || '未設定'}</td>
       <td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td>
       <td>${tx.type}</td>
       <td>${tx.category || '營業'}</td>
       <td>$${Number(tx.amount).toLocaleString()}</td>
-      <td><button class="secondary delete-transaction-btn" data-index="${index}">刪除</button></td>
+      <td><button class="secondary delete-transaction-btn" data-index="${state.transactions.indexOf(tx)}">刪除</button></td>
     `;
     body.appendChild(row);
   });
@@ -1583,6 +1647,7 @@ function renderTable(id, rows) {
             <div class="reconciliation-box">
               <strong>銀行餘額勾稽</strong>
               <span>實際銀行餘額：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              ${(r.balanceRows || []).map(b => `<span class="reconcile-detail">${b.nickname || b.bank_name || '銀行帳戶'}：${Number(b.current_balance ?? b.balance ?? b.ending_balance ?? 0).toLocaleString()}</span>`).join('')}
               <span>總帳銀行科目餘額：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
               <span class="${Number(r.difference || 0) === 0 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異：${Number(r.difference || 0).toLocaleString()}</span>
               ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}
@@ -2154,7 +2219,14 @@ function initializeEventsInternal() {
         if (!voucher) return;
 
         if (approveBtn) {
-          stage === 'manager' ? await managerApprove(voucher) : await accountingApprove(voucher);
+          if (stage === 'accounting') {
+            btn.disabled = false;
+            btn.dataset.processing = '0';
+            btn.textContent = originalLabel;
+            await openAccountingReviewModal(id);
+            return;
+          }
+          await managerApprove(voucher);
           showMessage('已核准。');
         } else {
           const reason = await promptRejectReason();
@@ -2337,6 +2409,7 @@ function initializeEventsInternal() {
       }
       if (tab === 'adminUsers') {
         populateInviteDepartmentSelect();
+        renderPermissionCheckboxes();
         renderAdminUserTable();
         renderAdminDepartmentList();
       }
@@ -2578,6 +2651,9 @@ function initializeEventsInternal() {
 
   safeListener('transactionForm', 'submit', async (e) => { 
     e.preventDefault();
+    const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
+    await withActionLock('transaction:create', submitBtn, async () => {
+    try {
     let attachmentId = '';
     const file = document.getElementById('txAttachment').files[0];
     if (file) {
@@ -2591,10 +2667,15 @@ function initializeEventsInternal() {
     const voucherType = document.getElementById('txVoucherType').value;
     const rawVoucher = document.getElementById('txVoucher').value.trim();
     const date = document.getElementById('txDate').value;
+    const bankAccountId = document.getElementById('txBankAccount').value;
+
+    if (!bankAccountId) {
+      throw new Error('請選擇銀行帳戶');
+    }
 
     const item = {
       date,
-      bankAccountId: document.getElementById('txBankAccount').value,
+      bankAccountId,
       customer: document.getElementById('txCustomer').value.trim(),
       detail: document.getElementById('txDetail').value.trim(),
       type: document.getElementById('txType').value,
@@ -2611,15 +2692,22 @@ function initializeEventsInternal() {
     render();
     e.target.reset();
     showMessage('交易已新增並已儲存。');
+    } catch (err) {
+      console.error('新增交易失敗:', err);
+      showMessage('新增交易失敗：' + err.message, true);
+    }
+    });
   });
 
   function printReports(mode = 'current') {
     state.activeTab = 'reports';
     renderTabs();
-    const activeTab = document.querySelector('.report-tab-btn.active-tab')?.dataset.reportTab || 'income';
+    const financialReportTabs = ['income', 'balance', 'cashflow', 'equity'];
+    const selectedTab = document.querySelector('.report-tab-btn.active-tab')?.dataset.reportTab || 'income';
+    const activeTab = financialReportTabs.includes(selectedTab) ? selectedTab : 'income';
     document.body.classList.add(mode === 'all' ? 'print-reports-all' : `print-report-${activeTab}`);
     const cleanup = () => {
-      document.body.classList.remove('print-reports-all', 'print-report-income', 'print-report-balance', 'print-report-cashflow', 'print-report-equity', 'print-report-trial');
+      document.body.classList.remove('print-reports-all', 'print-report-income', 'print-report-balance', 'print-report-cashflow', 'print-report-equity');
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
@@ -2722,7 +2810,8 @@ function initializeEventsInternal() {
           fullName: document.getElementById('inviteFullName').value.trim(),
           role: document.getElementById('inviteRole').value,
           departmentId: document.getElementById('inviteDepartment').value,
-          password: document.getElementById('invitePassword').value.trim()
+          password: document.getElementById('invitePassword').value.trim(),
+          permissions: getInvitePermissions()
         });
         resultBox.style.display = 'block';
         resultBox.className = result.emailSent ? 'message success' : 'message warning';
@@ -2738,6 +2827,10 @@ function initializeEventsInternal() {
         resultBox.textContent = `開通失敗：${error.message}`;
       }
     });
+  });
+
+  safeListener('inviteRole', 'change', () => {
+    renderPermissionCheckboxes();
   });
 
   const excelVoucherForm = document.getElementById('voucherCreateForm');
@@ -2759,9 +2852,10 @@ function initializeEventsInternal() {
         const rows = document.querySelectorAll('#excelLinesBody tr');
         let detailLines = [];
         let invoiceLines = [];
+        let missingCredentialRows = [];
         let calculatedTotal = 0;
 
-        rows.forEach((row) => {
+        rows.forEach((row, index) => {
           const descInput = row.querySelector('.grid-category-note');
           const categorySelect = row.querySelector('.grid-item-category');
           const amtInput = row.querySelector('.grid-amount');
@@ -2781,6 +2875,18 @@ function initializeEventsInternal() {
 
           if (!description || amt <= 0) return;
 
+          const rowId = row.dataset.rowId;
+          const invType = invTypeInput ? invTypeInput.value : '無';
+          const invNumber = invNumInput?.value.trim() || '';
+          const hasInvoiceRecord = invType !== '無';
+          const hasAttachment = !!(rowId && voucherLineAttachments[rowId]);
+          if (!hasInvoiceRecord && !hasAttachment) {
+            missingCredentialRows.push(index + 1);
+          }
+          if (invType === '發票' && !invNumber) {
+            missingCredentialRows.push(`${index + 1}（發票號碼未填）`);
+          }
+
           calculatedTotal += amt;
 
           detailLines.push({
@@ -2796,12 +2902,11 @@ function initializeEventsInternal() {
             proxy_payer_name: proxyCheck?.checked ? (proxyNameSpan?.innerText.replace('代付人：', '') || null) : null
           });
 
-          const invType = invTypeInput ? invTypeInput.value : '無';
           if (invType !== '無') {
             const taxInfo = calcInvoiceTax(invType, amt);
             invoiceLines.push({
               invoice_type: invType,
-              invoice_number: invNumInput?.value.trim() || null,
+              invoice_number: invNumber || null,
               amount: amt,
               tax_amount: taxInfo.taxAmount
             });
@@ -2810,6 +2915,9 @@ function initializeEventsInternal() {
 
         if (detailLines.length === 0) {
           throw new Error('請至少填寫一筆有效的摘要與金額！');
+        }
+        if (missingCredentialRows.length > 0) {
+          throw new Error(`第 ${missingCredentialRows.join('、')} 列缺少憑證。每筆有效明細都必須選擇憑證類型或上傳附件。`);
         }
 
         const attachmentsMap = typeof voucherLineAttachments !== 'undefined' ? voucherLineAttachments : {};
@@ -2959,7 +3067,9 @@ let voucherLines = [];
 
 async function initialize() {
     loadState(state);
-    initializeEvents();
+    if (!eventsInitialized) {
+        initializeEvents();
+    }
 
     const user = await getCurrentSessionUser();
     if(user){
@@ -3154,7 +3264,7 @@ function renderVoucherCard(v) {
       </div>
       <div class="button-row" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
         ${actions}
-        <button class="secondary view-history-btn" data-id="${v.id}" style="font-size:12px; padding:6px 12px;">查看審批歷程</button>
+        ${actions.includes('view-history-btn') ? '' : `<button class="secondary view-history-btn" data-id="${v.id}" style="font-size:12px; padding:6px 12px;">查看審批歷程</button>`}
       </div>
       <div class="voucher-history" id="history-${v.id}" style="display:none; margin-top:10px;"></div>
     </div>`;
@@ -3629,14 +3739,30 @@ async function renderAdminDepartmentList() {
     const { data: depts, error } = await supabase.from('departments').select('*').order('created_at');
     if (error) throw error;
 
-    container.innerHTML = depts.map(d => `
-      <tr>
-        <td><span id="dept-display-name-${d.id}" style="font-weight:bold;">${d.name}</span></td>
-        <td>
-          <button onclick="editDepartmentName('${d.id}')" class="secondary" style="padding:4px 10px; margin-right:6px;">修改名字</button>
-        </td>
-      </tr>
-    `).join('') || '<tr><td>暫無部門資料</td></tr>';
+    if (!depts || depts.length === 0) {
+      container.innerHTML = '<p class="muted">暫無部門資料</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-scroll department-list-table">
+        <table>
+          <thead>
+            <tr><th>部門名稱</th><th style="width:160px;">操作</th></tr>
+          </thead>
+          <tbody>
+            ${depts.map(d => `
+              <tr>
+                <td><span id="dept-display-name-${d.id}" class="department-name">${d.name}</span></td>
+                <td>
+                  <button onclick="editDepartmentName('${d.id}')" class="secondary" style="width:auto; padding:6px 12px;">修改名稱</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
   } catch (err) {
     console.error(err);
   }
@@ -3717,8 +3843,12 @@ async function loadAndRenderProjects() {
       select.addEventListener('change', () => {
         state.currentProjectId = select.value;
         renderDashboard();
-        renderTransactionTable();
-        renderReports();
+        if (userHasPermission('canViewJournalLedger') || userHasPermission('canViewFinancials')) {
+          renderTransactionTable();
+        }
+        if (userHasPermission('canViewReports') || userHasPermission('canViewFinancials')) {
+          renderReports();
+        }
         if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
       });
       select.dataset.listenerBound = 'true';
@@ -3748,13 +3878,34 @@ async function loadDepartments() {
   return data;
 }
 
-const permissions = ['dashboard', 'voucher', 'transactions', 'reports', 'budget', 'bank_accounts'];
+const permissions = [
+  ['canViewVouchers', '報支 / 憑證'],
+  ['canApproveBills', '簽核單據'],
+  ['canViewFinancials', '財務資料'],
+  ['canViewJournalLedger', '日記帳 / 總帳'],
+  ['canViewReports', '四大財報'],
+  ['canViewBankAccounts', '銀行帳戶'],
+  ['canReconcileBank', '銀行對帳'],
+  ['canManageProjects', '專案管理'],
+  ['canManageUsers', '帳號管理'],
+  ['canManageSettings', '系統設定']
+];
 
 function renderPermissionCheckboxes() {
   const container = document.getElementById('permissionCheckboxes');
-  container.innerHTML = permissions.map(p => `
-    <label><input type="checkbox" value="${p}" checked> ${p}</label>
+  if (!container) return;
+  const defaults = getDefaultPermissions(document.getElementById('inviteRole')?.value || 'employee');
+  container.innerHTML = permissions.map(([key, label]) => `
+    <label class="permission-option"><input type="checkbox" value="${key}" ${defaults[key] ? 'checked' : ''}> ${label}</label>
   `).join('');
+}
+
+function getInvitePermissions() {
+  const result = {};
+  document.querySelectorAll('#permissionCheckboxes input[type="checkbox"]').forEach(input => {
+    result[input.value] = input.checked;
+  });
+  return result;
 }
 
 // 🔥 統一合併版：點擊單號跳出 Modal 詳細表單視窗（含完整審核歷程）
@@ -3961,8 +4112,8 @@ window.updateUserProfile = async (id, field, value) => {
   try {
     const payload = {};
     if (field === 'role') payload.role = value;
-    else if (field === 'department_id') payload.departmentId = value || null;
-    else if (field === 'full_name') payload.fullName = value;
+    else if (field === 'department_id') payload.department_id = value || null;
+    else if (field === 'full_name') payload.full_name = value.trim();
     await updateUserProfile(id, payload); // calls the imported function
     showMessage('使用者資料已更新。');
     renderAdminUserTable();
@@ -4060,6 +4211,29 @@ window.saveBankEdit = async () => {
   }
 };
 
+async function ensureAccountingCanCloseVoucher(voucherId) {
+  if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+    throw new Error('僅會計部門可以核准入帳與付款銷案');
+  }
+
+  const { data: invoices, error: invoiceError } = await supabase
+    .from('invoices')
+    .select('id, invoice_type, invoice_number, created_at')
+    .eq('voucher_id', voucherId)
+    .order('created_at', { ascending: true });
+  if (invoiceError) throw invoiceError;
+
+  const attachments = await getAttachmentsByVoucherId(voucherId);
+  const hasInvoice = (invoices || []).some(inv => inv.invoice_type && inv.invoice_type !== '無');
+  const hasAttachment = (attachments || []).length > 0;
+
+  if (!hasInvoice && !hasAttachment) {
+    throw new Error('此單據沒有任何憑證，請退件要求申請人補齊後再核准或銷帳。');
+  }
+
+  return { invoices: invoices || [], attachments: attachments || [] };
+}
+
 window.accountingApproveAndClose = async (voucherId) => {
   // 防止連點：找到觸發此動作的按鈕並立即鎖住，避免同一張單據被重複歸帳（重複寫入分錄/銀行流水）。
   const triggerBtn = document.querySelector(`button[onclick="accountingApproveAndClose('${voucherId}')"]`);
@@ -4077,11 +4251,13 @@ window.accountingApproveAndClose = async (voucherId) => {
   if (!accountCode) { alert('請選擇歸帳科目'); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
   if (!bankAccountId) { alert('請選擇付款銀行帳戶'); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
 
-  // 勾稽核對：明細金額、發票金額、科目有效性
-  const passedVerification = await confirmCrossVerification(voucherId, accountCode);
-  if (!passedVerification) { if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
-
   try {
+    await ensureAccountingCanCloseVoucher(voucherId);
+
+    // 勾稽核對：明細金額、發票金額、科目有效性
+    const passedVerification = await confirmCrossVerification(voucherId, accountCode);
+    if (!passedVerification) { if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
+
     // 補上還沒被歸類科目的明細列
     await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
 
@@ -4150,6 +4326,7 @@ window.openAccountingReviewModal = async (voucherId) => {
     // 取得銀行帳戶與會計科目
     const { data: banks } = await supabase.from('bank_accounts').select('*');
     const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+    const bankOptionsDisabled = !banks || banks.length === 0;
     // 或者使用: const accounts = window.__cachedAccounts || [];
 
     let html = `
@@ -4193,14 +4370,16 @@ window.openAccountingReviewModal = async (voucherId) => {
 
           <label>付款銀行帳戶：</label>
           <select id="reviewBankAccount" style="width:100%; padding:8px; margin:8px 0;">
-            ${banks.map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('')}
+            <option value="">${bankOptionsDisabled ? '尚未建立銀行帳戶，請先建立後才能核准' : '請選擇付款銀行帳戶...'}</option>
+            ${(banks || []).map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('')}
           </select>
+          ${bankOptionsDisabled ? '<div class="message error" style="margin:8px 0;">沒有可用銀行帳戶，會計不得核准入帳或銷帳；請先建立銀行帳戶，或退件補正。</div>' : ''}
 
           <label>備註：</label>
           <textarea id="reviewNote" style="width:100%; height:80px; padding:8px;"></textarea>
 
           <div style="margin-top:20px; text-align:right;">
-            <button onclick="accountingApproveAndClose('${voucherId}')" class="primary-btn">核准並歸帳</button>
+            <button onclick="accountingApproveAndClose('${voucherId}')" class="primary-btn" ${bankOptionsDisabled ? 'disabled' : ''}>核准並歸帳</button>
             <button onclick="this.closest('.modal-backdrop').remove()" style="margin-left:10px;">取消</button>
           </div>
         </div>
@@ -4391,6 +4570,7 @@ window.openCloseVoucherModal = async (voucherId) => {
 
     const { data: banks } = await supabase.from('bank_accounts').select('*');
     const { data: accounts } = await supabase.from('accounts').select('*').order('code');
+    const bankOptionsDisabled = !banks || banks.length === 0;
 
     // 若明細已經有歸帳科目，預設帶入第一筆的科目
     const existingCode = voucher.voucher_lines?.find(l => l.account_code)?.account_code || '';
@@ -4416,12 +4596,13 @@ window.openCloseVoucherModal = async (voucherId) => {
 
           <label>付款銀行帳戶：</label>
           <select id="closeBankAccountId" style="width:100%; padding:8px; margin:8px 0;">
-            <option value="">請選擇付款銀行帳戶...</option>
+            <option value="">${bankOptionsDisabled ? '尚未建立銀行帳戶，請先建立後才能銷案' : '請選擇付款銀行帳戶...'}</option>
             ${(banks || []).map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('')}
           </select>
+          ${bankOptionsDisabled ? '<div class="message error" style="margin:8px 0;">沒有可用銀行帳戶，會計不得付款銷案；請先建立銀行帳戶。</div>' : ''}
 
           <div style="margin-top:20px; text-align:right;">
-            <button onclick="confirmCloseVoucher('${voucherId}')" class="primary-btn">確認付款並銷案</button>
+            <button onclick="confirmCloseVoucher('${voucherId}')" class="primary-btn" ${bankOptionsDisabled ? 'disabled' : ''}>確認付款並銷案</button>
             <button onclick="this.closest('.modal-backdrop').remove()" style="margin-left:10px;">取消</button>
           </div>
         </div>
@@ -4448,12 +4629,14 @@ window.confirmCloseVoucher = async (voucherId) => {
   if (!accountCode) { alert('請選擇歸帳科目'); return; }
   if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
 
-  // 勾稽核對：明細金額、發票金額、科目有效性（內含警告時的確認對話框）
-  const passedVerification = await confirmCrossVerification(voucherId, accountCode);
-  if (!passedVerification) return;
-  if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
-
   try {
+    await ensureAccountingCanCloseVoucher(voucherId);
+
+    // 勾稽核對：明細金額、發票金額、科目有效性（內含警告時的確認對話框）
+    const passedVerification = await confirmCrossVerification(voucherId, accountCode);
+    if (!passedVerification) return;
+    if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
+
     // 補上還沒被歸類科目的明細列
     await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
 
@@ -4649,6 +4832,7 @@ async function renderFinancialCenter() {
  * 處理會計中心之付款結案與會計/銀行分錄連動 (升級版：含扣除專案預算)
  */
 window.processPayment = async (voucherId, totalAmount) => {
+  const triggerBtn = document.querySelector(`button[onclick="processPayment('${voucherId}', ${totalAmount})"]`);
   const accountId = document.getElementById(`acc-${voucherId}`)?.value;
   const bankId = document.getElementById(`bank-${voucherId}`)?.value;
 
@@ -4658,84 +4842,17 @@ window.processPayment = async (voucherId, totalAmount) => {
   }
   if (!confirm(`確定付款結案？金額 $${Number(totalAmount).toLocaleString()}`)) return;
 
-  try {    const today = new Date().toISOString().split('T')[0];
-    const user = state.currentUser;
-    const { data: voucher, error: vErr } = await supabase
-      .from('vouchers')
-      .select('project_id, status, voucher_no, summary')
-      .eq('id', voucherId)
-      
-      .single();
-    if (vErr) throw vErr;
-    if (voucher.status !== 'approved') throw new Error('僅「已核准待付款」可結案');
+  await withActionLock(`payment:${voucherId}`, triggerBtn, async () => {
+  try {
+    await ensureAccountingCanCloseVoucher(voucherId);
 
-    // 1. 扣專案預算
-    if (voucher.project_id) {
-      const { data: proj } = await supabase
-        .from('projects')
-        .select('remaining_budget')
-        .eq('id', voucher.project_id)
-        
-        .single();
-      if (proj) {
-        await supabase
-          .from('projects')
-          .update({
-            remaining_budget: Math.max(0, Number(proj.remaining_budget || 0) - Number(totalAmount))
-          })
-          .eq('id', voucher.project_id)
-          ;
-      }
-    }
-
-    // 2. 銀行流水
-    await supabase.from('bank_transactions').insert({
-      bank_account_id: bankId,
-      tx_date: today,
-      type: '支出',
-      amount: totalAmount,
-      voucher_id: voucherId,
-      description: `報支撥款 ${voucher.voucher_no || voucherId}`
-      ,    });
-
-    // 3. 會計分錄：借記所選費用科目，貸記銀行存款 (1102)
-    const { data: bankLedgerAccount } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('code', '1102')
-      .single();
-
-    await supabase.from('journal_entries').insert({
-      entry_date: today,
-      debit_account_id: accountId,
-      credit_account_id: bankLedgerAccount?.id || null,
-      debit_amount: totalAmount,
-      credit_amount: totalAmount,
-      memo: `報支結案：${voucher.summary || voucher.voucher_no}`,
-      voucher_id: voucherId
-      ,    });
-
-    // 4. 狀態改 closed
-    await supabase
-      .from('vouchers')
-      .update({ 
-        status: 'closed', 
-        closed_at: new Date().toISOString() 
-      })
-      .eq('id', voucherId)
-      ;
+    const today = new Date().toISOString().split('T')[0];
+    const result = await closeVoucherByAccounting(voucherId, accountId, bankId, today);
+    if (!result.success) throw new Error(result.error);
 
     alert('付款結案成功！');
 
-    // 5. 寫歷程
-    await supabase.from('voucher_workflow_logs').insert({
-      voucher_id: voucherId,
-      actor_id: user?.id,
-      action: 'close',
-      from_status: 'approved',
-      to_status: 'closed',    });
-
-   // 重新渲染畫面
+    // 重新渲染畫面
     if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
     if (typeof renderDashboard === 'function') renderDashboard();
 
@@ -4743,6 +4860,7 @@ window.processPayment = async (voucherId, totalAmount) => {
     console.error(err);
     alert(`付款結案失敗：${err.message}`);
   }
+  });
 }; // 確保函式有正確閉合
 
 async function promptRejectReason() {
@@ -5474,11 +5592,11 @@ function setDefaultReportPeriod() {
 // 假設這段是在初始化 Navigation Bar 或 Header
 async function renderHeader(user) {
   // 版本號顯示（固定）
-  const VERSION_LABEL = 'Demo v2.9.10';
+  const VERSION_LABEL = 'Demo v2.9.12';
   const versionHTML = `<span id="versionLabel" style="margin-left:12px; color:#666; font-size:12px;">${VERSION_LABEL}</span>`;
 
   document.getElementById('header-user-info').innerHTML = `
-    <span>歡迎，${user.name}</span>
+    <span class="badge secondary">${ROLE_LABELS[user.role] || user.role || '使用者'}</span>
     ${versionHTML}
   `;
 }

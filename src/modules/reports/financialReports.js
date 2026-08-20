@@ -126,6 +126,7 @@ function renderTable(id, rows) {
             <div class="reconciliation-box">
               <strong>銀行餘額勾稽</strong>
               <span>實際銀行餘額：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              ${(r.balanceRows || []).map(b => `<span class="reconcile-detail">${b.nickname || b.bank_name || '銀行帳戶'}：${Number(b.current_balance ?? b.balance ?? b.ending_balance ?? 0).toLocaleString()}</span>`).join('')}
               <span>總帳銀行科目餘額：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
               <span class="${Number(r.difference || 0) === 0 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異：${Number(r.difference || 0).toLocaleString()}</span>
               ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}

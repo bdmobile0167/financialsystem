@@ -2,6 +2,28 @@
 
 This is the single GitHub-facing changelog for the deployable frontend.
 
+## Demo v2.9.12 - 2026-08-20
+
+- Fixed sidebar visibility for department-bound users: transaction management, bank accounts, bank reconciliation, and budget management are hidden unless the user is accounting/admin or has the matching permission.
+- Kept non-accounting/admin project data scoped to the user's department, so bound users only see their department/project amounts.
+- Removed duplicate top-header welcome text; role/version metadata now displays separately.
+- Repaired `uiHelpers.js` exports after legacy encoding damage so shared UI helpers load reliably.
+- Prevented hidden finance/report/bank tabs from triggering unnecessary background data loads for users without permission.
+
+## Demo v2.9.11 - 2026-08-20
+
+- Fixed Dashboard Audit Trail oversized icons and the invalid search SVG path that caused console errors.
+- Fixed project member loading by fetching `project_members` and `profiles` separately instead of relying on a missing Supabase FK relationship.
+- Hardened invite-user API: verifies the server key is a real `service_role` key, rolls back Auth users when `profiles` insert fails, and keeps account creation from crashing when SMTP env is missing.
+- Added frontend controls for editing user display names, toggling active status, and selecting permission flags.
+- Improved department management table layout and permission option styling.
+- Enforced accounting-only approve/close flow: accounting/admin must select a bank account, and vouchers without credentials are rejected before approval or payment close.
+- Unified the older finance-center payment button through `closeVoucherByAccounting()` to avoid duplicate journal/bank write paths.
+- Added voucher submit validation so approved vouchers cannot be created from rows marked with no invoice and no attachment.
+- Fixed duplicate history buttons in voucher cards/workflow modules.
+- Tightened report printing to only print the four financial report cards, with current-report and all-report modes.
+- Enriched bank reconciliation rows with names and actual balances from `public.bank_account_balances` without replacing `journal_entries` as the accounting source.
+
 ## Demo v2.9.10 - 2026-08-20
 
 - Applied Supabase production migration `p0_rls_policy_hardening_v2`.

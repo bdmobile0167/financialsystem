@@ -1,12 +1,20 @@
 # Financial System Frontend
 
-Version: `Demo v2.9.10`  
-Internal version: `0.2.14`
+Version: `Demo v2.9.12`  
+Internal version: `0.2.16`
 
 This is the deployable frontend used by Vercel. The GitHub-facing app code and release notes live in this `netlify/` folder. The sibling `../docs/` folder is local project documentation and is not expected to be uploaded to GitHub.
 
 ## Latest Update
 
+- Fixed role/permission sidebar visibility so transaction management, bank accounts, bank reconciliation, and budget management are only visible to accounting/admin users or users with the matching permission.
+- Department-bound users continue to see only projects from their department in the project selector and dashboard project amounts.
+- Removed duplicate welcome text from the top header; the header now shows one welcome line plus role/version metadata.
+- Repaired shared UI helper exports so corrupted legacy strings cannot break module loading.
+- Fixed production-facing Vercel issues: Audit Trail icon sizing/SVG path, project member profile loading without FK joins, invite-user rollback/error handling, single-report print scope, accounting-only close flow, and voucher credential validation.
+- Accounting users/admins must select a bank account before approving/closing vouchers; vouchers without credentials must be rejected for completion.
+- Admin user management now supports editing display names, status toggles, and permission choices from the frontend.
+- Bank reconciliation rows include actual balances from `public.bank_account_balances` with bank account names when available.
 - Banking current balances read from `public.bank_account_balances`.
 - Formal financial reports still use `journal_entries` / trial balance as the accounting source.
 - Bank reconciliation shows actual bank balance, ledger bank-account balance, and unreconciled difference.
