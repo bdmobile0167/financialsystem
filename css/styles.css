@@ -1296,6 +1296,13 @@ button.audit-voucher-link {
   box-shadow: var(--shadow-sm);
 }
 
+.financial-report-page {
+  width: min(100%, 210mm);
+  min-height: 245mm;
+  margin-inline: auto;
+  padding: 16mm 14mm;
+}
+
 .report-card-header {
   display: flex;
   align-items: center;
@@ -1686,6 +1693,13 @@ button.audit-voucher-link {
   body.report-print-all .report-cards-stack .report-card[data-report-tab="cashflow"],
   body.report-print-all .report-cards-stack .report-card[data-report-tab="equity"] {
     display: block !important;
+  }
+
+  body.report-print-all .financial-report-page,
+  body.report-print-single .financial-report-page {
+    width: 100% !important;
+    min-height: calc(297mm - 24mm) !important;
+    padding: 0 !important;
   }
 
   body.report-print-all .report-cards-stack .report-card[data-report-tab="balance"],

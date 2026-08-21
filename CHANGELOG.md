@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 0.2.26 - 2026-08-21
+
+- 四大財報改為四張獨立 A4 頁面，支援列印本頁或一次列印四份並自動換頁。
+- 銷帳改用單一 Supabase transaction，沿用既有 journal entry 並提供可重試的冪等行為。
+- 自動補齊舊銷帳流程留下的缺漏付款紀錄。
+- 修正 profile 稽核 trigger 誤讀不存在的 `allowed_features`，統一使用 `permissions`。
+- 修正邀請帳號時 `get_my_department` 的執行權限，profile 建立改為安全 upsert。
+
 ## 0.2.25 - 2026-08-21
 
 - 四大財報改為置中公司抬頭，補上統編、幣別與製表日期。

@@ -2888,9 +2888,9 @@ function initializeEventsInternal() {
     const financialReportTabs = ['income', 'balance', 'cashflow', 'equity'];
     const selectedTab = document.querySelector('.report-tab-btn.active-tab')?.dataset.reportTab || 'income';
     const activeTab = financialReportTabs.includes(selectedTab) ? selectedTab : 'income';
-    document.body.classList.add(mode === 'all' ? 'print-reports-all' : `print-report-${activeTab}`);
+    document.body.classList.add(mode === 'all' ? 'report-print-all' : 'report-print-single');
     const cleanup = () => {
-      document.body.classList.remove('print-reports-all', 'print-report-income', 'print-report-balance', 'print-report-cashflow', 'print-report-equity');
+      document.body.classList.remove('report-print-all', 'report-print-single');
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);

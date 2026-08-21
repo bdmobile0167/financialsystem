@@ -160,7 +160,7 @@ module.exports = async (req, res) => {
 
     const createdUserId = createdUser?.user?.id;
     try {
-      const { error: insertProfileError } = await supabaseAdmin.from('profiles').insert({
+      const { error: insertProfileError } = await supabaseAdmin.from('profiles').upsert({
         id: createdUserId,
         email,
         full_name: fullName,
@@ -170,7 +170,7 @@ module.exports = async (req, res) => {
         must_change_password: true,
         permissions,
         employee_id: employeeId
-      });
+      }, { onConflict: 'id' });
 
       if (insertProfileError) throw insertProfileError;
     } catch (profileError) {

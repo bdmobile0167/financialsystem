@@ -487,109 +487,22 @@ export async function deleteVoucher(voucherId) {
 
 // 會計執行歸帳並付款銷案
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
-  try {    const { data: voucher, error: vError } = await supabase
-      .from('vouchers').select('*').eq('id', voucherId).single();
-    if (vError) throw vError;
-    if (voucher.status !== 'approved') throw new Error('只有已核准的報支單可以執行結案');
-
-    // ⚠️ 關鍵防呆：先用「原子性條件更新」搶先把狀態鎖定為 closed，
-    // 條件是「目前狀態仍是 approved」。若使用者連點多次或網路延遲造成重複觸發，
-    // 只有第一個請求會成功鎖定，其餘請求會因為 0 筆資料被更新而在此提前中止，
-    // 避免後面重複寫入 bank_transactions／journal_entries 導致金額變成多倍（例如 400 變 1600）。
-    const { data: claimed, error: claimError } = await supabase
-      .from('vouchers')
-      .update({ status: 'closed', payment_date: paymentDate, closed_at: new Date().toISOString() })
-      .eq('id', voucherId)
-      .eq('status', 'approved')
-      .select();
-    if (claimError) throw claimError;
-    if (!claimed || claimed.length === 0) {
-      throw new Error('此單據已被結案或狀態已變更，請重新整理頁面後再確認（可能是重複點擊造成）。');
-    }
-
-    // balance 為資料庫 GENERATED 欄位（= opening_balance），無法直接 update；
-    // 銀行餘額改由「銀行流水 bank_transactions」動態加總得出，這裡寫入一筆支出流水即可
-    const { error: bankTxError } = await supabase.from('bank_transactions').insert({
-      bank_account_id: bankAccountId,
-      tx_date: paymentDate,
-      type: '支出',
-      amount: voucher.total_amount,
-      voucher_id: voucherId,
-      description: `報支單核銷結案：${voucher.summary || voucher.voucher_no}`
+  try {
+    const { data: result, error } = await supabase.rpc('close_voucher_by_accounting', {
+      p_voucher_id: voucherId,
+      p_debit_account: accountCodeId,
+      p_bank_account_id: bankAccountId,
+      p_payment_date: paymentDate
     });
-    if (bankTxError) throw bankTxError;
+    if (error) throw error;
 
-    // 💡 1. 自動判斷傳進來的是 UUID 還是 Code，並查出完整的科目資訊
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountCodeId);
-    
-    const { data: debitAcc, error: debitAccError } = await supabase
-      .from('accounts')
-      .select('id, code')
-      .filter(isUuid ? 'id' : 'code', 'eq', accountCodeId)
-      
+    const { data: voucher } = await supabase
+      .from('vouchers')
+      .select('applicant_id, voucher_no, summary, total_amount')
+      .eq('id', voucherId)
       .single();
 
-    if (debitAccError || !debitAcc) {
-      throw new Error(`找不到對應的借方會計科目 (${accountCodeId})，請確認科目是否存在。`);
-    }
-
-    const { data: bankAccountForLedger } = await supabase
-      .from('bank_accounts')
-      .select('*')
-      .eq('id', bankAccountId)
-      .maybeSingle();
-
-    const mappedLedgerAccountId = bankAccountForLedger?.account_id
-      || bankAccountForLedger?.accounting_account_id
-      || bankAccountForLedger?.ledger_account_id
-      || null;
-
-    // 優先使用銀行帳戶對應的會計科目；現有 schema 若尚未提供對應欄位，保留既有 1102 作為相容 fallback。
-    let creditAccResult;
-    if (mappedLedgerAccountId) {
-      creditAccResult = await supabase
-        .from('accounts')
-        .select('id, code')
-        .eq('id', mappedLedgerAccountId)
-        .single();
-    } else {
-      creditAccResult = await supabase
-        .from('accounts')
-        .select('id, code')
-        .eq('code', '1102')
-        .single();
-    }
-
-    const { data: creditAcc, error: creditAccError } = creditAccResult;
-
-    if (creditAccError || !creditAcc) {
-      throw new Error('找不到付款銀行對應的貸方科目，請確認 bank_accounts 是否有會計科目對應，或 accounts 是否存在 1102 銀行存款。');
-    }
-
-    // 💡 3. 寫入日記帳（同時帶入 id 與 code 確保相容性）
-    const { error: jeError } = await supabase.from('journal_entries').insert([{
-      voucher_id: voucherId,
-      debit_account_id: debitAcc.id,
-      credit_account_id: creditAcc.id,
-      debit_amount: voucher.total_amount,
-      credit_amount: voucher.total_amount,
-      entry_date: paymentDate,
-      memo: `報支單核銷結案：${voucher.summary || voucher.voucher_no}`
-      ,    }]);
-    if (jeError) throw jeError;
-
-    // 狀態已於前面的原子性更新中鎖定為 closed，這裡不需要再次更新。
-
-    // 寫入付款紀錄
-    await supabase.from('voucher_payments').insert({
-      voucher_id: voucherId,
-      payment_type: 'bank_transfer',
-      bank_account_id: bankAccountId,
-      amount: voucher.total_amount,
-      paid_at: paymentDate
-    });
-
-    if (voucher.applicant_id) {
+    if (voucher?.applicant_id && !result?.idempotent) {
       await createNotification(
         voucher.applicant_id,
         '您的報支單已完成付款銷案',
@@ -598,20 +511,12 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
       );
     }
 
-    return { success: true, message: '歸帳銷案成功' };
+    return {
+      success: true,
+      message: result?.idempotent ? '此單據已完成歸帳銷案' : '歸帳銷案成功'
+    };
   } catch (error) {
     console.error('銷案失敗:', error);
-    // 若狀態已被鎖定為 closed，但後續步驟（寫入分錄等）失敗，嘗試回復成 approved，
-    // 讓會計可以重新執行歸帳，避免單據卡在「已結案但沒有分錄」的不一致狀態。
-    try {
-      await supabase
-        .from('vouchers')
-        .update({ status: 'approved', payment_date: null, closed_at: null })
-        .eq('id', voucherId)
-        .eq('status', 'closed');
-    } catch (rollbackErr) {
-      console.error('回復單據狀態失敗，請人工確認：', rollbackErr);
-    }
     return { success: false, error: error.message };
   }
 }
