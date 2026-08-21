@@ -1,47 +1,43 @@
-# Changelog
+# 變更紀錄
 
-This is the single GitHub-facing changelog for the deployable frontend.
+## 0.2.22 - 2026-08-21
 
-## Demo v2.9.12 - 2026-08-20
+- 將兩個分岔的本機副本合併至 `表格自動化\netlify`。
+- 保留第 1 份較新的權限、Auth Provider、Repository、交易與傳票模組。
+- 合併第 2 份已完成的 Dashboard、CSS、API、銀行、報表與文件修正。
+- 修正帳號管理 renderer 命名衝突，版本顯示改為讀取 `APP_VERSION`。
+- 移除合併後殘留的 Netlify Identity 與硬編碼 `Demo v2.9.12`。
 
-- Fixed sidebar visibility for department-bound users: transaction management, bank accounts, bank reconciliation, and budget management are hidden unless the user is accounting/admin or has the matching permission.
-- Kept non-accounting/admin project data scoped to the user's department, so bound users only see their department/project amounts.
-- Removed duplicate top-header welcome text; role/version metadata now displays separately.
-- Repaired `uiHelpers.js` exports after legacy encoding damage so shared UI helpers load reliably.
-- Prevented hidden finance/report/bank tabs from triggering unnecessary background data loads for users without permission.
+## 0.2.21 - 2026-08-21
 
-## Demo v2.9.11 - 2026-08-20
+- 修正 Dashboard 使用未載入 Tailwind class 導致 production 跑版。
+- 重建 Dashboard 為語意化 HTML 與專案內建 CSS。
+- 新增 1440、1024、768、390 viewport 響應式規則。
+- 修正 header 漢堡按鈕缺少標籤及 header 內容層級。
+- 移除 `netlify.toml`、舊 Identity 死碼與平台文案。
+- 將 localStorage key 改為 Vercel 命名。
+- 全部 docs、README、CHANGELOG 重建為 UTF-8 繁體中文。
+- 核對 GitHub、Vercel 與 Supabase 實際狀態。
 
-- Fixed Dashboard Audit Trail oversized icons and the invalid search SVG path that caused console errors.
-- Fixed project member loading by fetching `project_members` and `profiles` separately instead of relying on a missing Supabase FK relationship.
-- Hardened invite-user API: verifies the server key is a real `service_role` key, rolls back Auth users when `profiles` insert fails, and keeps account creation from crashing when SMTP env is missing.
-- Added frontend controls for editing user display names, toggling active status, and selecting permission flags.
-- Improved department management table layout and permission option styling.
-- Enforced accounting-only approve/close flow: accounting/admin must select a bank account, and vouchers without credentials are rejected before approval or payment close.
-- Unified the older finance-center payment button through `closeVoucherByAccounting()` to avoid duplicate journal/bank write paths.
-- Added voucher submit validation so approved vouchers cannot be created from rows marked with no invoice and no attachment.
-- Fixed duplicate history buttons in voucher cards/workflow modules.
-- Tightened report printing to only print the four financial report cards, with current-report and all-report modes.
-- Enriched bank reconciliation rows with names and actual balances from `public.bank_account_balances` without replacing `journal_entries` as the accounting source.
+## 0.2.20 - 2026-08-21
 
-## Demo v2.9.10 - 2026-08-20
+- 同步完成工作、待辦工作與未來功能清單。
+- 更新版本、AI 入口、問題紀錄與文件索引。
 
-- Applied Supabase production migration `p0_rls_policy_hardening_v2`.
-- Hardened `project_members` RLS policies: scoped to `authenticated`, removed `auth.role()` usage, and added update `WITH CHECK`.
-- Split broad write policies on `bank_accounts`, `accounts`, and `project_budget_items` into explicit operation policies with insert/update checks.
-- Added admin-only SELECT policies for `roles`, `permissions`, and `role_permissions`.
-- Confirmed `bank_account_balances` is a `security_invoker=true` view and has authenticated SELECT grant.
-- Updated the frontend version label to `Demo v2.9.10`.
-- Updated `netlify/README.md` for GitHub/Vercel deployment documentation.
-- Added local-only `local-test/` workspace and excluded it from Git with `.gitignore`.
+## 0.2.19 - 2026-08-21
 
-## Demo v2.9.9 - 2026-08-20
+- 套用 Supabase FK covering indexes。
+- 補上附件 Storage authenticated update policy。
+- 重新執行 Supabase advisors。
 
-- Banking current balances now read from `public.bank_account_balances`.
-- Formal financial reports continue to use `journal_entries` / trial balance as the accounting source.
-- Added bank reconciliation display for actual bank balance, ledger bank-account balance, and unreconciled difference.
-- Fixed project member saving to re-fetch from Supabase after writes.
-- Added invite-user rollback when Auth user creation succeeds but `profiles` insert fails.
-- Added current-report and all-report print modes for financial reports.
-- Added shared action locks to reduce duplicate write submissions.
-- Removed confusing production login helper text and fixed menu toggle markup.
+## 0.2.18 - 2026-08-21
+
+- 建立銀行帳戶與總帳科目契約。
+- 加入銀行勾稽狀態與正式財報資料來源限制。
+- 加入 voucher 高風險寫入唯一索引。
+- 強化邀請 API、專案成員回讀及財報列印模式。
+
+## 0.2.17 - 2026-08-21
+
+- 修正帳號管理 renderer 重複宣告。
+- 新增事件初始化 guard 與建立帳號 action lock。

@@ -10,7 +10,7 @@
   <div id="loginView" class="login-shell">
     <div class="card login-card">
       <h2>財務管理系統登入</h2>
-      <p class="muted">請輸入電子郵件與密碼進行登入。</p>
+      <p class="muted">請輸入電子郵件與密碼進行登入。若本地測試，可使用任意帳號密碼。</p>
       <div id="loginMessage" class="message">登入後即可使用系統功能。</div>
       <form id="loginForm">
         <label>電子郵件</label>
@@ -85,12 +85,14 @@
             <button id="menuToggleBtn" class="menu-toggle" aria-label="開啟選單" aria-expanded="false">
                 <span></span><span></span><span></span>
             </button>
-            <div>
+            <div class="header-brand">
                 <h2>財務管理系統</h2>
                 <div id="welcomeText" class="muted">歡迎，使用者</div>
-                <div id="header-user-info" style="margin-left: 12px; display:flex; align-items:center; gap:8px;"></div>
-                <div style="position:relative; margin-left:8px;">
-                  <button id="notificationBellBtn" type="button" aria-label="通知" style="position:relative; background:none; border:none; cursor:pointer; font-size:20px; padding:6px;">
+            </div>
+            <div class="header-actions">
+                <div id="header-user-info" class="header-user-info"></div>
+                <div class="notification-wrap">
+                  <button id="notificationBellBtn" type="button" aria-label="通知" class="notification-button">
                     🔔
                     <span id="notificationBadge" style="display:none; position:absolute; top:0; right:0; background:#dc2626; color:#fff; border-radius:999px; font-size:11px; line-height:1; padding:3px 5px; min-width:16px; text-align:center;"></span>
                   </button>
@@ -102,9 +104,9 @@
                     <div id="notificationList"></div>
                   </div>
                 </div>
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
-                  <label style="font-size:14px; color:#666;">目前專案：</label>
-                  <select id="globalProjectSelect" style="padding:6px 10px; border-radius:6px;"></select>
+                <div class="project-switcher">
+                  <label for="globalProjectSelect">目前專案</label>
+                  <select id="globalProjectSelect"></select>
                 </div>
             </div>
         </header>
@@ -173,13 +175,17 @@
                 <input type="text" id="bankNickname" placeholder="例如：玉山187" />
                 <label>期初餘額</label>
                 <input type="number" id="bankOpeningBalance" value="0" />
+                <label>綁定會計科目</label>
+                <select id="bankLedgerAccountId">
+                  <option value="">未綁定</option>
+                </select>
                 <button type="submit" class="primary-btn" style="margin-top:10px;">新增帳戶</button>
               </form>
             </div>
             <div class="panel">
               <h3>目前銀行帳戶</h3>
               <table>
-                <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>目前餘額</th><th>操作</th></tr></thead>
+                <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>綁定科目</th><th>目前餘額</th><th>操作</th></tr></thead>
                 <tbody id="bankAccountTableBody"></tbody>
               </table>
             </div>
@@ -484,13 +490,9 @@
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
                   <span id="showAllReportsBtnLabel">全部檢視</span>
                 </button>
-                <button id="printReportBtn" type="button" class="hero-btn hero-btn-ghost">
+                <button id="printReportBtn" class="hero-btn hero-btn-ghost">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  <span>列印目前財報</span>
-                </button>
-                <button id="printAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  <span>列印全部財報</span>
+                  <span>列印報表</span>
                 </button>
                 <button id="exportExcelBtn" class="hero-btn hero-btn-primary">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
@@ -550,6 +552,7 @@
               <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
             </div>
             <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
+            <div id="bankReconciliationStatus" class="reconciliation-status no-print" aria-live="polite"></div>
             <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
               <div class="report-card active-tab" data-report-tab="income" style="--accent-color:#2563eb;">
                 <div id="incomeLetterhead" class="report-letterhead"></div>

@@ -1,62 +1,54 @@
-# Financial System Frontend
+# 財務管理系統
 
-Version: `Demo v2.9.12`  
-Internal version: `0.2.16`
+目前本機版本：`0.2.22`
 
-This is the deployable frontend used by Vercel. The GitHub-facing app code and release notes live in this `netlify/` folder. The sibling `../docs/` folder is local project documentation and is not expected to be uploaded to GitHub.
+這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、銀行帳戶與勾稽、專案預算、會計分錄、四大財報、IFRS 調整、通知及帳號管理。
 
-## Latest Update
+## 目前狀態
 
-- Fixed role/permission sidebar visibility so transaction management, bank accounts, bank reconciliation, and budget management are only visible to accounting/admin users or users with the matching permission.
-- Department-bound users continue to see only projects from their department in the project selector and dashboard project amounts.
-- Removed duplicate welcome text from the top header; the header now shows one welcome line plus role/version metadata.
-- Repaired shared UI helper exports so corrupted legacy strings cannot break module loading.
-- Fixed production-facing Vercel issues: Audit Trail icon sizing/SVG path, project member profile loading without FK joins, invite-user rollback/error handling, single-report print scope, accounting-only close flow, and voucher credential validation.
-- Accounting users/admins must select a bank account before approving/closing vouchers; vouchers without credentials must be rejected for completion.
-- Admin user management now supports editing display names, status toggles, and permission choices from the frontend.
-- Bank reconciliation rows include actual balances from `public.bank_account_balances` with bank account names when available.
-- Banking current balances read from `public.bank_account_balances`.
-- Formal financial reports still use `journal_entries` / trial balance as the accounting source.
-- Bank reconciliation shows actual bank balance, ledger bank-account balance, and unreconciled difference.
-- Project members can be added, removed, and saved per project with Supabase re-fetch after writes.
-- Invite user flow rolls back the Auth user if `profiles` insert fails.
-- Financial reports support printing the current report or all reports.
-- Critical write actions use action locks to reduce duplicate submissions.
-- Supabase migration `p0_rls_policy_hardening_v2` has been applied to project `imlmclalgbfxhhnpsyam`.
+- GitHub：`bdmobile0167/financialsystem`
+- Vercel 專案：`financialsystem`
+- Supabase project ref：`imlmclalgbfxhhnpsyam`
+- 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
+- 本機版本 `0.2.22` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
 
-## Documentation
+## 本輪更新
 
-- Changelog: `CHANGELOG.md`
-- Local-only project docs: `../docs/`
+- 合併兩個分岔的本機副本，統一以 `表格自動化\netlify` 為正式開發目錄。
+- 保留較新的權限、Auth Provider、Repository、交易與傳票模組。
+- 修正 Dashboard 因未載入 Tailwind 而失去 grid、卡片與間距的問題。
+- Dashboard 改為專案內建語意化 CSS，支援桌機、平板與手機。
+- 修正 header 漢堡按鈕及專案選單排列。
+- 移除舊部署平台設定與 Identity 死碼，正式部署統一使用 Vercel。
+- 全部文件改為 UTF-8 繁體中文。
 
-Only `netlify/CHANGELOG.md` should be maintained as the GitHub-facing changelog. Do not add a second deploy changelog under `docs/`.
+## 本機啟動
 
-## Local Development
-
-Use any static server from the repository root or from this folder. Example:
+專案是原生 ES module，需使用 HTTP server，不能直接雙擊 `index.html`。
 
 ```powershell
-cd netlify
 python -m http.server 8123
 ```
 
-Then open:
+開啟：
 
 ```text
 http://127.0.0.1:8123/
 ```
 
-For isolated local login and smoke testing, use the ignored `local-test/` folder at the repository root. That folder is intentionally excluded from GitHub.
+## 主要路徑
 
-## Deployment Notes
+- `index.html`：頁面結構
+- `css/styles.css`：全站與響應式樣式
+- `scripts/main.js`：啟動入口
+- `scripts/ui.js`：目前 UI 協調器
+- `src/modules/`：各功能模組
+- `api/`：Vercel Serverless API
+- `docs/AI_ENTRY_POINT.md`：開發與 AI 入口
 
-- This project is pushed to GitHub and deployed by Vercel.
-- Do not place Supabase `service_role` keys in frontend files.
-- Keep runtime secrets in the deployment provider environment variables.
-- After every production-facing change, update `CHANGELOG.md`, this README, and the local `../docs/` files when they are relevant.
+## 安全注意
 
-## Supabase Notes
-
-- Public Supabase project ref currently used by the frontend: `imlmclalgbfxhhnpsyam`.
-- `bank_account_balances` is a `security_invoker=true` view.
-- Remaining Supabase follow-up is tracked in `../docs/TASKS_PENDING.md`.
+- 前端只能放 Supabase publishable key。
+- service role、SMTP 與 AI key 必須放在 Vercel Environment Variables。
+- 正式財報以 `journal_entries` 為核心來源。
+- 銀行實際餘額只供 reconciliation，不可直接覆寫財報。
