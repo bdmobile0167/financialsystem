@@ -496,21 +496,6 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
     });
     if (error) throw error;
 
-    const { data: voucher } = await supabase
-      .from('vouchers')
-      .select('applicant_id, voucher_no, summary, total_amount')
-      .eq('id', voucherId)
-      .single();
-
-    if (voucher?.applicant_id && !result?.idempotent) {
-      await createNotification(
-        voucher.applicant_id,
-        '您的報支單已完成付款銷案',
-        `${voucher.summary || voucher.voucher_no || ''} － 金額 $${Number(voucher.total_amount).toLocaleString()}`,
-        voucherId
-      );
-    }
-
     return {
       success: true,
       message: result?.idempotent ? '此單據已完成歸帳銷案' : '歸帳銷案成功'

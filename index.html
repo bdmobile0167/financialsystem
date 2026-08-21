@@ -55,6 +55,7 @@
             <div class="nav-group-title">記帳作業</div>
             <button class="tab-btn" data-tab="transactions">交易管理</button>
             <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
+            <button class="tab-btn" data-tab="paymentManagement" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
             <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
           </div>
           <div class="nav-group">
@@ -189,6 +190,48 @@
                 <tbody id="bankAccountTableBody"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section id="paymentManagement" class="tab-panel" style="display:none;">
+          <div class="panel payment-management-panel">
+            <div class="panel-header payment-management-header">
+              <div>
+                <h3>付款清單</h3>
+                <p class="muted">會計核准後進入待付款；完成付款後才產生日記帳、銀行流水與付款憑證。</p>
+              </div>
+              <div class="button-row">
+                <select id="paymentStatusFilter" aria-label="付款狀態">
+                  <option value="approved">待付款</option>
+                  <option value="closed">已付款</option>
+                  <option value="all">全部</option>
+                </select>
+                <button id="exportPaymentListBtn" type="button" class="secondary">匯出 Excel</button>
+              </div>
+            </div>
+            <div id="paymentList" class="table-scroll"></div>
+          </div>
+
+          <div class="panel payment-recipient-panel">
+            <h3>收款人資訊設定</h3>
+            <form id="paymentRecipientForm" class="payment-recipient-form">
+              <input type="hidden" id="paymentRecipientId" />
+              <label>收款人／公司名稱<input id="recipientDisplayName" required /></label>
+              <label>身分證／統編<input id="recipientIdentifier" /></label>
+              <label>銀行名稱<input id="recipientBankName" required /></label>
+              <label>分行<input id="recipientBankBranch" /></label>
+              <label>戶名<input id="recipientAccountName" required /></label>
+              <label>銀行帳號<input id="recipientAccountNumber" required /></label>
+              <label>聯絡人<input id="recipientContactName" /></label>
+              <label>電話<input id="recipientPhone" /></label>
+              <label>Email<input id="recipientEmail" type="email" /></label>
+              <label class="payment-recipient-note">備註<textarea id="recipientNote" rows="2"></textarea></label>
+              <div class="button-row payment-recipient-actions">
+                <button type="submit" class="primary-btn">儲存收款人</button>
+                <button id="cancelRecipientEditBtn" type="button" class="secondary">取消編輯</button>
+              </div>
+            </form>
+            <div id="paymentRecipientList" class="table-scroll"></div>
           </div>
         </section>
 

@@ -20,6 +20,17 @@ function createAdminClient() {
   });
 }
 
+function createCallerClient(accessToken) {
+  const apiKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!process.env.SUPABASE_URL || !apiKey) {
+    throw new Error('Missing SUPABASE_URL or Supabase API key');
+  }
+  return createClient(process.env.SUPABASE_URL, apiKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
 function getMailTransporter() {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return null;
   return nodemailer.createTransport({
@@ -120,13 +131,11 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const { data: callerProfile, error: roleQueryError } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', callerData.user.id)
-      .single();
+    const callerClient = createCallerClient(token);
+    const { data: callerRole, error: roleQueryError } = await callerClient
+      .rpc('get_invite_caller_role');
 
-    if (roleQueryError || !callerProfile) {
+    if (roleQueryError || !callerRole) {
       json(res, 500, {
         ok: false,
         correlationId,
@@ -135,7 +144,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    if (callerProfile.role !== 'admin') {
+    if (callerRole !== 'admin') {
       json(res, 403, { ok: false, correlationId, message: '僅 admin 可以邀請帳號' });
       return;
     }
