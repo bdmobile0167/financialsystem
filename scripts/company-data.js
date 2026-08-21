@@ -1,44 +1,8 @@
 // ==========================================
 // 1. 全部公司清單與詳細資料（供前端介面列表與檢視使用）
 // ==========================================
-export const COMPANIES_DATA = [
-  {
-    id: "comp_001",
-    info: {
-      companyNameZh: '開發科技股份有限公司',
-      companyNameEn: 'Development Tech Co., Ltd.',
-      address: '(110)台北市信義區松仁路300號',
-      phone: '02-2345-6789',
-      taxId: '12345678',
-      precheckNumber: 'A20250626001',
-      foreignInvestment: 0,
-      singlePersonCompany: 0,
-      chinaInvestment: 0,
-      plannedOpenDate: '2025-07-01',
-      totalCapital: 10000000,
-      boardCount: 3,
-      representativeName: '張三',
-      articlesDate: '2025-06-20',
-      capitalCash: 5000000,
-      capitalProperty: 3000000,
-      capitalTechnology: 2000000,
-      capitalMergeNew: 3000000,
-      mergedCompanyBaseDate: '2025-08-01',
-      mergedCompanyTaxId: '98765432',
-      mergedCompanyName: '合併公司股份有限公司'
-    },
-    businessItems: [
-      { code: 'A1820', item: 'AI伺服器' },
-      { code: 'B3342', item: '醫療軟體' },
-      { code: 'C5580', item: '監測儀' }
-    ],
-    directorsShareholders: [
-      { role: '執行長', name: '李曉明', idNumber: 'B223755666', amount: 400000, address: '台中市西屯區' },
-      { role: '監察', name: '張曉嵐', idNumber: 'R932012338', amount: 500000, address: '台北市文山區' }
-    ]
-  }
-  // 之後若有第二家、第三家公司，可直接以相同結構往下新增物件
-];
+// Runtime company and payee records live in Supabase and are never embedded here.
+export const COMPANIES_DATA = [];
 
 // ==========================================
 // 2. 欄位對應與對照設定（維持不變，供 Word 產生器對應使用）

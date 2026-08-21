@@ -25,15 +25,12 @@ export function loadState(state) {
   const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
   if (stored) {
     const parsed = JSON.parse(stored);
-    state.transactions = parsed.transactions || [];
     state.systemName = parsed.systemName || '財務管理系統';
-    // If stored state contains company-related data, use it; otherwise start empty.
-    state.companyInfo = parsed.companyInfo || {};
-    state.businessItems = parsed.businessItems || [];
-    state.directorShareholders = parsed.directorShareholders || [];
-    state.structureSettings = parsed.structureSettings || {};
-    state.optionList = parsed.optionList || [];
-    state.standardizedSettings = parsed.standardizedSettings || {};
+    // Financial, company and payee records are loaded only from Supabase.
+    state.transactions = [];
+    state.companyInfo = {};
+    state.businessItems = [];
+    state.directorShareholders = [];
     if (!localStorage.getItem(STORAGE_KEY)) saveState(state);
   } else {
     // 新環境不載入範例交易，正式資料一律由 Supabase 取得。
@@ -49,13 +46,6 @@ export function loadState(state) {
 
 export function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    transactions: state.transactions,
-    systemName: state.systemName,
-    companyInfo: state.companyInfo,
-    businessItems: state.businessItems,
-    directorShareholders: state.directorShareholders,
-    structureSettings: state.structureSettings,
-    optionList: state.optionList,
-    standardizedSettings: state.standardizedSettings
+    systemName: state.systemName
   }));
 }
