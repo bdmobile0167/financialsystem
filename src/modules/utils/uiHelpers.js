@@ -201,9 +201,7 @@ export function updateAdminNavVisibility() {
   const isAdmin = ['admin', 'super_admin'].includes(user?.role);
   const canManageUsers = isAdmin || userHasPermission(user, 'canManageUsers');
   const adminUsersBtn = document.getElementById('adminUsersNavBtn');
-  const userManagementBtn = document.getElementById('userManagementNavBtn');
   if (adminUsersBtn) adminUsersBtn.style.display = canManageUsers ? '' : 'none';
-  if (userManagementBtn) userManagementBtn.style.display = canManageUsers ? '' : 'none';
 }
 
 export function applyRoleBasedTabVisibility() {
@@ -225,7 +223,6 @@ export function applyRoleBasedTabVisibility() {
   setTabVisible('auditTrail', canLedger || canFinance);
   setTabVisible('voucherCenter', canVouchers || canFinance);
   setTabVisible('adminUsers', userHasPermission(user, 'canManageUsers'));
-  setTabVisible('userManagement', userHasPermission(user, 'canManageUsers'));
 }
 
 export function safeListener(id, event, handler) {

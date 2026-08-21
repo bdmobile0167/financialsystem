@@ -586,6 +586,26 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
     if (accountId) ledgerByAccountId.set(accountId, Number(row.debitTotal || 0) - Number(row.creditTotal || 0));
   });
 
+  // Registered capital is company metadata. Only paid-in contributions belong
+  // in the financial statements, with an equal opening debit to cash.
+  const company = await getCompanyInfo();
+  const paidInCapital = Number(company.capitalCash || 0)
+    + Number(company.capitalProperty || 0)
+    + Number(company.capitalTechnology || 0)
+    + Number(company.capitalMergeNew || 0);
+  const openingDateIsInScope = !endDate
+    || !company.plannedOpenDate
+    || company.plannedOpenDate <= endDate;
+  const capitalAccount = accounts.find(account => account.code === '3110');
+  const cashAccount = accounts.find(account => account.code === '1102');
+
+  if (openingDateIsInScope && paidInCapital > 0 && capitalAccount && cashAccount) {
+    const postedCapital = ledger[capitalAccount.id].creditTotal - ledger[capitalAccount.id].debitTotal;
+    const openingSupplement = Math.max(0, paidInCapital - postedCapital);
+    ledger[capitalAccount.id].creditTotal += openingSupplement;
+    ledger[cashAccount.id].debitTotal += openingSupplement;
+  }
+
   let bankQuery = supabase
     .from('bank_accounts')
     .select('id, bank_name, account_number, nickname, opening_balance, ledger_account_id, accounting_account_id');

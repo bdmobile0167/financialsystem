@@ -66,6 +66,9 @@ export async function getCurrentSessionUser() {
     name: profile.full_name,
     role: profile.role || 'employee',
     department_id: profile.department_id,
+    department: profile.department,
+    department_name: profile.department,
+    permissions: profile.permissions || {},
     mustChangePassword: profile.must_change_password
   };
 }
@@ -113,6 +116,9 @@ export async function signInWithSupabase(email, password) {
     name: profile.full_name,
     role: profile.role || 'employee',
     department_id: profile.department_id,
+    department: profile.department,
+    department_name: profile.department,
+    permissions: profile.permissions || {},
     mustChangePassword: profile.must_change_password
   };
 

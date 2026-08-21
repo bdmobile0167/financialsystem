@@ -6,7 +6,7 @@ import { createNotification, createNotificationForMany, getUserIdsByRole } from 
 
 export async function fetchAccounts() {  let q = supabase.from('accounts').select('*').order('code');  const { data, error } = await q;
   if (error) throw error;
-  return data;
+  return data || [];
 }
 
 export async function fetchBankAccounts() {  let q = supabase.from('bank_accounts').select('*').order('bank_name');  const { data, error } = await q;

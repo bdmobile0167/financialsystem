@@ -72,7 +72,6 @@
             <div class="nav-group-title">系統</div>
             <button class="tab-btn" data-tab="settings">設定</button>
             <button class="tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
-            <button class="tab-btn" data-tab="userManagement" id="userManagementNavBtn" style="display:none;">權限管理</button>
           </div>
         </nav>
         <div class="sidebar-footer">
@@ -339,7 +338,7 @@
         </section>
 
         <!-- 預算變更 Modal (放在 body 標籤結尾前) -->
-        <div id="editBudgetModal" class="login-shell" style="display:none; z-index: 9999;">
+        <div id="editBudgetModal" class="app-modal-shell" style="display:none;">
           <div class="card" style="max-width: 600px; width: 90%;">
             <h2>調整專案預算</h2>
             <p id="editBudgetProjectName" style="font-weight: bold; margin-bottom: 16px;"></p>
@@ -387,7 +386,7 @@
         </div>
 
         <!-- 專案成員管理 Modal -->
-        <div id="projectMembersModal" class="login-shell" style="display:none; z-index: 9999;">
+        <div id="projectMembersModal" class="app-modal-shell" style="display:none;">
           <div class="card" style="max-width: 640px; width: 90%;">
             <h2>專案成員管理</h2>
             <p id="pmProjectName" style="font-weight: bold; margin-bottom: 12px;"></p>
@@ -789,7 +788,7 @@
         </section>
 
         <section id="adminUsers" class="tab-panel" style="display:none;">
-          <div class="grid grid-2">
+          <div class="grid admin-users-grid">
             <div class="panel">
               <h3>開通新帳號</h3>
               <form id="inviteUserForm">
@@ -816,12 +815,9 @@
               </form>
               <div id="inviteResultBox" class="message" style="display:none; margin-top:10px;"></div>
             </div>
-            <div class="panel">
+            <div class="panel admin-account-list-panel">
               <h3>所有使用者</h3>
-              <table>
-                <thead><tr><th>Email</th><th>姓名</th><th>角色</th><th>部門</th><th>狀態</th><th>操作</th></tr></thead>
-                <tbody id="adminUserTableBody"></tbody>
-              </table>
+              <div id="adminUserTableBody" class="admin-account-list"></div>
             </div>
             <div class="panel">
               <h3>部門管理</h3>
@@ -834,14 +830,10 @@
           </div>
         </section>
 
-        <section id="userManagement" class="tab-panel" style="display:none;">
-          <div id="userManagementContainer"></div>
-        </section>
-
         <section id="settings" class="tab-panel" style="display:none;">
           
           <!-- 1. 系統設定 -->
-          <div class="panel">
+          <div class="panel" id="systemSettingsCard">
             <h3>系統設定</h3>
             <label>系統名稱</label>
             <input id="systemName" value="財務管理系統" />
@@ -849,7 +841,7 @@
           </div>
 
           <!-- 2. 公司基本資料（可編輯表單） -->
-          <div class="panel" style="margin-top:16px;">
+          <div class="panel" id="companyInfoCard" style="margin-top:16px;">
             <h3>公司基本資料</h3>
             <p class="muted">這裡的資料會套用到四大財報抬頭、公司登記文件產出。</p>
             <form id="companyInfoForm">
@@ -887,6 +879,10 @@
                   <input type="number" id="companyTotalCapital" min="0" />
                 </div>
                 <div>
+                  <label>已投入股本</label>
+                  <input type="number" id="companyPaidInCapital" readonly />
+                </div>
+                <div>
                   <label>預定開業日期</label>
                   <input type="date" id="companyOpenDate" />
                 </div>
@@ -911,13 +907,13 @@
           </div>
 
           <!-- 4. 事業項目與董監名單 -->
-          <div class="panel" style="margin-top: 16px;">
+          <div class="panel" id="businessInfoCard" style="margin-top: 16px;">
             <h3>事業項目與董監名單</h3>
             <div id="businessInfoContent"></div>
           </div>
 
           <!-- 5. 使用者核准 -->
-          <div class="panel" style="margin-top: 16px;">
+          <div class="panel" id="approvalCard" style="margin-top: 16px;">
             <h3>使用者核准</h3>
             <p class="muted">管理者可查看其他帳號的登入申請並核准。</p>
             <table>
@@ -929,7 +925,7 @@
           </div>
 
           <!-- 6. 匯出資料 -->
-          <div class="panel" style="margin-top: 16px;">
+          <div class="panel" id="exportCard" style="margin-top: 16px;">
             <h3>匯出資料</h3>
             <p class="muted">可把交易資料匯出為 JSON。</p>
             <button id="exportBtn" class="secondary">匯出交易 JSON</button>
@@ -939,7 +935,7 @@
     </div>
   </div>
   <!-- 銀行帳戶編輯 Modal -->
-  <div id="editBankModal" class="login-shell" style="display:none; z-index: 9999;">
+  <div id="editBankModal" class="app-modal-shell" style="display:none;">
     <div class="card">
       <h2>編輯銀行帳戶</h2>
       <form id="editBankForm" onsubmit="event.preventDefault(); saveBankEdit();">

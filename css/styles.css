@@ -126,6 +126,121 @@ button.danger:hover {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.admin-users-grid {
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.3fr);
+  align-items: start;
+}
+
+.admin-account-list-panel {
+  grid-row: span 2;
+}
+
+.admin-account-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-account-row {
+  min-width: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.admin-account-row:first-child {
+  padding-top: 4px;
+  border-top: 0;
+}
+
+.admin-account-heading,
+.admin-account-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-account-heading span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-account-status {
+  flex: 0 0 auto;
+}
+
+.admin-account-status button {
+  width: auto;
+  padding: 7px 12px;
+}
+
+.admin-account-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-account-fields label {
+  min-width: 0;
+}
+
+.admin-account-fields input,
+.admin-account-fields select {
+  width: 100%;
+}
+
+.admin-permission-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.admin-permission-list legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-permission-list .permission-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.admin-permission-list input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-users-grid,
+  .admin-account-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-account-list-panel {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-account-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .tab-panel {
   display: none;
 }
@@ -178,6 +293,25 @@ button.danger:hover {
   place-items: center;
   padding: 24px;
   background: var(--bg);
+}
+
+.app-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.app-modal-shell > .card {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border-radius: var(--radius-lg);
 }
 
 .login-card {

@@ -32,8 +32,6 @@ export async function renderVoucherWorkflowList() {
           `;
         } else if (['manager_rejected', 'accounting_rejected'].includes(vStatus)) {
           actionButtons = `<button class="btn-small secondary" onclick="openResubmitModal('${row.id}')">修改並重送</button>`;
-        } else {
-          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
       } 
       else if (currentUserRole === 'manager') {
@@ -42,8 +40,6 @@ export async function renderVoucherWorkflowList() {
             <button type="button" class="approve-voucher-btn" data-id="${row.id}" data-stage="manager">核准</button>
             <button type="button" class="reject-voucher-btn" data-id="${row.id}" data-stage="manager">退件</button>
           `;
-        } else {
-          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
         }
       } 
       else if (['accounting', 'admin'].includes(currentUserRole)) {
@@ -60,8 +56,8 @@ export async function renderVoucherWorkflowList() {
               執行付款銷案
             </button>
           `;
-        } else {
-          actionButtons = `<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button>`;
+        } else if (vStatus === 'closed') {
+          actionButtons = `<button type="button" class="btn-small danger" onclick="openVoidVoucherModal('${row.id}')">銷案</button>`;
         }
       }
 
@@ -73,7 +69,7 @@ export async function renderVoucherWorkflowList() {
           <td style="text-align:right; font-variant-numeric:tabular-nums;">$${Number(row.total_amount || 0).toLocaleString()}</td>
           <td>${getStatusBadge(vStatus)}</td>
           <td>${buildMiniStepperDots(vStatus)}</td>
-          <td style="white-space:nowrap;">${actionButtons}</td>
+          <td style="white-space:nowrap;">${actionButtons}<button class="btn-small view-history-btn" data-id="${row.id}">查看歷程</button></td>
         </tr>
       `;
     }).join('');
