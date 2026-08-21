@@ -41,6 +41,7 @@
     <div class="container app-layout">
         <div id="sidebarOverlay" class="sidebar-overlay"></div>
         <aside class="sidebar" id="sidebar">
+        <button id="sidebarCollapseBtn" class="sidebar-collapse-button" type="button" title="收合側欄" aria-label="收合側欄" aria-expanded="true">&lsaquo;</button>
         <div class="sidebar-brand">
           <h2>財務系統</h2>
           <p class="muted">直覺式管理頁面</p>
@@ -821,8 +822,11 @@
             </div>
             <div class="panel">
               <h3>部門管理</h3>
-              <form id="departmentForm">
+              <form id="departmentForm" class="department-create-form">
                 <input type="text" id="newDepartmentName" placeholder="部門名稱" required />
+                <select id="newDepartmentParent">
+                  <option value="">最上層部門</option>
+                </select>
                 <button type="submit">新增部門</button>
               </form>
               <div id="departmentList"></div>

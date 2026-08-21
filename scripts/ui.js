@@ -111,7 +111,7 @@ async function populateInviteDepartmentSelect() {
   const select = document.getElementById('inviteDepartment');
   if (!select) return;
   const departments = await fetchDepartments();
-  select.innerHTML = departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  select.innerHTML = departments.map(d => `<option value="${d.id}">${d.display_name || d.name}</option>`).join('');
 }
 
 async function renderAdminUserTable() {
@@ -154,7 +154,7 @@ async function renderAdminUserTable() {
           <label>部門
           <select onchange="updateUserProfile('${u.id}', 'department_id', this.value)">
             <option value="">未設定</option>
-            ${depts.map(d => `<option value="${d.id}" ${u.department_id === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+            ${depts.map(d => `<option value="${d.id}" ${u.department_id === d.id ? 'selected' : ''}>${d.display_name || d.name}</option>`).join('')}
           </select>
           </label>
         </div>
@@ -704,7 +704,7 @@ function userHasPermission(permissionKey, user = state.currentUser) {
 // 多階段簽核流程指示器：把單據狀態轉換成「提交→主管→會計→付款結案」的視覺步驟
 
 // ===== Audit Trail Logs（全系統單據異動稽核軌跡） =====
-async function renderAuditTrail() {
+async function renderAuditTrailLegacy() {
   const container = document.getElementById('auditTrailList');
   if (!container) return;
   container.innerHTML = '<p class="muted">載入中…</p>';
@@ -824,6 +824,100 @@ async function renderAuditTrail() {
   } catch (err) {
     console.error('讀取 Audit Trail 失敗:', err);
     container.innerHTML = `<p class="muted">載入失敗：${err.message}</p>`;
+  }
+}
+
+async function renderAuditTrail() {
+  const container = document.getElementById('auditTrailList');
+  if (!container) return;
+  container.innerHTML = '<p class="muted">載入中...</p>';
+
+  const actionFilter = document.getElementById('auditTrailActionFilter')?.value || '';
+  const keyword = (document.getElementById('auditTrailSearchInput')?.value || '').trim().toLowerCase();
+
+  try {
+    let query = supabase
+      .from('voucher_workflow_logs')
+      .select('*, profiles!actor_id(full_name), vouchers(voucher_no, summary)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (actionFilter) query = query.eq('action', actionFilter);
+
+    const { data: logs, error } = await query;
+    if (error) throw error;
+
+    const actionLabels = {
+      submit: '提交申請',
+      manager_approve: '主管核准',
+      manager_reject: '主管退件',
+      accounting_approve: '會計核准',
+      reject: '會計退件',
+      close: '付款銷案',
+      void: '銷案撤回'
+    };
+
+    const filtered = (logs || []).filter(log => {
+      if (!keyword) return true;
+      return [
+        log.vouchers?.voucher_no,
+        log.vouchers?.summary,
+        log.profiles?.full_name,
+        log.action,
+        log.reject_reason
+      ].some(value => String(value || '').toLowerCase().includes(keyword));
+    });
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<p class="muted audit-empty">沒有符合條件的稽核紀錄。</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="audit-table-wrap">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>時間</th>
+              <th>操作人</th>
+              <th>動作</th>
+              <th>單據與摘要</th>
+              <th>狀態變更</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(log => {
+              const roleLabel = log.actor_role === 'admin' ? '管理員'
+                : log.actor_role === 'accounting' ? '會計'
+                  : log.actor_role === 'manager' ? '主管' : '員工';
+              const voucherNo = escapeHtml(log.vouchers?.voucher_no || '-');
+              const summary = escapeHtml(log.vouchers?.summary || '');
+              const reason = escapeHtml(log.reject_reason || '');
+              const fromStatus = escapeHtml(log.from_status || '-');
+              const toStatus = escapeHtml(log.to_status || '-');
+              return `
+                <tr>
+                  <td class="audit-time">${new Date(log.created_at).toLocaleString('zh-TW')}</td>
+                  <td>
+                    <strong>${escapeHtml(log.profiles?.full_name || '系統')}</strong>
+                    <span class="audit-role">${roleLabel}</span>
+                  </td>
+                  <td><span class="audit-action">${escapeHtml(actionLabels[log.action] || log.action || '-')}</span></td>
+                  <td>
+                    ${log.voucher_id ? `<button type="button" class="audit-voucher-link" onclick="viewVoucherDetail('${log.voucher_id}')">${voucherNo}</button>` : voucherNo}
+                    ${summary ? `<div class="audit-summary">${summary}</div>` : ''}
+                    ${reason ? `<div class="audit-reason">原因：${reason}</div>` : ''}
+                  </td>
+                  <td>${log.from_status || log.to_status
+                    ? `<span class="audit-delta"><s>${fromStatus}</s><span aria-hidden="true">→</span><strong>${toStatus}</strong></span>`
+                    : '<span class="muted">-</span>'}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (error) {
+    console.error('讀取 Audit Trail 失敗:', error);
+    container.innerHTML = `<p class="muted audit-empty">載入失敗：${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -1045,10 +1139,13 @@ function renderReportLetterhead(elementId, reportTitle) {
   const company = state.companyInfo || {};
   el.innerHTML = `
     <div class="report-company">${company.companyNameZh || '（尚未設定公司名稱）'}</div>
-    <div class="report-meta">統一編號：${company.taxId || '-'}</div>
     <div class="report-title">${reportTitle}</div>
     <div class="report-period">期間：${periodText}</div>
-    <div class="report-printdate">列印日期：${today}</div>
+    <div class="report-meta-row">
+      <span>統一編號：${company.taxId || '-'}</span>
+      <span>單位：新臺幣元</span>
+      <span>列印日期：${today}</span>
+    </div>
   `;
 }
 
@@ -1758,20 +1855,32 @@ async function renderBankAccounts() {
   if (!body) return;
 
   try {
-    let accounts = await loadBankAccounts();
-    if (!accounts || !Array.isArray(accounts)) accounts = [];
+    const [bankAccounts, ledgerAccounts] = await Promise.all([loadBankAccounts(), fetchAccounts()]);
+    const accounts = Array.isArray(bankAccounts) ? bankAccounts : [];
+    const ledgerById = new Map((ledgerAccounts || []).map(account => [account.id, account]));
+    const ledgerSelect = document.getElementById('bankLedgerAccountId');
+    if (ledgerSelect) {
+      const selectedValue = ledgerSelect.value;
+      const assetAccounts = (ledgerAccounts || []).filter(account => String(account.code || '').startsWith('1'));
+      ledgerSelect.innerHTML = '<option value="">未綁定</option>' + assetAccounts.map(account =>
+        `<option value="${account.id}">${escapeHtml(account.code)} ${escapeHtml(account.name)}</option>`
+      ).join('');
+      const defaultAccount = assetAccounts.find(account => account.code === '1102');
+      ledgerSelect.value = selectedValue || defaultAccount?.id || '';
+    }
 
     body.innerHTML = accounts.map(a => {
-      const totalBalance = a.current_balance !== null && a.current_balance !== undefined
-        ? Number(a.current_balance || 0)
-        : null;
-      const balanceDisplay = totalBalance === null ? '尚無餘額資料' : totalBalance.toLocaleString();
+      const linkedAccountId = a.ledger_account_id || a.accounting_account_id || null;
+      const linkedAccount = linkedAccountId ? ledgerById.get(linkedAccountId) : null;
+      const totalBalance = a.current_balance ?? a.balance ?? a.opening_balance ?? null;
+      const balanceDisplay = totalBalance === null ? '尚無餘額資料' : Number(totalBalance).toLocaleString();
 
       return `
         <tr>
           <td>${a.bank_name || a.bankName || '未命名'}</td>
           <td>${a.account_number || a.accountNumber || '-'}</td>
           <td>${a.nickname || '-'}</td>
+          <td>${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<span class="badge wait">未綁定</span>'}</td>
           <td>${balanceDisplay}</td>
           <td>
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
@@ -1779,7 +1888,7 @@ async function renderBankAccounts() {
           </td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="5" class="muted">尚未設定銀行帳戶。</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="muted">尚未設定銀行帳戶。</td></tr>';
 
     populateBankSelect(document.getElementById('txBankAccount'), accounts);
     populateBankSelect(document.getElementById('vBankAccount'), accounts);
@@ -2224,6 +2333,24 @@ function initializeEventsInternal() {
   const menuToggleBtn = document.getElementById('menuToggleBtn');
   const sidebarEl = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+  const appLayout = document.querySelector('.app-layout');
+
+  const setDesktopSidebarCollapsed = collapsed => {
+    appLayout?.classList.toggle('sidebar-collapsed', collapsed);
+    if (sidebarCollapseBtn) {
+      sidebarCollapseBtn.innerHTML = collapsed ? '&rsaquo;' : '&lsaquo;';
+      sidebarCollapseBtn.title = collapsed ? '展開側欄' : '收合側欄';
+      sidebarCollapseBtn.setAttribute('aria-label', sidebarCollapseBtn.title);
+      sidebarCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    }
+    localStorage.setItem('finance_sidebar_collapsed', collapsed ? '1' : '0');
+  };
+
+  setDesktopSidebarCollapsed(localStorage.getItem('finance_sidebar_collapsed') === '1');
+  sidebarCollapseBtn?.addEventListener('click', () => {
+    setDesktopSidebarCollapsed(!appLayout?.classList.contains('sidebar-collapsed'));
+  });
 
   menuToggleBtn?.addEventListener('click', () => {
     sidebarEl?.classList.contains('open') ? closeSidebar() : openSidebar();
@@ -2646,7 +2773,9 @@ function initializeEventsInternal() {
         bank_name: document.getElementById('bankName').value.trim(),
         account_number: document.getElementById('bankAccountNumber').value.trim(),
         nickname: document.getElementById('bankNickname').value.trim(),
-        opening_balance: parseFloat(document.getElementById('bankOpeningBalance').value) || 0
+        opening_balance: parseFloat(document.getElementById('bankOpeningBalance').value) || 0,
+        ledger_account_id: document.getElementById('bankLedgerAccountId').value || null,
+        accounting_account_id: document.getElementById('bankLedgerAccountId').value || null
       };
 
       if (state.editingBankId) {
@@ -3105,7 +3234,11 @@ function initializeEventsInternal() {
     }
     try {
       const name = document.getElementById('newDepartmentName').value.trim();
-      const { error } = await supabase.from('departments').insert({ name,  });
+      const parentDepartmentId = document.getElementById('newDepartmentParent')?.value || null;
+      const { error } = await supabase.from('departments').insert({
+        name,
+        parent_department_id: parentDepartmentId
+      });
       if (error) throw error;
       showMessage('部門已新增。');
       e.target.reset();
@@ -3188,7 +3321,7 @@ async function populateVoucherFormOptions() {
         deptSelect.disabled = true;
       } else {
         deptSelect.innerHTML = departments.length
-          ? departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('')
+          ? departments.map(d => `<option value="${d.id}">${d.display_name || d.name}</option>`).join('')
           : '<option value="">尚未建立部門</option>';
       }
       // 部門選好之後，主動載入該部門的人，不用等使用者手動觸發
@@ -3440,7 +3573,7 @@ async function populateProjectDepartmentSelect() {
   if (!select) return;
   try {
     const depts = await fetchDepartments();
-    select.innerHTML = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    select.innerHTML = depts.map(d => `<option value="${d.id}">${d.display_name || d.name}</option>`).join('');
   } catch (e) {
     console.error(e);
   }
@@ -3454,7 +3587,7 @@ async function renderProjectList() {
   try {
     const projects = await fetchProjects();
     const depts = await fetchDepartments();
-    const deptOptions = depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    const deptOptions = depts.map(d => `<option value="${d.id}">${d.display_name || d.name}</option>`).join('');
 
     container.innerHTML = projects.map(p => {
       const totalBudget = Number(p.total_budget || 0);
@@ -3797,8 +3930,15 @@ async function renderAdminDepartmentList() {
   if (!container) return;
   
   try {
-    const { data: depts, error } = await supabase.from('departments').select('*').order('created_at');
-    if (error) throw error;
+    const depts = await fetchDepartments();
+
+    const parentSelect = document.getElementById('newDepartmentParent');
+    if (parentSelect) {
+      const roots = depts.filter(department => !department.parent_department_id);
+      parentSelect.innerHTML = '<option value="">最上層部門</option>' + roots
+        .map(department => `<option value="${department.id}">${department.name}</option>`)
+        .join('');
+    }
 
     if (!depts || depts.length === 0) {
       container.innerHTML = '<p class="muted">暫無部門資料</p>';
@@ -3809,12 +3949,13 @@ async function renderAdminDepartmentList() {
       <div class="table-scroll department-list-table">
         <table>
           <thead>
-            <tr><th>部門名稱</th><th style="width:160px;">操作</th></tr>
+            <tr><th>部門／組別</th><th style="width:120px;">層級</th><th style="width:160px;">操作</th></tr>
           </thead>
           <tbody>
             ${depts.map(d => `
               <tr>
-                <td><span id="dept-display-name-${d.id}" class="department-name">${d.name}</span></td>
+                <td><span id="dept-display-name-${d.id}" class="department-name">${d.display_name || d.name}</span></td>
+                <td><span class="badge ${d.parent_department_id ? 'info' : ''}">${d.parent_department_id ? '組別' : '部門'}</span></td>
                 <td>
                   <button onclick="editDepartmentName('${d.id}')" class="secondary" style="width:auto; padding:6px 12px;">修改名稱</button>
                 </td>
@@ -4235,6 +4376,7 @@ window.editBankAccount = async (id) => {
     document.getElementById('bankAccountNumber').value = account.account_number || '';
     document.getElementById('bankNickname').value = account.nickname || '';
     document.getElementById('bankOpeningBalance').value = account.opening_balance || 0; // 確保期初餘額正確帶入
+    document.getElementById('bankLedgerAccountId').value = account.ledger_account_id || account.accounting_account_id || '';
     // 記錄目前正在編輯的 ID
     state.editingBankId = id;
 
@@ -4315,9 +4457,9 @@ async function ensureAccountingCanCloseVoucher(voucherId) {
 
   const { data: invoices, error: invoiceError } = await supabase
     .from('invoices')
-    .select('id, invoice_type, invoice_number, created_at')
+    .select('id, invoice_type, invoice_number')
     .eq('voucher_id', voucherId)
-    .order('created_at', { ascending: true });
+    .order('id', { ascending: true });
   if (invoiceError) throw invoiceError;
 
   const attachments = await getAttachmentsByVoucherId(voucherId);
@@ -4795,7 +4937,7 @@ async function populateProjectFormTeamPickers() {
   const deptSelect = document.getElementById('teamMemberDept');
   if (!deptSelect) return;
   const departments = await fetchDepartments();
-  deptSelect.innerHTML = departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  deptSelect.innerHTML = departments.map(d => `<option value="${d.id}">${d.display_name || d.name}</option>`).join('');
   await refreshTeamMemberPersonOptions();
   deptSelect.addEventListener('change', refreshTeamMemberPersonOptions);
 }
@@ -5107,7 +5249,7 @@ window.openResubmitModal = async (voucherId) => {
                 
                 <label style="margin-top:8px; display:block;">所屬部門：</label>
                 <select id="resub-vDepartment" required onchange="loadResubManagers(this.value)" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
-                  ${(depts || []).map(d => `<option value="${d.id}" ${d.id === vch.department_id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                  ${(depts || []).map(d => `<option value="${d.id}" ${d.id === vch.department_id ? 'selected' : ''}>${d.display_name || d.name}</option>`).join('')}
                 </select>
 
                 <label style="margin-top:8px; display:block;">指定審核主管（留空則整個部門的主管都能審）：</label>

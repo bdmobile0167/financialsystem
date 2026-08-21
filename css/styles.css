@@ -223,6 +223,19 @@ button.danger:hover {
   margin: 0;
 }
 
+.department-create-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.department-create-form input,
+.department-create-form select,
+.department-create-form button {
+  margin: 0;
+}
+
 @media (max-width: 900px) {
   .admin-users-grid,
   .admin-account-fields {
@@ -231,6 +244,10 @@ button.danger:hover {
 
   .admin-account-list-panel {
     grid-row: auto;
+  }
+
+  .department-create-form {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -315,7 +332,9 @@ button.danger:hover {
 }
 
 .login-card {
-  width: min(520px, calc(100% - 32px));
+  width: calc(100vw - 48px);
+  max-width: 520px;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
@@ -366,6 +385,11 @@ button.danger:hover {
   max-width: 1400px;
   margin: 0 auto;
   align-items: start;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-layout.sidebar-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
 }
 
 /* =========================================
@@ -384,6 +408,41 @@ button.danger:hover {
   top: 24px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
+}
+
+.sidebar-collapse-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  align-self: flex-end;
+  padding: 0;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.sidebar-collapse-button:hover {
+  color: var(--primary-strong);
+  background: var(--primary-light);
+}
+
+.sidebar-collapsed .sidebar {
+  padding: 16px;
+  gap: 0;
+  overflow: hidden;
+}
+
+.sidebar-collapsed .sidebar-brand,
+.sidebar-collapsed .side-nav,
+.sidebar-collapsed .sidebar-footer {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-collapse-button {
+  align-self: center;
 }
 
 .sidebar-brand h2 {
@@ -842,6 +901,24 @@ tbody tr:hover {
   .app-layout {
     grid-template-columns: 1fr;
   }
+
+  .app-layout.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-collapse-button {
+    display: none;
+  }
+
+  .sidebar-collapsed .sidebar {
+    padding: 24px;
+    gap: 24px;
+    overflow-y: auto;
+  }
+
+  .sidebar-collapsed .sidebar-brand,
+  .sidebar-collapsed .sidebar-footer { display: block; }
+  .sidebar-collapsed .side-nav { display: grid; }
   
   .menu-toggle {
     display: flex;
@@ -880,7 +957,12 @@ tbody tr:hover {
 }
 
 @media (max-width: 760px) {
+  .login-shell {
+    padding: 16px;
+  }
+
   .login-card {
+    width: calc(100vw - 32px);
     padding: 24px;
   }
   
@@ -1019,6 +1101,84 @@ tbody tr:hover {
 .timeline .tl-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .timeline .tl-note { font-size: 12px; color: var(--muted); margin-top: 4px; background: var(--surface-strong); border-radius: var(--radius-sm); padding: 6px 10px; }
 
+.audit-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.audit-table {
+  min-width: 820px;
+  margin: 0;
+}
+
+.audit-table th {
+  color: #fff;
+  background: #1f2937;
+  white-space: nowrap;
+}
+
+.audit-table td {
+  vertical-align: top;
+  font-size: 12px;
+}
+
+.audit-time {
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-role,
+.audit-action {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.audit-role {
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.audit-action {
+  margin-left: 0;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+button.audit-voucher-link {
+  width: auto;
+  padding: 0;
+  color: var(--primary-strong);
+  background: transparent;
+  border-radius: 0;
+  font-size: 12px;
+}
+
+.audit-summary,
+.audit-reason {
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.audit-reason { color: var(--danger); }
+
+.audit-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.audit-delta s { color: var(--muted); }
+.audit-delta strong { color: var(--success); }
+.audit-empty { padding: 18px 4px; }
+
 /* =========================================
    12. 財報樣式
    ========================================= */
@@ -1151,6 +1311,50 @@ tbody tr:hover {
 
 .report-card h4 { margin: 0; font-size: 15px; font-weight: 700; }
 .report-card table { margin-top: 8px; }
+.report-letterhead {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  margin: 12px 0 18px;
+  padding: 4px 0 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.report-company {
+  width: 100%;
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.report-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.report-period {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.report-meta-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-card table th:nth-child(2),
+.report-card table td:nth-child(2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .report-card table th {
   position: sticky;
   top: 0;

@@ -112,7 +112,17 @@ export function getDefaultPermissions(role) {
 export async function fetchDepartments() {
   const { data, error } = await supabase.from('departments').select('*').order('name');
   if (error) throw error;
-  return data;
+  const departments = data || [];
+  const byId = new Map(departments.map(department => [department.id, department]));
+  const displayName = (department, visited = new Set()) => {
+    if (!department?.parent_department_id || visited.has(department.id)) return department?.name || '';
+    visited.add(department.id);
+    const parent = byId.get(department.parent_department_id);
+    return parent ? `${displayName(parent, visited)} / ${department.name}` : department.name;
+  };
+  return departments
+    .map(department => ({ ...department, display_name: displayName(department) }))
+    .sort((left, right) => left.display_name.localeCompare(right.display_name, 'zh-Hant'));
 }
 
 // 建立部門

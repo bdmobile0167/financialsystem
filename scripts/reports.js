@@ -25,6 +25,26 @@ async function fetchSupabaseTrialBalance(startDate, endDate) {  let query = supa
     if (ledger[entry.credit_account_id]) ledger[entry.credit_account_id].creditTotal += Number(entry.credit_amount || 0);
   });
 
+  // Registered capital is company metadata. Only paid-in contributions belong
+  // in the statements, paired with an opening debit to bank deposits.
+  const company = await getCompanyInfo();
+  const paidInCapital = Number(company.capitalCash || 0)
+    + Number(company.capitalProperty || 0)
+    + Number(company.capitalTechnology || 0)
+    + Number(company.capitalMergeNew || 0);
+  const openingDateIsInScope = !endDate
+    || !company.plannedOpenDate
+    || company.plannedOpenDate <= endDate;
+  const capitalAccount = accounts.find(account => account.code === '3110');
+  const cashAccount = accounts.find(account => account.code === '1102');
+
+  if (openingDateIsInScope && paidInCapital > 0 && capitalAccount && cashAccount) {
+    const postedCapital = ledger[capitalAccount.id].creditTotal - ledger[capitalAccount.id].debitTotal;
+    const openingSupplement = Math.max(0, paidInCapital - postedCapital);
+    ledger[capitalAccount.id].creditTotal += openingSupplement;
+    ledger[cashAccount.id].debitTotal += openingSupplement;
+  }
+
   const rows = Object.values(ledger)
     .filter(item => item.debitTotal > 0 || item.creditTotal > 0)
     .map(item => ({
@@ -585,26 +605,6 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
     const accountId = [...accountById.values()].find(a => a.code === row.code)?.id;
     if (accountId) ledgerByAccountId.set(accountId, Number(row.debitTotal || 0) - Number(row.creditTotal || 0));
   });
-
-  // Registered capital is company metadata. Only paid-in contributions belong
-  // in the financial statements, with an equal opening debit to cash.
-  const company = await getCompanyInfo();
-  const paidInCapital = Number(company.capitalCash || 0)
-    + Number(company.capitalProperty || 0)
-    + Number(company.capitalTechnology || 0)
-    + Number(company.capitalMergeNew || 0);
-  const openingDateIsInScope = !endDate
-    || !company.plannedOpenDate
-    || company.plannedOpenDate <= endDate;
-  const capitalAccount = accounts.find(account => account.code === '3110');
-  const cashAccount = accounts.find(account => account.code === '1102');
-
-  if (openingDateIsInScope && paidInCapital > 0 && capitalAccount && cashAccount) {
-    const postedCapital = ledger[capitalAccount.id].creditTotal - ledger[capitalAccount.id].debitTotal;
-    const openingSupplement = Math.max(0, paidInCapital - postedCapital);
-    ledger[capitalAccount.id].creditTotal += openingSupplement;
-    ledger[cashAccount.id].debitTotal += openingSupplement;
-  }
 
   let bankQuery = supabase
     .from('bank_accounts')
