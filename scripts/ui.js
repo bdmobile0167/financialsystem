@@ -15,6 +15,7 @@ import { fetchAllUsers, updateUserProfile, toggleUserActive, inviteNewUser, upda
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
+import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
@@ -673,14 +674,8 @@ const state = { ...defaultState };
 window.state = state;
 let eventsInitialized = false;
 
-function isAccountingOrAdminUser(user = state.currentUser) {
-  return ['accounting', 'admin', 'super_admin'].includes(user?.role) || user?.department === '財務部' || user?.department_name === '財務部';
-}
-
 function userHasPermission(permissionKey, user = state.currentUser) {
-  if (!user) return false;
-  if (isAccountingOrAdminUser(user)) return true;
-  return user.permissions?.[permissionKey] === true;
+  return hasUserPermission(user, permissionKey);
 }
 
 // ===== 1. 全域狀態標籤 (移到 ui.js 最上方) =====

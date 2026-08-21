@@ -1,3 +1,5 @@
+import { userHasPermission } from './permissions.js';
+
 export function showToast(message, type = 'success') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -47,13 +49,13 @@ export function setText(selector, value) {
 
 export function getBankNickname(bankAccountId, accounts = []) {
   const account = accounts.find(a => a.id === bankAccountId);
-  return account ? (account.nickname || account.bank_name || account.account_number || '-') : '未設定';
+  return account ? (account.nickname || account.bank_name || account.account_number || '-') : '未指定銀行';
 }
 
 export function populateBankSelect(selectEl, accounts = []) {
   if (!selectEl) return;
   if (!Array.isArray(accounts) || accounts.length === 0) {
-    selectEl.innerHTML = '<option value="">尚未建立銀行帳戶</option>';
+    selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
     return;
   }
   selectEl.innerHTML = accounts
@@ -87,11 +89,11 @@ export function maskPayeeName(name) {
 
 export const STATUS_LABELS = {
   pending_review: '待主管審核',
-  manager_rejected: '主管退件',
+  manager_rejected: '主管退回',
   pending_accounting: '待會計審核',
-  accounting_rejected: '會計退件',
-  approved: '已核准待付款',
-  closed: '已付款結案',
+  accounting_rejected: '會計退回',
+  approved: '已核准，待銷帳',
+  closed: '已銷帳',
   cancelled: '已取消'
 };
 
@@ -111,16 +113,17 @@ export function getStatusBadge(status) {
 
 export const ROLE_LABELS = {
   admin: '管理員',
-  accounting: '會計部門',
-  manager: '部門主管',
-  employee: '一般專員'
+  super_admin: '超級管理員',
+  accounting: '會計',
+  manager: '主管',
+  employee: '一般使用者'
 };
 
 const WORKFLOW_STEPS = [
-  { key: 'submit', label: '提交申請' },
-  { key: 'manager', label: '主管審核' },
-  { key: 'accounting', label: '會計審核' },
-  { key: 'closed', label: '付款結案' }
+  { key: 'submit', label: '送出申請' },
+  { key: 'manager', label: '主管核准' },
+  { key: 'accounting', label: '會計核准' },
+  { key: 'closed', label: '付款銷帳' }
 ];
 
 function getWorkflowStepStates(status) {
@@ -150,7 +153,7 @@ export function buildApprovalStepperHtml(status) {
     <ul class="approval-stepper" style="display:flex; gap:8px; list-style:none; padding:0; margin:12px 0; flex-wrap:wrap;">
       ${WORKFLOW_STEPS.map((step, index) => {
         const state = stepStates[index];
-        const mark = state === 'done' ? '✓' : (state === 'rejected' ? '!' : index + 1);
+        const mark = state === 'done' ? 'OK' : (state === 'rejected' ? '!' : index + 1);
         return `
           <li class="${state}" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:20px; font-size:12px; font-weight:600; ${getStepStyle(state)}">
             <span class="step-dot" style="width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px;">${mark}</span>
@@ -166,7 +169,7 @@ export function buildMiniStepperDots(status) {
   if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已取消</span>';
   const stepStates = getWorkflowStepStates(status);
   const colorOf = state => state === 'done' ? '#10b981' : (state === 'current' ? '#3b82f6' : (state === 'rejected' ? '#ef4444' : '#cbd5e1'));
-  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="提交、主管、會計、付款">
+  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="送出申請 / 主管核准 / 會計核准 / 付款銷帳">
     ${stepStates.map(state => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(state)}; display:inline-block;"></span>`).join('')}
   </span>`;
 }
@@ -187,16 +190,6 @@ export function downloadJsonFile(filename, dataObj) {
   URL.revokeObjectURL(url);
 }
 
-function isAccountingOrAdmin(user) {
-  return ['accounting', 'admin', 'super_admin'].includes(user?.role) || user?.department === '財務部' || user?.department_name === '財務部';
-}
-
-function hasPermission(user, permissionKey) {
-  if (!user) return false;
-  if (isAccountingOrAdmin(user)) return true;
-  return user.permissions?.[permissionKey] === true;
-}
-
 function setTabVisible(tab, visible) {
   document.querySelectorAll(`[data-tab="${tab}"]`).forEach(el => {
     el.style.display = visible ? '' : 'none';
@@ -206,7 +199,7 @@ function setTabVisible(tab, visible) {
 export function updateAdminNavVisibility() {
   const user = window.state?.currentUser;
   const isAdmin = ['admin', 'super_admin'].includes(user?.role);
-  const canManageUsers = isAdmin || hasPermission(user, 'canManageUsers');
+  const canManageUsers = isAdmin || userHasPermission(user, 'canManageUsers');
   const adminUsersBtn = document.getElementById('adminUsersNavBtn');
   const userManagementBtn = document.getElementById('userManagementNavBtn');
   if (adminUsersBtn) adminUsersBtn.style.display = canManageUsers ? '' : 'none';
@@ -215,13 +208,13 @@ export function updateAdminNavVisibility() {
 
 export function applyRoleBasedTabVisibility() {
   const user = window.state?.currentUser;
-  const canFinance = hasPermission(user, 'canViewFinancials');
-  const canReports = hasPermission(user, 'canViewReports') || canFinance;
-  const canBank = hasPermission(user, 'canViewBankAccounts');
-  const canReconcile = hasPermission(user, 'canReconcileBank') || canBank;
-  const canProjects = hasPermission(user, 'canManageProjects');
-  const canLedger = hasPermission(user, 'canViewJournalLedger');
-  const canVouchers = hasPermission(user, 'canViewVouchers') || canProjects;
+  const canFinance = userHasPermission(user, 'canViewFinancials');
+  const canReports = userHasPermission(user, 'canViewReports') || canFinance;
+  const canBank = userHasPermission(user, 'canViewBankAccounts');
+  const canReconcile = userHasPermission(user, 'canReconcileBank') || canBank;
+  const canProjects = userHasPermission(user, 'canManageProjects');
+  const canLedger = userHasPermission(user, 'canViewJournalLedger');
+  const canVouchers = userHasPermission(user, 'canViewVouchers') || canProjects;
 
   setTabVisible('transactions', canLedger || canFinance);
   setTabVisible('bankAccounts', canBank);
@@ -231,6 +224,8 @@ export function applyRoleBasedTabVisibility() {
   setTabVisible('equity', canReports);
   setTabVisible('auditTrail', canLedger || canFinance);
   setTabVisible('voucherCenter', canVouchers || canFinance);
+  setTabVisible('adminUsers', userHasPermission(user, 'canManageUsers'));
+  setTabVisible('userManagement', userHasPermission(user, 'canManageUsers'));
 }
 
 export function safeListener(id, event, handler) {
