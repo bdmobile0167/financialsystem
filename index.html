@@ -203,6 +203,7 @@
           <div class="payment-mode-tabs" role="tablist" aria-label="付款管理模式">
             <button type="button" class="payment-mode-btn active" data-payment-mode="queue">準備付款</button>
             <button type="button" class="payment-mode-btn" data-payment-mode="recipients">所有付款人</button>
+            <button type="button" class="payment-mode-btn" data-payment-mode="payroll">員工薪資付款</button>
           </div>
 
           <div class="panel payment-management-panel">
@@ -227,8 +228,9 @@
             <h3>收款人資訊設定</h3>
             <form id="paymentRecipientForm" class="payment-recipient-form">
               <input type="hidden" id="paymentRecipientId" />
+              <input type="hidden" id="paymentPayeeId" />
               <label>收款人／公司名稱<input id="recipientDisplayName" required /></label>
-              <label>身分證／統編<input id="recipientIdentifier" /></label>
+              <label>身分證／統編<input id="recipientIdentifier" required /></label>
               <label>銀行名稱<input id="recipientBankName" required /></label>
               <label>分行<input id="recipientBankBranch" /></label>
               <label>戶名<input id="recipientAccountName" required /></label>
@@ -243,6 +245,25 @@
               </div>
             </form>
             <div id="paymentRecipientList" class="table-scroll"></div>
+          </div>
+
+          <div class="panel payroll-payment-panel" hidden>
+            <div class="panel-header payment-management-header">
+              <div>
+                <h3>員工薪資付款</h3>
+                <p class="muted">勾選員工後輸入薪資、勞保、健保與勞退；員工實領為薪資扣除勞保與健保，勞退另列公司付款。</p>
+              </div>
+            </div>
+            <form id="payrollPaymentForm" class="payment-recipient-form">
+              <label>摘要<input id="payrollSummary" placeholder="例如：11507 薪資" required /></label>
+              <label>付款日期<input id="payrollPaymentDate" type="date" required /></label>
+              <label>出款銀行<select id="payrollBankAccount" required></select></label>
+              <div class="button-row payment-recipient-actions">
+                <button type="submit" class="primary-btn">建立薪資付款</button>
+              </div>
+            </form>
+            <div id="payrollEmployeeList" class="table-scroll"></div>
+            <div id="payrollBatchList" class="table-scroll"></div>
           </div>
         </section>
 
@@ -340,6 +361,17 @@
             <h3>憑證中心</h3>
             <p class="muted">可依申請憑證、會計憑證、付款憑證或摘要搜尋；一般使用者只會看到自己的報支資料。</p>
             <div class="search-row">
+              <select id="voucherProjectFilter">
+                <option value="all">全部專案</option>
+              </select>
+              <select id="voucherCategoryFilter">
+                <option value="all">全部類別</option>
+                <option value="營業">營業</option>
+                <option value="專案">專案</option>
+                <option value="部門預算">部門預算</option>
+              </select>
+              <input type="date" id="voucherStartDate" aria-label="開始日期" />
+              <input type="date" id="voucherEndDate" aria-label="結束日期" />
               <input type="text" id="voucherSearchInput" placeholder="搜尋申請憑證、會計憑證、付款號碼、摘要..." />
             </div>
             <table>
@@ -412,6 +444,24 @@
                 </div>
                   <label>申請原因</label>
                   <textarea id="departmentBudgetNote" rows="2" required style="width: 100%;"></textarea>
+                  <fieldset style="margin-top:12px; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                    <legend style="padding:0 6px; color:#475569; font-size:12px;">預算項目明細</legend>
+                    <div id="departmentBudgetItems">
+                      <div class="department-budget-item-row" style="display:flex; gap:8px; margin-bottom:8px;">
+                        <input class="department-budget-item-name" value="人事費用" placeholder="項目" style="flex:1;">
+                        <input class="department-budget-item-amount" type="number" min="0" placeholder="金額" style="width:120px;">
+                      </div>
+                      <div class="department-budget-item-row" style="display:flex; gap:8px; margin-bottom:8px;">
+                        <input class="department-budget-item-name" value="業務費用" placeholder="項目" style="flex:1;">
+                        <input class="department-budget-item-amount" type="number" min="0" placeholder="金額" style="width:120px;">
+                      </div>
+                      <div class="department-budget-item-row" style="display:flex; gap:8px; margin-bottom:8px;">
+                        <input class="department-budget-item-name" value="設備費用" placeholder="項目" style="flex:1;">
+                        <input class="department-budget-item-amount" type="number" min="0" placeholder="金額" style="width:120px;">
+                      </div>
+                    </div>
+                    <button type="button" class="secondary" style="width:auto; padding:6px 12px;" onclick="addDepartmentBudgetItemRow()">新增項目</button>
+                  </fieldset>
                   <button type="submit" class="primary-btn" style="width: 100%; margin-top: 10px;">送出預算申請</button>
                 </form>
                 <h3 style="margin-top:18px;">預算申請審核</h3>
