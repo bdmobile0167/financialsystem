@@ -8,6 +8,10 @@ import { getStatusBadge, buildApprovalStepperHtml, maskPersonName, maskIdentifie
 let excelRowCounter = 0;
 const voucherLineAttachments = {}; // { rowId: File }
 
+function isFinanceOperator() {
+  return ['admin', 'super_admin', 'accounting'].includes(window.state?.currentUser?.role);
+}
+
 /**
  * 切換發票號碼欄位的啟用/禁用狀態
  */
@@ -44,6 +48,11 @@ window.fetchPayeeName = async (inputEl) => {
   const nameSpan = container.querySelector('.grid-payee-name');
   if (!nameSpan) return;
   if (!identifier) { nameSpan.innerHTML = ''; return; }
+  if (!isFinanceOperator()) {
+    nameSpan.innerHTML = '';
+    delete nameSpan.dataset.fullName;
+    return;
+  }
 
   nameSpan.innerText = '查詢中...';
   const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
@@ -60,6 +69,10 @@ window.fetchPayeeName = async (inputEl) => {
  * 開啟新增付款人 Modal
  */
 window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
+  if (!isFinanceOperator()) {
+    showMessage('請直接填寫付款人姓名與身分證/統編；付款人主檔由會計人員維護。', true);
+    return;
+  }
   const container = document.getElementById('addPayeeModalContainer');
   container.innerHTML = `
     <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;">
@@ -191,6 +204,11 @@ window.fetchProxyPayerName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
   if (!identifier) { nameSpan.innerHTML = ''; return; }
+  if (!isFinanceOperator()) {
+    nameSpan.innerHTML = '';
+    delete nameSpan.dataset.fullName;
+    return;
+  }
   nameSpan.innerText = '查詢中...';
   const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
   if (data) {
@@ -218,7 +236,7 @@ window.assignLineAttachment = (rowId, file) => {
 window.addExcelRow = (prefillFile = null) => {
   const tbody = document.getElementById('excelLinesBody');
   if (!tbody) return;
-  const isAccounting = ['accounting', 'admin'].includes(window.state?.currentUser?.role);
+  const isAccounting = isFinanceOperator();
 
   const rowId = `row-${excelRowCounter++}`;
   const tr = document.createElement('tr');

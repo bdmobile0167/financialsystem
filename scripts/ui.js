@@ -1352,7 +1352,7 @@ window.deleteUnvouchedTransactions = deleteUnvouchedTransactions;
 let paymentRowsCache = [];
 
 function isFinanceOperator() {
-  return ['admin', 'accounting'].includes(state.currentUser?.role);
+  return ['admin', 'super_admin', 'accounting'].includes(state.currentUser?.role);
 }
 
 async function fetchPaymentRecipients() {
@@ -2874,6 +2874,11 @@ window.fetchPayeeName = async (inputEl) => {
   const nameSpan = container.querySelector('.grid-payee-name');
   if (!nameSpan) return;
   if (!identifier) { nameSpan.innerHTML = ''; return; }
+  if (!isFinanceOperator()) {
+    nameSpan.innerHTML = '';
+    delete nameSpan.dataset.fullName;
+    return;
+  }
 
   nameSpan.innerText = '查詢中...';
   const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
@@ -2887,6 +2892,10 @@ window.fetchPayeeName = async (inputEl) => {
 };
 
 window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
+  if (!isFinanceOperator()) {
+    showMessage('請直接填寫付款人姓名與身分證/統編；付款人主檔由會計人員維護。', true);
+    return;
+  }
   const container = document.getElementById('addPayeeModalContainer');
   container.innerHTML = `
     <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;">
@@ -2975,23 +2984,17 @@ window.submitNewPayee = async () => {
     showMessage('付款人已新增。');
     document.querySelector('.modal-backdrop')?.remove();
     window.__cachedPayees = [...(window.__cachedPayees || []), { identifier, name }];
-    document.querySelectorAll('select.grid-payee-id').forEach(select => {
-      if (!Array.from(select.options).some(option => option.value === identifier)) {
-        select.add(new Option(`${name}｜${identifier}`, identifier));
-      }
-    });
     
     // 回填到原本觸發的那個欄位
     const trigger = window.__payeeTriggerContext;
     if (trigger) {
       const container = trigger.closest('td, div');
       const idInput = container.querySelector('.grid-payee-id, .grid-proxy-id');
+      const nameInput = container.querySelector('.grid-payee-name-input, .grid-proxy-name-input');
       const nameSpan = container.querySelector('.grid-payee-name, .grid-proxy-name');
-      if (idInput?.tagName === 'SELECT' && !Array.from(idInput.options).some(option => option.value === identifier)) {
-        idInput.add(new Option(`${name}｜${identifier}`, identifier));
-      }
       
       if (idInput) idInput.value = identifier;
+      if (nameInput) nameInput.value = name;
       if (nameSpan) { 
         nameSpan.innerText = maskPayeeName(name); 
         nameSpan.dataset.fullName = name; 
@@ -3005,7 +3008,7 @@ window.submitNewPayee = async () => {
 window.addExcelRow = (prefillFile = null) => {
   const tbody = document.getElementById('excelLinesBody');
   if (!tbody) return;
-  const isAccounting = ['accounting', 'admin'].includes(state.currentUser?.role);
+  const isAccounting = isFinanceOperator();
 
   const rowId = `row-${excelRowCounter++}`;
   const tr = document.createElement('tr');
@@ -3041,15 +3044,14 @@ window.addExcelRow = (prefillFile = null) => {
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
     <td style="padding:8px; border:1px solid #ddd;">
-      <select class="grid-payee-id" style="width:100%; padding:4px;" onchange="fetchPayeeName(this)">
-        <option value="">請選擇付款人</option>
-        ${(window.__cachedPayees || []).map(payee => `<option value="${escapeHtml(payee.identifier)}">${escapeHtml(payee.name)}｜${escapeHtml(payee.identifier)}</option>`).join('')}
-      </select>
+      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:96%; padding:4px;">
+      <input type="text" class="grid-payee-id" placeholder="身分證／統編" style="width:96%; padding:4px; margin-top:4px;">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
       <label style="font-size:11px; display:block; margin-top:4px;">
         <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
       </label>
-      <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:90%; padding:4px; margin-top:4px;" onblur="fetchProxyPayerName(this)">
+      <input type="text" class="grid-proxy-name-input" placeholder="代付人姓名／公司名稱" style="display:none; width:96%; padding:4px; margin-top:4px;">
+      <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:96%; padding:4px; margin-top:4px;">
       <span class="grid-proxy-name" style="font-size:12px; color:#666; display:block;"></span>
     </td>
     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -3079,15 +3081,30 @@ window.toggleCategoryNote = (selectEl) => {
 window.toggleProxyPayer = (checkboxEl) => {
   const cell = checkboxEl.closest('td');
   const proxyInput = cell.querySelector('.grid-proxy-id');
+  const proxyNameInput = cell.querySelector('.grid-proxy-name-input');
   const proxyName = cell.querySelector('.grid-proxy-name');
-  proxyInput.style.display = checkboxEl.checked ? 'block' : 'none';
-  if (!checkboxEl.checked) { proxyInput.value = ''; proxyName.innerText = ''; }
+  [proxyNameInput, proxyInput].forEach(input => {
+    if (input) input.style.display = checkboxEl.checked ? 'block' : 'none';
+  });
+  if (!checkboxEl.checked) {
+    if (proxyInput) proxyInput.value = '';
+    if (proxyNameInput) proxyNameInput.value = '';
+    if (proxyName) {
+      proxyName.innerText = '';
+      delete proxyName.dataset.fullName;
+    }
+  }
 };
 
 window.fetchProxyPayerName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
   if (!identifier) { nameSpan.innerHTML = ''; return; }
+  if (!isFinanceOperator()) {
+    nameSpan.innerHTML = '';
+    delete nameSpan.dataset.fullName;
+    return;
+  }
   nameSpan.innerText = '查詢中...';
   const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
   if (data) {
@@ -4083,9 +4100,11 @@ function initializeEventsInternal() {
           const invNumInput = row.querySelector('.grid-inv-num');
           const accountSelect = row.querySelector('.line-account-code');
           const payeeIdInput = row.querySelector('.grid-payee-id');
+          const payeeNameInput = row.querySelector('.grid-payee-name-input');
           const payeeNameSpan = row.querySelector('.grid-payee-name');
           const proxyCheck = row.querySelector('.grid-proxy-check');
           const proxyIdInput = row.querySelector('.grid-proxy-id');
+          const proxyNameInput = row.querySelector('.grid-proxy-name-input');
           const proxyNameSpan = row.querySelector('.grid-proxy-name');
 
           const amt = Number(amtInput?.value || 0);
@@ -4096,7 +4115,19 @@ function initializeEventsInternal() {
           if (!description || amt <= 0) return;
 
           const payeeIdentifier = payeeIdInput?.value.trim() || '';
-          if (!payeeIdentifier || !payeeNameSpan?.dataset.fullName) {
+          const payeeName = (
+            payeeNameInput?.value.trim()
+            || payeeNameSpan?.dataset.fullName
+            || payeeNameSpan?.innerText.trim()
+            || ''
+          ).replace(/^付款人：/, '').trim();
+          const proxyPayerName = (
+            proxyNameInput?.value.trim()
+            || proxyNameSpan?.dataset.fullName
+            || proxyNameSpan?.innerText.replace('代付人：', '').trim()
+            || ''
+          ).trim();
+          if (!payeeIdentifier || !payeeName) {
             missingPayeeRows.push(index + 1);
           } else {
             selectedPayeeIdentifiers.add(payeeIdentifier);
@@ -4123,10 +4154,10 @@ function initializeEventsInternal() {
             account_code: accountSelect ? (accountSelect.value || null) : null,
             amount: amt,
             payee_identifier: payeeIdentifier || null,
-            payee_name: payeeNameSpan?.dataset.fullName || null,
+            payee_name: payeeName || null,
             is_proxy_payment: proxyCheck?.checked || false,
             proxy_payer_identifier: proxyCheck?.checked ? (proxyIdInput?.value.trim() || null) : null,
-            proxy_payer_name: proxyCheck?.checked ? (proxyNameSpan?.innerText.replace('代付人：', '') || null) : null
+            proxy_payer_name: proxyCheck?.checked ? (proxyPayerName || null) : null
           });
 
           if (invType !== '無') {
@@ -4326,20 +4357,27 @@ async function initialize() {
 
 async function populateVoucherFormOptions() {
   try {
-    const [accounts, banks, departments, payeesResult] = await Promise.all([
-      fetchAccounts(), fetchBankAccounts(), fetchDepartments(),
-      supabase.from('payees').select('id, identifier, name').eq('is_active', true).order('name')
+    const [accounts, banks, departments] = await Promise.all([
+      fetchAccounts(), fetchBankAccounts(), fetchDepartments()
     ]);
 
     window.__cachedAccounts = accounts;
-    if (payeesResult.error) throw payeesResult.error;
-    window.__cachedPayees = payeesResult.data || [];
+    window.__cachedPayees = [];
+    if (isFinanceOperator()) {
+      const { data: payees, error: payeesError } = await supabase
+        .from('payees')
+        .select('id, identifier, name')
+        .eq('is_active', true)
+        .order('name');
+      if (payeesError) throw payeesError;
+      window.__cachedPayees = payees || [];
+    }
 
     // 控制會計專用區塊顯示
     const role = state.currentUser?.role;
     const acctGroup = document.getElementById('accountingFieldsGroup');
     if (acctGroup) {
-        acctGroup.style.display = ['accounting', 'admin'].includes(role) ? 'flex' : 'none';
+        acctGroup.style.display = ['accounting', 'admin', 'super_admin'].includes(role) ? 'flex' : 'none';
     }
 
     // 初始進入此頁面時，預設給 5 個空列
@@ -6645,8 +6683,9 @@ window.openResubmitModal = async (voucherId) => {
                       </td>
                       <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${l.amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
                       <td style="padding:8px; border:1px solid #ddd;">
-                        <input type="text" class="grid-payee-id" value="${l.payee_identifier || ''}" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
-                        <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;">${l.payee_name || ''}</span>
+                        <input type="text" class="grid-payee-name-input" value="${escapeHtml(l.payee_name || '')}" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
+                        <input type="text" class="grid-payee-id" value="${escapeHtml(l.payee_identifier || '')}" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
+                        <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
                       </td>
                       <td style="padding:8px; border:1px solid #ddd; text-align:center;">
                         <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignResubLineAttachment('${rowId}', this.files[0])">
@@ -6683,7 +6722,8 @@ window.openResubmitModal = async (voucherId) => {
                     </td>
                     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${vch.total_amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
                     <td style="padding:8px; border:1px solid #ddd;">
-                      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
+                      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
+                      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
                       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
                     </td>
                     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -6772,7 +6812,8 @@ window.addResubExcelRow = () => {
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
     <td style="padding:8px; border:1px solid #ddd;">
-      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
+      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
+      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
     </td>
     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -6840,7 +6881,12 @@ window.submitFullResubmission = async (e, voucherId) => {
     const description = categorySelect === '其他' ? (categoryNote || '其他') : categorySelect;
     const amount = Number(row.querySelector('.grid-amount').value) || 0;
     const payeeId = row.querySelector('.grid-payee-id').value.trim();
-    const payeeName = row.querySelector('.grid-payee-name')?.innerText || '';
+    const payeeName = (
+      row.querySelector('.grid-payee-name-input')?.value.trim()
+      || row.querySelector('.grid-payee-name')?.dataset.fullName
+      || row.querySelector('.grid-payee-name')?.innerText.trim()
+      || ''
+    ).replace(/^付款人：/, '').trim();
 
     totalAmount += amount;
 
