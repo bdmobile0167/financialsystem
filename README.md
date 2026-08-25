@@ -1,6 +1,6 @@
 # 財務管理系統
 
-目前本機版本：`0.2.44`
+目前本機版本：`0.2.45`
 
 這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、付款管理、銀行帳戶與勾稽、專案與部門預算、會計分錄、四大財報、IFRS 調整、通知、Audit Trail 與帳號管理。
 
@@ -11,7 +11,7 @@
 - Production domain：`financialsystem-nine.vercel.app`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.44` 尚未推送前，GitHub／Vercel 仍不代表已同步。
+- 本機版本 `0.2.45` 尚未推送前，GitHub／Vercel 仍不代表已同步。
 
 ## 最新整理
 
@@ -27,6 +27,7 @@
 - 設定頁新增會計科目管理，會計、管理員、超級管理員可維護 `accounts` 代碼、名稱與類型。
 - 報支付款人欄位改為輸入身分證/統編後帶出中間為 `O` 的遮罩姓名，一般員工與主管不能查詢完整付款人主檔。
 - 付款管理已拆分準備付款與所有付款人，並支援付款人明細、薪資批次付款、付款憑證流水號。
+- 付款管理按鈕已改為明確的付款設定/確認流程；付款完成後才會轉成已付款並建立付款憑證、銀行流水與日記帳。
 - 預算管理支援部門預算申請、審核、期初編列、實際使用與 Audit Trail。
 - 公司基本資料、營業項目、董監名單、股東出資與已投入股本已改由 Supabase 管理。
 - 財報正式以 `journal_entries` 與 `accounts` 為核心來源，銀行實際餘額僅供勾稽參考。
@@ -36,7 +37,7 @@
 - Vercel Production 已由使用者回報設定 `SUPABASE_SECRET_KEY`，仍需重新部署並用邀請帳號流程驗收。
 - Supabase Auth SMTP 已由使用者回報建立；若要使用 Supabase 官方邀請信，Vercel 需設定 `INVITE_EMAIL_PROVIDER=supabase`。
 - 多收款人付款拆分尚未實作，已整合記錄於 `docs/TASKS_PENDING.md`。
-- Production 尚未完成 `0.2.44` 部署與四 viewport 驗收。
+- Production 尚未完成 `0.2.45` 部署與四 viewport 驗收。
 - `scripts/ui.js` 仍需持續拆分，降低單檔維護成本。
 
 ## 文件入口

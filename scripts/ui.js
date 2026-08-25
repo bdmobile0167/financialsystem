@@ -1427,7 +1427,7 @@ async function renderPaymentManagement() {
           const paid = voucher.status === 'closed';
           const payment = getVoucherPayment(voucher);
           return `<tr>
-            <td><input class="payment-list-checkbox" type="checkbox" ${paid ? 'checked disabled' : ''} aria-label="${paid ? '已付款' : '標記付款'}" onchange="openPaymentEditor('${voucher.id}')"></td>
+            <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? '已完成' : '待處理'}</span></td>
             <td>
               <strong>${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '-')}</strong>
               ${voucher.accounting_voucher_no ? `<br><span class="muted">${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜#${voucher.accounting_sequence_no}` : ''}</span>` : ''}
@@ -1438,7 +1438,7 @@ async function renderPaymentManagement() {
             <td>${escapeHtml(voucher.accounting_account ? `${voucher.accounting_account.code} ${voucher.accounting_account.name}` : '未指定科目')}<br><span class="muted">${escapeHtml(voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '尚未指定付款銀行')}</span></td>
             <td><strong>NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</strong></td>
             <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? `已付款 ${voucher.payment_date || ''}` : '待付款'}</span>${payment?.payment_no ? `<br><strong class="payment-voucher-number">${escapeHtml(payment.payment_no)}${payment.payment_sequence_no ? `｜#${payment.payment_sequence_no}` : ''}</strong>` : ''}</td>
-            <td>${paid ? `<button type="button" class="secondary" onclick="viewPaymentVoucher('${voucher.id}')">查看付款憑證</button>` : `<button type="button" class="secondary" onclick="openPaymentEditor('${voucher.id}')">編輯／付款</button>`}</td>
+            <td>${paid ? `<button type="button" class="secondary" onclick="viewPaymentVoucher('${voucher.id}')">查看付款憑證</button>` : `<button type="button" class="primary-btn" style="width:auto; padding:8px 12px;" onclick="openPaymentEditor('${voucher.id}')">付款設定／確認付款</button>`}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>` : '<p class="muted">目前沒有符合條件的付款資料。</p>';
@@ -1793,13 +1793,16 @@ async function savePaymentAssignment(voucherId) {
     }).eq('id', recipientId);
     if (recipientError) throw recipientError;
   }
-  const { error } = await supabase.from('vouchers').update({
+  const { data: updatedVoucher, error } = await supabase.from('vouchers').update({
     payment_recipient_id: recipientId,
     accounting_account_id: accountId,
     payment_bank_account_id: bankId,
     accounting_note: note
-  }).eq('id', voucherId).eq('status', 'approved');
+  }).eq('id', voucherId).eq('status', 'approved').select('id, status').maybeSingle();
   if (error) throw error;
+  if (!updatedVoucher) {
+    throw new Error('此付款資料已不是待付款狀態，請重新整理付款清單後再操作。');
+  }
   if (accountId) {
     const account = (await fetchAccounts()).find(item => item.id === accountId);
     if (account) await supabase.from('voucher_lines').update({ account_code: account.code }).eq('voucher_id', voucherId);
@@ -1819,23 +1822,34 @@ window.savePaymentDraft = async (voucherId) => {
 };
 
 window.confirmPaymentFromList = async (voucherId) => {
+  const triggerBtn = document.querySelector(`button[onclick="confirmPaymentFromList('${voucherId}')"]`);
   try {
-    const assignment = await savePaymentAssignment(voucherId);
-    const paymentDate = document.getElementById('paymentEditorDate')?.value;
-    if (!assignment.recipientId) throw new Error('請先選擇收款人');
-    if (!assignment.recipientBank) throw new Error('請確認收款銀行名稱');
-    if (!assignment.recipientAccountName) throw new Error('請確認收款戶名');
-    if (!assignment.recipientAccountNumber) throw new Error('請確認收款帳號');
-    if (!assignment.accountId) throw new Error('請先選擇會計科目');
-    if (!assignment.bankId) throw new Error('請先選擇付款銀行');
-    if (!paymentDate) throw new Error('請選擇付款日期');
-    if (!confirm('確認款項已實際付出？確認後將產生日記帳、銀行流水與付款憑證。')) return;
-    const result = await closeVoucherByAccounting(voucherId, assignment.accountId, assignment.bankId, paymentDate);
-    if (!result.success) throw new Error(result.error);
-    document.querySelector('.modal-backdrop')?.remove();
-    showMessage('付款完成，已產生憑證並通知申請人與專案成員。');
-    await Promise.all([renderPaymentManagement(), renderTransactionTable(), renderVoucherWorkflowList()]);
-    renderDashboard();
+    await withActionLock(`payment-confirm:${voucherId}`, triggerBtn, async () => {
+      const paymentDate = document.getElementById('paymentEditorDate')?.value;
+      const recipientId = document.getElementById('paymentEditorRecipient')?.value || null;
+      const recipientBank = document.getElementById('paymentEditorRecipientBank')?.value.trim() || null;
+      const recipientAccountName = document.getElementById('paymentEditorRecipientAccountName')?.value.trim() || null;
+      const recipientAccountNumber = document.getElementById('paymentEditorRecipientAccountNumber')?.value.trim() || null;
+      const accountId = document.getElementById('paymentEditorAccount')?.value || null;
+      const bankId = document.getElementById('paymentEditorBank')?.value || null;
+
+      if (!recipientId) throw new Error('請先選擇收款人');
+      if (!recipientBank) throw new Error('請確認收款銀行名稱');
+      if (!recipientAccountName) throw new Error('請確認收款戶名');
+      if (!recipientAccountNumber) throw new Error('請確認收款帳號');
+      if (!accountId) throw new Error('請先選擇會計科目');
+      if (!bankId) throw new Error('請先選擇付款銀行');
+      if (!paymentDate) throw new Error('請選擇付款日期');
+      if (!confirm('確認款項已經從公司銀行帳戶實際付出？確認後會轉為「已付款」，並產生日記帳、銀行流水與付款憑證。')) return;
+
+      const assignment = await savePaymentAssignment(voucherId);
+      const result = await closeVoucherByAccounting(voucherId, assignment.accountId, assignment.bankId, paymentDate);
+      if (!result.success) throw new Error(result.error);
+      document.querySelector('.modal-backdrop')?.remove();
+      showMessage('付款完成，狀態已轉為已付款，並已產生付款憑證、銀行流水與日記帳。');
+      await Promise.all([renderPaymentManagement(), renderTransactionTable(), renderVoucherWorkflowList()]);
+      renderDashboard();
+    }, { loadingText: '付款處理中...' });
   } catch (error) {
     alert('付款失敗：' + error.message);
   }

@@ -1,5 +1,13 @@
 ﻿# 變更紀錄
 
+## 0.2.45 - 2026-08-25
+
+- 付款清單移除容易誤解的 checkbox，改以狀態 badge 顯示「待處理／已完成」。
+- 待付款操作按鈕改為「付款設定／確認付款」，明確表示需進入付款設定視窗完成付款。
+- 確認付款前先檢查收款人、收款銀行、收款戶名、收款帳號、會計科目、付款銀行與付款日期，避免先寫入空付款設定。
+- `savePaymentAssignment()` 加入狀態更新結果檢查；若單據已非待付款，會提示重新整理付款清單。
+- Supabase `close_voucher_by_accounting` RPC 補允許 `super_admin` 執行付款銷案。
+
 ## 0.2.44 - 2026-08-25
 
 - `api/invite.js` 新增 Supabase 官方邀請信模式；Vercel 設定 `INVITE_EMAIL_PROVIDER=supabase` 後會改用 `supabase.auth.admin.inviteUserByEmail()`。
