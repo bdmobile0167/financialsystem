@@ -1,6 +1,6 @@
-# 財務管理系統
+﻿# 財務管理系統
 
-目前本機版本：`0.2.30`
+目前本機版本：`0.2.33`
 
 這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、銀行帳戶與勾稽、專案預算、會計分錄、四大財報、IFRS 調整、通知及帳號管理。
 
@@ -10,7 +10,7 @@
 - Vercel 專案：`financialsystem`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.30` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
+- 本機版本 `0.2.33` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
 
 ## 本輪更新
 

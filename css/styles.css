@@ -235,6 +235,30 @@ button.danger:hover {
   margin-bottom: 18px;
 }
 
+.payment-mode-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.payment-mode-btn {
+  min-width: 108px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.payment-mode-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
 .payment-management-header {
   display: flex;
   align-items: flex-start;

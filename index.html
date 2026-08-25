@@ -153,7 +153,13 @@
             </div>
           </div>
           <div class="panel">
-            <h3>交易清單</h3>
+            <div class="panel-header">
+              <div>
+                <h3>交易清單</h3>
+                <p class="muted">無憑證交易可直接清除；已關聯付款憑證的交易請回付款管理處理。</p>
+              </div>
+              <button type="button" id="deleteUnvouchedTransactionsBtn" class="danger">刪除全部無憑證</button>
+            </div>
             <table>
               <thead>
                 <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>金額</th><th>操作</th></tr>
@@ -194,6 +200,11 @@
         </section>
 
         <section id="paymentManagement" class="tab-panel" style="display:none;">
+          <div class="payment-mode-tabs" role="tablist" aria-label="付款管理模式">
+            <button type="button" class="payment-mode-btn active" data-payment-mode="queue">準備付款</button>
+            <button type="button" class="payment-mode-btn" data-payment-mode="recipients">所有付款人</button>
+          </div>
+
           <div class="panel payment-management-panel">
             <div class="panel-header payment-management-header">
               <div>
@@ -212,7 +223,7 @@
             <div id="paymentList" class="table-scroll"></div>
           </div>
 
-          <div class="panel payment-recipient-panel">
+          <div class="panel payment-recipient-panel" hidden>
             <h3>收款人資訊設定</h3>
             <form id="paymentRecipientForm" class="payment-recipient-form">
               <input type="hidden" id="paymentRecipientId" />
@@ -258,7 +269,13 @@
                 <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                   <div style="flex: 1;">
                     <label>專案：</label>
-                    <select id="vProject" required><option value="">載入中...</option></select>
+                    <select id="vProject"><option value="">載入中...</option></select>
+                    <p class="muted" style="font-size:12px; margin:4px 0 0;">非專案報支可留空，系統會改用部門年度預算。</p>
+                  </div>
+                  <div style="flex: 1;">
+                    <label>部門年度預算：</label>
+                    <select id="vDepartmentBudget"><option value="">請先選擇部門</option></select>
+                    <p class="muted" style="font-size:12px; margin:4px 0 0;">不選專案時必填。</p>
                   </div>
                   <div style="flex: 1;">
                     <label>行程起日：</label>
@@ -321,12 +338,12 @@
         <section id="voucherCenter" class="tab-panel" style="display:none;">
           <div class="panel">
             <h3>憑證中心</h3>
-            <p class="muted">所有交易的憑證彙總，方便會計師依編號、對象、金額搜尋核對。</p>
+            <p class="muted">可依申請憑證、會計憑證、付款憑證或摘要搜尋；一般使用者只會看到自己的報支資料。</p>
             <div class="search-row">
-              <input type="text" id="voucherSearchInput" placeholder="搜尋憑證編號、對象、銀行、明細..." />
+              <input type="text" id="voucherSearchInput" placeholder="搜尋申請憑證、會計憑證、付款號碼、摘要..." />
             </div>
             <table>
-              <thead><tr><th>日期</th><th>類型</th><th>憑證編號</th><th>銀行帳戶</th><th>對象/明細</th><th>收支</th><th>金額</th></tr></thead>
+              <thead><tr><th>日期</th><th>申請憑證</th><th>會計憑證</th><th>付款憑證</th><th>摘要</th><th>狀態</th><th>金額</th></tr></thead>
               <tbody id="voucherCenterTableBody"></tbody>
             </table>
           </div>
@@ -362,6 +379,12 @@
                   <label>所屬部門</label>
                   <select id="projectDepartment" style="width: 100%;"></select>
                 </div>
+                <div id="projectDefaultBankRow" style="margin-bottom: 12px;">
+                  <label>預設出款銀行（選填，僅會計可見）</label>
+                  <select id="projectDefaultBankAccount" style="width: 100%;">
+                    <option value="">不指定，付款時再選</option>
+                  </select>
+                </div>
                 <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                   <label style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
                   <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
@@ -369,6 +392,33 @@
                 </div>
                 <button type="submit" class="primary-btn" style="width: 100%;">建立專案</button>
               </form>
+              <div id="departmentBudgetPanel">
+                <hr style="margin: 22px 0; border: 0; border-top: 1px solid #e2e8f0;">
+                <h3>部門預算申請</h3>
+                <form id="departmentBudgetForm" class="form-container">
+                  <div style="margin-bottom: 12px;">
+                    <label>部門</label>
+                    <select id="departmentBudgetDepartment" required style="width: 100%;"></select>
+                  </div>
+                  <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="flex: 1;">
+                      <label>年度</label>
+                      <input type="number" id="departmentBudgetYear" min="2020" max="2100" required style="width: 100%;" />
+                    </div>
+                    <div style="flex: 1;">
+                    <label>申請預算金額</label>
+                    <input type="number" id="departmentBudgetAmount" min="0" required style="width: 100%;" />
+                  </div>
+                </div>
+                  <label>申請原因</label>
+                  <textarea id="departmentBudgetNote" rows="2" required style="width: 100%;"></textarea>
+                  <button type="submit" class="primary-btn" style="width: 100%; margin-top: 10px;">送出預算申請</button>
+                </form>
+                <h3 style="margin-top:18px;">預算申請審核</h3>
+                <div id="departmentBudgetRequestList" class="table-scroll" style="margin-top: 10px;"></div>
+                <h3 style="margin-top:18px;">期初編列與實際使用</h3>
+                <div id="departmentBudgetList" class="table-scroll" style="margin-top: 14px;"></div>
+              </div>
             </div>
 
             <!-- 右側：專案列表 -->

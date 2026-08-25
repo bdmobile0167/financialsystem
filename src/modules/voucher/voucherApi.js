@@ -73,7 +73,7 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = nul
 export async function createVoucher(payload) {
   const {
     txDate, category = '營業', summary, departmentId, currentManagerId,
-    projectId, totalAmount, status = 'pending_review',
+    projectId, departmentBudgetId, totalAmount, status = 'pending_review',
     detailLines, invoiceLines, attachmentsMap, rows,
     voucherType = '发票', manualNumber = '',
     tripStartDate, tripEndDate, applicantId
@@ -96,6 +96,8 @@ export async function createVoucher(payload) {
       current_manager_id: currentManagerId || null,
       total_amount: totalAmount,
       project_id: projectId && projectId !== 'all' ? projectId : null,
+      department_budget_id: projectId && projectId !== 'all' ? null : (departmentBudgetId || null),
+      budget_scope: projectId && projectId !== 'all' ? 'project' : 'department',
       status: status,
       trip_start_date: tripStartDate || null,
       trip_end_date: tripEndDate || null
@@ -228,9 +230,15 @@ export async function managerReject(voucher, reason) {
 export async function accountingApprove(voucher) {
   // 用「原子性條件更新」防止重複點擊／重複呼叫：只有目前狀態仍是 pending_accounting 時才會更新成功。
   // 這可避免同一張單據因連點多次而重複扣除專案預算、重複寫入歷程與通知。
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('vouchers')
-    .update({ status: VOUCHER_STATUS.APPROVED, updated_at: new Date().toISOString() })
+    .update({
+      status: VOUCHER_STATUS.APPROVED,
+      accounting_approved_at: new Date().toISOString(),
+      accounting_approved_by: user?.id || null,
+      updated_at: new Date().toISOString()
+    })
     .eq('id', voucher.id)
     .eq('status', VOUCHER_STATUS.PENDING_ACCOUNTING)
     .select();
@@ -240,11 +248,25 @@ export async function accountingApprove(voucher) {
   }
   await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
 
-  if (voucher.project_id) {    const { data: proj } = await supabase
-      .from('projects').select('remaining_budget').eq('id', voucher.project_id).single();
+  const approvedVoucher = data[0] || voucher;
+  if (approvedVoucher.project_id) {    const { data: proj } = await supabase
+      .from('projects').select('remaining_budget').eq('id', approvedVoucher.project_id).single();
     if (proj) {
-      const newRemaining = Number(proj.remaining_budget || 0) - Number(voucher.total_amount || 0);
-      await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', voucher.project_id);
+      const newRemaining = Number(proj.remaining_budget || 0) - Number(approvedVoucher.total_amount || 0);
+      await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', approvedVoucher.project_id);
+    }
+  } else if (approvedVoucher.department_budget_id) {
+    const { data: budget } = await supabase
+      .from('department_budgets')
+      .select('remaining_amount')
+      .eq('id', approvedVoucher.department_budget_id)
+      .single();
+    if (budget) {
+      const newRemaining = Number(budget.remaining_amount || 0) - Number(approvedVoucher.total_amount || 0);
+      await supabase
+        .from('department_budgets')
+        .update({ remaining_amount: Math.max(0, newRemaining), updated_at: new Date().toISOString() })
+        .eq('id', approvedVoucher.department_budget_id);
     }
   }
 
