@@ -463,10 +463,20 @@ button.danger:hover {
 
 .login-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   background: var(--bg);
+  overflow-x: hidden;
+}
+
+.login-shell > .card {
+  flex: 0 1 520px;
+  width: 100%;
+  max-width: calc(100vw - 48px);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .app-modal-shell {
@@ -489,7 +499,6 @@ button.danger:hover {
 }
 
 .login-card {
-  width: calc(100vw - 48px);
   max-width: 520px;
   min-width: 0;
   background: var(--surface);
@@ -1118,8 +1127,11 @@ tbody tr:hover {
     padding: 16px;
   }
 
+  .login-shell > .card {
+    max-width: calc(100vw - 32px);
+  }
+
   .login-card {
-    width: calc(100vw - 32px);
     padding: 24px;
   }
   

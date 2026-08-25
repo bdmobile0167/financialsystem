@@ -1,5 +1,21 @@
 # 變更紀錄
 
+## 0.2.30 - 2026-08-25
+
+- TASK-011 開始拆分 navigation，新增 `src/modules/navigation/navigation.js`。
+- 將 `renderHeader()` 與 `renderTabs()` 從 `scripts/ui.js` 移出，保留 tab click 業務 callback 於原流程。
+- 修正登入頁在窄 viewport 下卡片可能被內文最小寬度撐開的問題。
+- 本機 HTTP smoke 確認首頁、`scripts/ui.js` 與 navigation module 可正常載入。
+- 使用 Chrome headless 產生四種登入頁 viewport 截圖；登入後 Dashboard/財報完整互動驗收仍待有效帳號與 production 部署。
+
+## 0.2.29 - 2026-08-25
+
+- 完成 P1 未引用程式清理，移除未接入 runtime 的破損/空殼模組。
+- 移除 `src/modules/core/app.js` 與 `src/modules/reports/financialReports.js`，避免 AI 或開發者誤接破損舊入口。
+- 移除 0 byte 的 `src/services/auth/*` 與 `src/services/data/*` 空殼檔案。
+- 文件同步正式財報路徑：`scripts/ui.js` 負責 UI 協調，`scripts/reports.js` 負責報表計算。
+- 管理員重設密碼改走 Supabase Auth Admin API，修正重新登入時新密碼被判定錯誤的問題。
+
 ## 0.2.28 - 2026-08-21
 
 - 報支明細改為選擇付款人，並由 Supabase 自動連結至付款管理。

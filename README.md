@@ -1,6 +1,6 @@
 # 財務管理系統
 
-目前本機版本：`0.2.28`
+目前本機版本：`0.2.30`
 
 這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、銀行帳戶與勾稽、專案預算、會計分錄、四大財報、IFRS 調整、通知及帳號管理。
 
@@ -10,10 +10,16 @@
 - Vercel 專案：`financialsystem`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.28` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
+- 本機版本 `0.2.30` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
 
 ## 本輪更新
 
+- TASK-011 開始拆分 navigation：`renderHeader()`、`renderTabs()` 已移至 `src/modules/navigation/navigation.js`。
+- TASK-009 補強登入頁 mobile viewport：登入/強制改密碼卡片改為 flex responsive，不再依賴 grid min-content。
+- 完成本機 HTTP smoke：首頁、`scripts/ui.js` 與 navigation module 可正常 200 載入。
+- 完成 P1 未引用程式清理，移除未接入 runtime 的破損/空殼模組。
+- 財報正式維持 `scripts/reports.js` 作為計算來源，`scripts/ui.js` 保留現行財報 UI 協調。
+- 管理員重設密碼改走 Supabase Auth Admin API，避免只寫入 `profiles` 造成重新登入密碼錯誤。
 - 報支申請直接選擇付款人，核准後自動帶入付款管理。
 - 付款管理可再次確認並即時更新收款帳號，付款後產生獨立 `PAY-...` 憑證。
 - 交易管理憑證與付款憑證分離，手動交易直接保存到 Supabase。
@@ -37,7 +43,7 @@
 - 會計與管理員可對已銷帳單據銷案，原因必填並寫入稽核紀錄。
 - 會計科目選單改用共用 API，並顯示空資料或 RLS 錯誤。
 - 合併兩個分岔的本機副本，統一以 `表格自動化\netlify` 為正式開發目錄。
-- 保留較新的權限、Auth Provider、Repository、交易與傳票模組。
+- 保留較新的權限、交易與傳票模組；未接入 runtime 的 Auth Provider／Repository 空殼已於 0.2.29 清理。
 - 修正 Dashboard 因未載入 Tailwind 而失去 grid、卡片與間距的問題。
 - Dashboard 改為專案內建語意化 CSS，支援桌機、平板與手機。
 - 修正 header 漢堡按鈕及專案選單排列。
