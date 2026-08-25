@@ -1,6 +1,6 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.35`
+目前本機版本：`0.2.36`
 
 這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、銀行帳戶與勾稽、專案預算、會計分錄、四大財報、IFRS 調整、通知及帳號管理。
 
@@ -10,10 +10,13 @@
 - Vercel 專案：`financialsystem`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.35` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
+- 本機版本 `0.2.36` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
 
 ## 本輪更新
 
+- Supabase 新增資料表 RLS 已改成 init-plan friendly policy，並補齊 FK index / 拆分重疊 policy。
+- 近期新增 SECURITY DEFINER helper 已撤回 `public` / `anon` 直接 execute 權限。
+- Dashboard CSS 改用既有色彩 token，並補齊 1024 / 768 / 390 viewport 規則。
 - 付款人主檔新增付款明細查詢，可看到付款日期、付款憑證、會計憑證、出款銀行與金額。
 - 付款管理新增員工薪資付款批次，可一次勾選多位付款人輸入薪資、勞保、健保與勞退，並自動產生薪資付款憑證。
 - 付款管理的所有付款人改讀 Supabase `payees` 主檔，可新增與編輯付款人銀行/聯絡明細。

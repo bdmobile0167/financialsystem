@@ -1,4 +1,4 @@
-/* =========================================
+﻿/* =========================================
    1. 核心變數與基礎設定 (60/30/10 配色系統)
    ========================================= */
 :root {
@@ -371,14 +371,14 @@ button.danger:hover {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
   margin: 0 0 24px;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--border-strong);
 }
 
 .payment-voucher-document dt,
 .payment-voucher-document dd {
   margin: 0;
   padding: 12px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .payment-voucher-document dt {
@@ -1152,6 +1152,8 @@ tbody tr:hover {
   }
 
   .login-shell > .card {
+    flex: 0 1 auto;
+    width: min(100%, 358px);
     max-width: calc(100vw - 32px);
   }
 
@@ -1335,13 +1337,13 @@ tbody tr:hover {
 
 .audit-role {
   color: #334155;
-  background: #e2e8f0;
+  background: var(--border);
 }
 
 .audit-action {
   margin-left: 0;
-  color: #1d4ed8;
-  background: #dbeafe;
+  color: var(--primary-strong);
+  background: var(--primary-light);
 }
 
 button.audit-voucher-link {
@@ -1421,7 +1423,7 @@ button.audit-voucher-link {
 .hero-btn-ghost {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.14);
-  color: #e2e8f0;
+  color: var(--border);
 }
 .hero-btn-ghost:hover { background: rgba(255,255,255,0.12); }
 
@@ -1844,7 +1846,7 @@ button.audit-voucher-link {
   }
 
   td {
-    border-bottom: 1px solid #cbd5e1 !important;
+    border-bottom: 1px solid var(--border-strong) !important;
     color: #000 !important;
     padding: 7px 6px !important;
     font-size: 12px !important;
@@ -1990,7 +1992,7 @@ button.audit-voucher-link {
 .dashboard-hero p {
   max-width: 720px;
   margin: 0;
-  color: #cbd5e1;
+  color: var(--border-strong);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -2004,7 +2006,7 @@ button.audit-voucher-link {
 button.dashboard-action {
   width: auto;
   padding: 9px 13px;
-  color: #e2e8f0;
+  color: var(--border);
   background: #1f2937;
   border: 1px solid #374151;
   border-radius: var(--radius-sm);
@@ -2042,7 +2044,7 @@ button.dashboard-action-primary {
   place-items: center;
   flex: 0 0 24px;
   color: #fff;
-  background: #2563eb;
+  background: var(--primary);
   border-radius: 50%;
   font-size: 11px;
   font-weight: 800;
@@ -2225,7 +2227,7 @@ button.dashboard-link {
   display: inline-flex;
   padding: 3px 7px;
   color: #334155;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 999px;
   font-family: inherit;
   font-size: 10px;
@@ -2272,14 +2274,14 @@ button.dashboard-link {
   height: 6px;
   margin-top: 6px;
   overflow: hidden;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 999px;
 }
 
 .dashboard-progress span {
   display: block;
   height: 100%;
-  background: #2563eb;
+  background: var(--primary);
 }
 
 .dashboard-progress .dashboard-progress-warning { background: #d97706; }
@@ -2306,15 +2308,15 @@ button.dashboard-link {
 }
 
 .dashboard-security-note {
-  color: #e2e8f0;
+  color: var(--border);
   background: #1f2937;
   border-color: #334155;
 }
 
 .dashboard-security-note .dashboard-eyebrow { color: #fbbf24; }
-.dashboard-security-note p { color: #cbd5e1; }
+.dashboard-security-note p { color: var(--border-strong); }
 
-@media (max-width: 1080px) {
+@media (max-width: 1024px) {
   .main-header {
     display: grid;
     grid-template-columns: 44px minmax(160px, 1fr) auto;
@@ -2329,6 +2331,10 @@ button.dashboard-link {
   .dashboard-content-grid {
     grid-template-columns: 1fr;
   }
+
+  #dashboard .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
@@ -2341,7 +2347,7 @@ button.dashboard-link {
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .main-header {
     grid-template-columns: 44px minmax(0, 1fr);
     align-items: center;
@@ -2389,19 +2395,27 @@ button.dashboard-link {
   .dashboard-workflow {
     grid-column: 1;
   }
+
+  #dashboard .panel {
+    overflow-x: auto;
+  }
+
+  #dashboard table {
+    min-width: 680px;
+  }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 390px) {
   .container {
-    padding: 12px;
+    padding: 10px;
   }
 
   .main-content {
-    gap: 14px;
+    gap: 12px;
   }
 
   .main-header {
-    padding: 15px;
+    padding: 14px;
   }
 
   .header-brand {
@@ -2426,6 +2440,7 @@ button.dashboard-link {
 
   .dashboard-metric {
     min-height: 112px;
+    padding: 14px;
   }
 
   .dashboard-list-row {
@@ -2443,12 +2458,21 @@ button.dashboard-link {
   .dashboard-list-aside .dashboard-status {
     justify-self: end;
   }
+
+  #dashboard .summary {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  #dashboard .summary-item {
+    padding: 14px;
+  }
 }
 
 .reconciliation-status {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   background: #f8fafc;
   color: #334155;
   border-radius: 8px;

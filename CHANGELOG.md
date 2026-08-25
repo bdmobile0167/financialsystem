@@ -1,5 +1,14 @@
 ﻿# 變更紀錄
 
+## 0.2.36 - 2026-08-25
+
+- Supabase 新增資料表 RLS 改用 `(select auth.uid())` / `(select public.get_my_role())` / `(select public.get_my_department())` 型式，減少逐 row 重算。
+- 新增資料表補齊 FK index，並拆分重疊的 `FOR ALL` policy，清除本輪新增表的 performance advisor 警告。
+- 收窄近期新增 SECURITY DEFINER helper 的 `public` / `anon` execute 權限，保留登入後需要的 RPC 並由函式內做角色檢查。
+- `create_payroll_payment_batch` 改用 `public.get_my_role()` 判斷角色。
+- Dashboard CSS 改用既有色彩 token，並補齊 1024 / 768 / 390 viewport 規則。
+- 文件同步 `DATABASE`、`RLS_GUIDE`、待辦與完成紀錄。
+
 ## 0.2.35 - 2026-08-25
 
 - 付款人主檔新增「明細」查詢，可看到付款日期、付款憑證、會計憑證、出款銀行與金額。
