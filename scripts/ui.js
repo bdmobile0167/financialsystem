@@ -4013,9 +4013,13 @@ function initializeEventsInternal() {
         });
         resultBox.style.display = 'block';
         resultBox.className = result.emailSent ? 'message success' : 'message warning';
-        resultBox.textContent = result.emailSent
-          ? `帳號已建立，邀請信已寄至 ${result.credentials.email}（使用者登入後系統會強制要求設定新密碼）。`
-          : `帳號已建立但通知信失敗：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（${result.emailError || '未知原因'}）`;
+        if (result.emailSent && result.emailProvider === 'supabase') {
+          resultBox.textContent = `帳號已建立，Supabase 邀請信已寄至 ${result.credentials.email}，使用者點擊信件連結後設定密碼。`;
+        } else if (result.emailSent) {
+          resultBox.textContent = `帳號已建立，邀請信已寄至 ${result.credentials.email}（使用者登入後系統會強制要求設定新密碼）。`;
+        } else {
+          resultBox.textContent = `帳號已建立但通知信失敗：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（${result.emailError || '未知原因'}）`;
+        }
         e.target.reset();
         await renderAdminUserTable();
       } catch (error) {

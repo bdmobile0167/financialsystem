@@ -1,5 +1,26 @@
 ﻿# 變更紀錄
 
+## 0.2.44 - 2026-08-25
+
+- `api/invite.js` 新增 Supabase 官方邀請信模式；Vercel 設定 `INVITE_EMAIL_PROVIDER=supabase` 後會改用 `supabase.auth.admin.inviteUserByEmail()`。
+- 帳號邀請成功訊息會依 `emailProvider` 顯示 Supabase 邀請連結或 Gmail 初始密碼流程。
+- 文件更新：使用者已回報設定 `SUPABASE_SECRET_KEY` 與 Supabase Authentication SMTP，目前改列為待重新部署與邀請流程驗收。
+- 新增外部 Git server 空 repository 架設待辦；目前本機找不到 `git`，且 SSH key 尚未加入帳號。
+
+## 0.2.43 - 2026-08-25
+
+- 移除一次性 `CODEX_TASK_*` 文件，避免和正式 tasks 文件重複。
+- 移除獨立 `TASKS_MULTI_PAYEE_PAYMENT_SPLIT.md`，將多收款人付款拆分完整規格整合回 `TASKS_PENDING.md`。
+- README、AI 入口與未來功能文件改指向正式 `TASKS_PENDING.md`。
+- 同步版本、待辦與完成紀錄到 `0.2.43`。
+
+## 0.2.42 - 2026-08-25
+
+- 重新整理 README，改為目前狀態、已完成重點、主要待辦與文件入口。
+- 重建亂碼文件：`TASKS_PENDING`、`AI_ENTRY_POINT`、`BUGS`、`DATABASE`、`API`、`ARCHITECTURE`、`SUPABASE_EMAIL_LOGIN`。
+- 重建 `TASKS_MULTI_PAYEE_PAYMENT_SPLIT`，補齊多收款人付款拆分的資料結構、流程與驗收條件。
+- 同步版本與文件狀態，讓完成項目留在 `TASKS_COMPLETED`，未完成項目留在 `TASKS_PENDING`。
+
 ## 0.2.41 - 2026-08-25
 
 - 會計審核 modal 改為逐筆明細指定會計科目，並新增批次套用同一科目到全部明細。

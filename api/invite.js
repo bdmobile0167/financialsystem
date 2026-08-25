@@ -10,6 +10,11 @@ function json(res, status, body) {
   res.status(status).json(body);
 }
 
+function useSupabaseInviteEmail() {
+  const provider = String(process.env.INVITE_EMAIL_PROVIDER || '').trim().toLowerCase();
+  return provider === 'supabase' || process.env.SUPABASE_AUTH_INVITE_EMAIL === 'true';
+}
+
 function isInvalidAdminKey(key) {
   if (/^(sb_publishable_|sb_anon_)/.test(key)) return true;
   if (!key.startsWith('eyJ')) return false;
@@ -60,7 +65,7 @@ function getMailTransporter() {
   });
 }
 
-function validateInvitePayload(body = {}) {
+function validateInvitePayload(body = {}, options = {}) {
   const errors = [];
   const email = String(body.email || '').trim().toLowerCase();
   const fullName = String(body.fullName || body.name || '').trim();
@@ -78,7 +83,7 @@ function validateInvitePayload(body = {}) {
   if (departmentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(departmentId)) {
     errors.push('departmentId 必須是 UUID');
   }
-  if (!password || password.length < 6) errors.push('password 至少需要 6 個字元');
+  if (!options.supabaseInvite && (!password || password.length < 6)) errors.push('password 至少需要 6 個字元');
 
   return {
     ok: errors.length === 0,
@@ -167,25 +172,32 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const validation = validateInvitePayload(req.body || {});
+    const shouldUseSupabaseInvite = useSupabaseInviteEmail();
+    const validation = validateInvitePayload(req.body || {}, { supabaseInvite: shouldUseSupabaseInvite });
     if (!validation.ok) {
       json(res, 400, { ok: false, correlationId, message: validation.errors.join('；') });
       return;
     }
 
     const { email, fullName, role, departmentId, employeeId, password, permissions } = validation.value;
-    const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true
-    });
+    const authResult = shouldUseSupabaseInvite
+      ? await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          redirectTo: APP_LOGIN_URL,
+          data: { full_name: fullName, role, department_id: departmentId, employee_id: employeeId }
+        })
+      : await supabaseAdmin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true
+        });
 
-    if (createError) {
-      json(res, 400, { ok: false, correlationId, message: `建立 Auth user 失敗：${createError.message}` });
+    if (authResult.error) {
+      const actionName = shouldUseSupabaseInvite ? '建立 Supabase 邀請' : '建立 Auth user';
+      json(res, 400, { ok: false, correlationId, message: `${actionName} 失敗：${authResult.error.message}` });
       return;
     }
 
-    const createdUserId = createdUser?.user?.id;
+    const createdUserId = authResult.data?.user?.id;
     try {
       const { error: insertProfileError } = await supabaseAdmin.from('profiles').upsert({
         id: createdUserId,
@@ -194,7 +206,7 @@ module.exports = async (req, res) => {
         role,
         department_id: departmentId,
         active: true,
-        must_change_password: true,
+        must_change_password: shouldUseSupabaseInvite ? false : true,
         permissions,
         employee_id: employeeId
       }, { onConflict: 'id' });
@@ -211,7 +223,9 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const emailResult = await sendInviteEmail({ to: email, fullName, tempPassword: password, correlationId });
+    const emailResult = shouldUseSupabaseInvite
+      ? { sent: true, provider: 'supabase' }
+      : await sendInviteEmail({ to: email, fullName, tempPassword: password, correlationId });
 
     json(res, 200, {
       ok: true,
@@ -220,8 +234,9 @@ module.exports = async (req, res) => {
         ? `帳號已建立並寄出邀請信：${email}`
         : `帳號已建立，但 Email 未寄出：${emailResult.reason}`,
       emailSent: emailResult.sent,
+      emailProvider: shouldUseSupabaseInvite ? 'supabase' : 'gmail',
       emailError: emailResult.sent ? null : emailResult.reason,
-      credentials: { email, tempPassword: password }
+      credentials: { email, tempPassword: shouldUseSupabaseInvite ? null : password }
     });
   } catch (error) {
     console.error('invite failed', { correlationId, error: error.message });
