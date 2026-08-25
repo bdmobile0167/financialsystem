@@ -1686,44 +1686,55 @@ window.editPaymentRecipient = async (recipientId) => {
 };
 
 window.openPaymentEditor = async (voucherId) => {
-  if (!isFinanceOperator()) return;
-  const voucher = paymentRowsCache.find(item => item.id === voucherId);
-  const [recipients, accounts, banks] = await Promise.all([
-    fetchPaymentRecipients(), fetchAccounts(), fetchBankAccounts()
-  ]);
-  if (!voucher) return alert('找不到付款資料，請重新整理付款清單。');
-  window.__paymentEditorRecipients = recipients;
-  const selectedRecipient = recipients.find(item => item.id === voucher.payment_recipient_id) || {};
-  const selectedBankId = voucher.payment_bank_account_id || voucher.project?.default_bank_account_id || '';
-  const modal = document.createElement('div');
-  modal.className = 'modal-backdrop';
-  modal.innerHTML = `
-    <div class="payment-editor-modal">
-      <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
-      ${voucher.accounting_voucher_no ? `<p class="muted">會計憑證：${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜流水 #${voucher.accounting_sequence_no}` : ''}</p>` : ''}
-      <p>${escapeHtml(voucher.summary || '')}</p>
-      <p><strong>金額：NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</strong></p>
-      <label>收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()"><option value="">請選擇收款人</option>${recipients.filter(item => item.active).map(item => `<option value="${item.id}" ${item.id === voucher.payment_recipient_id ? 'selected' : ''}>${escapeHtml(item.display_name)}｜${escapeHtml(item.identifier || '')}</option>`).join('')}</select></label>
-      <fieldset class="payment-recipient-confirmation">
-        <legend>收款銀行資料（付款前再次確認）</legend>
-        <div class="payment-recipient-bank-grid">
-          <label>銀行名稱<input id="paymentEditorRecipientBank" value="${escapeHtml(selectedRecipient.bank_name || '')}" placeholder="例如：兆豐銀行"></label>
-          <label>分行／代碼<input id="paymentEditorRecipientBranch" value="${escapeHtml(selectedRecipient.bank_branch || '')}"></label>
-          <label>戶名<input id="paymentEditorRecipientAccountName" value="${escapeHtml(selectedRecipient.account_name || selectedRecipient.display_name || '')}"></label>
-          <label>收款帳號<input id="paymentEditorRecipientAccountNumber" value="${escapeHtml(selectedRecipient.account_number || '')}"></label>
+  if (!isFinanceOperator()) {
+    alert('只有會計、管理員或超級管理員可以執行付款。');
+    return;
+  }
+  try {
+    const voucher = paymentRowsCache.find(item => item.id === voucherId);
+    if (!voucher) return alert('找不到付款資料，請重新整理付款清單。');
+    const [recipients, accounts, banks] = await Promise.all([
+      fetchPaymentRecipients(), fetchAccounts(), fetchBankAccounts()
+    ]);
+    window.__paymentEditorRecipients = recipients;
+    const selectedRecipient = recipients.find(item => item.id === voucher.payment_recipient_id) || {};
+    const selectedBankId = voucher.payment_bank_account_id || voucher.project?.default_bank_account_id || '';
+    const activeRecipients = recipients.filter(item => item.active);
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="payment-editor-modal">
+        <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
+        ${voucher.accounting_voucher_no ? `<p class="muted">會計憑證：${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜流水 #${voucher.accounting_sequence_no}` : ''}</p>` : ''}
+        <p>${escapeHtml(voucher.summary || '')}</p>
+        <p><strong>金額：NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</strong></p>
+        ${activeRecipients.length ? '' : '<p class="warning-text">目前沒有可用的付款人，請先到所有付款人名單新增或啟用付款人。</p>'}
+        ${banks.length ? '' : '<p class="warning-text">目前沒有可用的公司付款銀行，請先建立銀行帳戶。</p>'}
+        <label>收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()"><option value="">請選擇收款人</option>${activeRecipients.map(item => `<option value="${item.id}" ${item.id === voucher.payment_recipient_id ? 'selected' : ''}>${escapeHtml(item.display_name)}｜${escapeHtml(item.identifier || '')}</option>`).join('')}</select></label>
+        <fieldset class="payment-recipient-confirmation">
+          <legend>收款銀行資料（付款前再次確認）</legend>
+          <div class="payment-recipient-bank-grid">
+            <label>銀行名稱<input id="paymentEditorRecipientBank" value="${escapeHtml(selectedRecipient.bank_name || '')}" placeholder="例如：兆豐銀行"></label>
+            <label>分行／代碼<input id="paymentEditorRecipientBranch" value="${escapeHtml(selectedRecipient.bank_branch || '')}"></label>
+            <label>戶名<input id="paymentEditorRecipientAccountName" value="${escapeHtml(selectedRecipient.account_name || selectedRecipient.display_name || '')}"></label>
+            <label>收款帳號<input id="paymentEditorRecipientAccountNumber" value="${escapeHtml(selectedRecipient.account_number || '')}"></label>
+          </div>
+        </fieldset>
+        <label>會計科目<select id="paymentEditorAccount"><option value="">請選擇會計科目</option>${accounts.map(item => `<option value="${item.id}" ${item.id === voucher.accounting_account_id ? 'selected' : ''}>${escapeHtml(item.code)} ${escapeHtml(item.name)}</option>`).join('')}</select></label>
+        <label>公司付款銀行<select id="paymentEditorBank"><option value="">請選擇公司實際出款帳戶</option>${banks.map(item => `<option value="${item.id}" ${item.id === selectedBankId ? 'selected' : ''}>${escapeHtml(item.nickname || item.bank_name)} (${escapeHtml(item.account_number)})</option>`).join('')}</select></label>
+        <label>付款日期<input id="paymentEditorDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+        <label>會計備註<textarea id="paymentEditorNote" rows="3">${escapeHtml(voucher.accounting_note || '')}</textarea></label>
+        <div class="button-row">
+          <button type="button" class="secondary" onclick="savePaymentDraft('${voucher.id}')">儲存修改</button>
+          <button type="button" class="primary-btn" onclick="confirmPaymentFromList('${voucher.id}')">確認已付款</button>
+          <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">取消</button>
         </div>
-      </fieldset>
-      <label>會計科目<select id="paymentEditorAccount"><option value="">請選擇會計科目</option>${accounts.map(item => `<option value="${item.id}" ${item.id === voucher.accounting_account_id ? 'selected' : ''}>${escapeHtml(item.code)} ${escapeHtml(item.name)}</option>`).join('')}</select></label>
-      <label>公司付款銀行<select id="paymentEditorBank"><option value="">請選擇公司實際出款帳戶</option>${banks.map(item => `<option value="${item.id}" ${item.id === selectedBankId ? 'selected' : ''}>${escapeHtml(item.nickname || item.bank_name)} (${escapeHtml(item.account_number)})</option>`).join('')}</select></label>
-      <label>付款日期<input id="paymentEditorDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
-      <label>會計備註<textarea id="paymentEditorNote" rows="3">${escapeHtml(voucher.accounting_note || '')}</textarea></label>
-      <div class="button-row">
-        <button type="button" class="secondary" onclick="savePaymentDraft('${voucher.id}')">儲存修改</button>
-        <button type="button" class="primary-btn" onclick="confirmPaymentFromList('${voucher.id}')">確認已付款</button>
-        <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">取消</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
+      </div>`;
+    document.body.appendChild(modal);
+  } catch (error) {
+    console.error('開啟付款設定失敗:', error);
+    alert('開啟付款設定失敗：' + error.message);
+  }
 };
 
 window.populatePaymentRecipientFields = () => {
