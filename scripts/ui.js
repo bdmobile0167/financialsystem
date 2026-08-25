@@ -2563,6 +2563,7 @@ function updateSettings() {
   const settingsPanel = document.getElementById('settings');
   const passwordCard = document.getElementById('passwordCard');
   const companyCard = document.getElementById('companyInfoCard');
+  const accountCard = document.getElementById('accountManagementCard');
   const canEditCompany = canManageCompanyData();
 
   if (settingsPanel && passwordCard && settingsPanel.firstElementChild !== passwordCard) {
@@ -2581,11 +2582,79 @@ function updateSettings() {
     const submitButton = companyCard.querySelector('button[type="submit"]');
     if (submitButton) submitButton.style.display = canEditCompany ? '' : 'none';
   }
+  if (accountCard) {
+    accountCard.style.display = canEditCompany ? '' : 'none';
+    if (canEditCompany) renderAccountManagement();
+  }
 
   ['systemSettingsCard'].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.style.display = canEditCompany ? '' : 'none';
   });
+}
+
+async function renderAccountManagement() {
+  const list = document.getElementById('accountManagementList');
+  if (!list || !isFinanceOperator()) return;
+  try {
+    const accounts = await fetchAccounts();
+    window.__cachedAccounts = accounts;
+    list.innerHTML = `
+      <table style="width:100%; border-collapse:collapse;">
+        <thead><tr><th>代碼</th><th>名稱</th><th>類型</th><th>操作</th></tr></thead>
+        <tbody>
+          ${accounts.map(account => `
+            <tr>
+              <td>${escapeHtml(account.code)}</td>
+              <td>${escapeHtml(account.name)}</td>
+              <td>${escapeHtml(account.type)}</td>
+              <td>
+                <button type="button" class="secondary edit-account-btn" data-id="${account.id}" data-code="${escapeHtml(account.code)}" data-name="${escapeHtml(account.name)}" data-type="${escapeHtml(account.type)}">編輯</button>
+                <button type="button" class="danger delete-account-btn" data-id="${account.id}" data-label="${escapeHtml(`${account.code} ${account.name}`)}">刪除</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error) {
+    list.innerHTML = `<div class="message error">會計科目載入失敗：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function resetAccountManagementForm() {
+  ['accountManagementId', 'accountManagementCode', 'accountManagementName'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const type = document.getElementById('accountManagementType');
+  if (type) type.value = 'expense';
+}
+
+async function saveAccountManagementForm(event) {
+  event.preventDefault();
+  if (!isFinanceOperator()) return showMessage('僅會計與管理員可維護會計科目。', true);
+  const id = document.getElementById('accountManagementId')?.value || '';
+  const payload = {
+    code: document.getElementById('accountManagementCode')?.value.trim(),
+    name: document.getElementById('accountManagementName')?.value.trim(),
+    type: document.getElementById('accountManagementType')?.value
+  };
+  if (!payload.code || !payload.name || !payload.type) {
+    showMessage('請填寫科目代碼、名稱與類型。', true);
+    return;
+  }
+  const query = id
+    ? supabase.from('accounts').update(payload).eq('id', id)
+    : supabase.from('accounts').insert(payload);
+  const { error } = await query;
+  if (error) {
+    showMessage(`會計科目儲存失敗：${error.message}`, true);
+    return;
+  }
+  resetAccountManagementForm();
+  await renderAccountManagement();
+  showMessage('會計科目已儲存。');
 }
 
 async function renderBankAccounts() {
@@ -2868,27 +2937,54 @@ window.calculateVoucherTotal = () => {
   if (display) display.innerText = `$${total.toLocaleString()}`;
 };
 
+window.clearPayeeName = (inputEl) => {
+  const container = inputEl.closest('td, div');
+  const nameSpan = inputEl.classList.contains('grid-proxy-id')
+    ? container?.querySelector('.grid-proxy-name')
+    : container?.querySelector('.grid-payee-name');
+  if (!nameSpan) return;
+  nameSpan.innerHTML = '';
+  delete nameSpan.dataset.maskedName;
+};
+
+window.queuePayeeLookup = (inputEl) => {
+  window.clearPayeeName(inputEl);
+  clearTimeout(inputEl.__payeeLookupTimer);
+  if ((inputEl.value || '').trim().length < 8) return;
+  inputEl.__payeeLookupTimer = setTimeout(() => {
+    if (inputEl.classList.contains('grid-proxy-id')) {
+      window.fetchProxyPayerName(inputEl);
+    } else {
+      window.fetchPayeeName(inputEl);
+    }
+  }, 450);
+};
+
 window.fetchPayeeName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const container = inputEl.closest('td, div');
   const nameSpan = container.querySelector('.grid-payee-name');
   if (!nameSpan) return;
-  if (!identifier) { nameSpan.innerHTML = ''; return; }
-  if (!isFinanceOperator()) {
+  if (!identifier) {
     nameSpan.innerHTML = '';
-    delete nameSpan.dataset.fullName;
+    delete nameSpan.dataset.maskedName;
     return;
   }
 
   nameSpan.innerText = '查詢中...';
-  const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
+  const { data, error } = await supabase
+    .rpc('lookup_masked_payee_by_identifier', { p_identifier: identifier });
+  const payee = Array.isArray(data) ? data[0] : null;
 
-  if (error || !data) {
-    nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
+  if (error || !payee?.masked_name) {
+    nameSpan.innerHTML = isFinanceOperator()
+      ? `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`
+      : '查無付款人，請確認身分證/統編或請會計建立主檔';
+    delete nameSpan.dataset.maskedName;
     return;
   }
-  nameSpan.innerText = maskPayeeName(data.name);
-  nameSpan.dataset.fullName = data.name; // 實際姓名存起來，送出表單時要用真實姓名，不是馬賽克版本
+  nameSpan.innerText = payee.masked_name;
+  nameSpan.dataset.maskedName = payee.masked_name;
 };
 
 window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
@@ -2990,14 +3086,12 @@ window.submitNewPayee = async () => {
     if (trigger) {
       const container = trigger.closest('td, div');
       const idInput = container.querySelector('.grid-payee-id, .grid-proxy-id');
-      const nameInput = container.querySelector('.grid-payee-name-input, .grid-proxy-name-input');
       const nameSpan = container.querySelector('.grid-payee-name, .grid-proxy-name');
       
       if (idInput) idInput.value = identifier;
-      if (nameInput) nameInput.value = name;
       if (nameSpan) { 
         nameSpan.innerText = maskPayeeName(name); 
-        nameSpan.dataset.fullName = name; 
+        nameSpan.dataset.maskedName = maskPayeeName(name); 
       }
     }
   } catch (error) {
@@ -3044,14 +3138,12 @@ window.addExcelRow = (prefillFile = null) => {
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
     <td style="padding:8px; border:1px solid #ddd;">
-      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:96%; padding:4px;">
-      <input type="text" class="grid-payee-id" placeholder="身分證／統編" style="width:96%; padding:4px; margin-top:4px;">
+      <input type="text" class="grid-payee-id" placeholder="身分證／統編" style="width:96%; padding:4px;" oninput="queuePayeeLookup(this)" onblur="fetchPayeeName(this)">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
       <label style="font-size:11px; display:block; margin-top:4px;">
         <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
       </label>
-      <input type="text" class="grid-proxy-name-input" placeholder="代付人姓名／公司名稱" style="display:none; width:96%; padding:4px; margin-top:4px;">
-      <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:96%; padding:4px; margin-top:4px;">
+      <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:96%; padding:4px; margin-top:4px;" oninput="queuePayeeLookup(this)" onblur="fetchProxyPayerName(this)">
       <span class="grid-proxy-name" style="font-size:12px; color:#666; display:block;"></span>
     </td>
     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -3081,17 +3173,15 @@ window.toggleCategoryNote = (selectEl) => {
 window.toggleProxyPayer = (checkboxEl) => {
   const cell = checkboxEl.closest('td');
   const proxyInput = cell.querySelector('.grid-proxy-id');
-  const proxyNameInput = cell.querySelector('.grid-proxy-name-input');
   const proxyName = cell.querySelector('.grid-proxy-name');
-  [proxyNameInput, proxyInput].forEach(input => {
+  [proxyInput].forEach(input => {
     if (input) input.style.display = checkboxEl.checked ? 'block' : 'none';
   });
   if (!checkboxEl.checked) {
     if (proxyInput) proxyInput.value = '';
-    if (proxyNameInput) proxyNameInput.value = '';
     if (proxyName) {
       proxyName.innerText = '';
-      delete proxyName.dataset.fullName;
+      delete proxyName.dataset.maskedName;
     }
   }
 };
@@ -3100,18 +3190,18 @@ window.fetchProxyPayerName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
   if (!identifier) { nameSpan.innerHTML = ''; return; }
-  if (!isFinanceOperator()) {
-    nameSpan.innerHTML = '';
-    delete nameSpan.dataset.fullName;
-    return;
-  }
   nameSpan.innerText = '查詢中...';
-  const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
-  if (data) {
-    nameSpan.innerText = `代付人：${maskPayeeName(data.name)}`;
-    nameSpan.dataset.fullName = data.name;
+  const { data, error } = await supabase
+    .rpc('lookup_masked_payee_by_identifier', { p_identifier: identifier });
+  const payee = Array.isArray(data) ? data[0] : null;
+  if (!error && payee?.masked_name) {
+    nameSpan.innerText = `代付人：${payee.masked_name}`;
+    nameSpan.dataset.maskedName = payee.masked_name;
   } else {
-    nameSpan.innerHTML = `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增</button>`;
+    nameSpan.innerHTML = isFinanceOperator()
+      ? `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增</button>`
+      : '查無代付人，請確認身分證/統編或請會計建立主檔';
+    delete nameSpan.dataset.maskedName;
   }
 };
 
@@ -3375,7 +3465,7 @@ function initializeEventsInternal() {
       });
       document.querySelectorAll('.modal-backdrop').forEach(modal => modal.remove());
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement') && !['accounting', 'admin'].includes(state.currentUser?.role)) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement') && !isFinanceOperator()) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
@@ -3605,6 +3695,33 @@ function initializeEventsInternal() {
     } catch (error) {
       console.error('儲存公司資料失敗:', error);
       showMessage('公司資料儲存失敗：' + error.message, true);
+    }
+  });
+
+  safeListener('accountManagementForm', 'submit', saveAccountManagementForm);
+  safeListener('resetAccountManagementForm', 'click', resetAccountManagementForm);
+  safeListener('accountManagementList', 'click', async (event) => {
+    const editBtn = event.target.closest('.edit-account-btn');
+    const deleteBtn = event.target.closest('.delete-account-btn');
+
+    if (editBtn) {
+      document.getElementById('accountManagementId').value = editBtn.dataset.id || '';
+      document.getElementById('accountManagementCode').value = editBtn.dataset.code || '';
+      document.getElementById('accountManagementName').value = editBtn.dataset.name || '';
+      document.getElementById('accountManagementType').value = editBtn.dataset.type || 'expense';
+      return;
+    }
+
+    if (deleteBtn) {
+      const label = deleteBtn.dataset.label || '此科目';
+      if (!confirm(`確定要刪除 ${label}？若已被憑證或分錄使用，系統會阻擋刪除。`)) return;
+      const { error } = await supabase.from('accounts').delete().eq('id', deleteBtn.dataset.id);
+      if (error) {
+        showMessage(`刪除科目失敗：${error.message}。若已被使用，請改用修改名稱或保留。`, true);
+        return;
+      }
+      await renderAccountManagement();
+      showMessage('會計科目已刪除。');
     }
   });
 
@@ -4100,11 +4217,9 @@ function initializeEventsInternal() {
           const invNumInput = row.querySelector('.grid-inv-num');
           const accountSelect = row.querySelector('.line-account-code');
           const payeeIdInput = row.querySelector('.grid-payee-id');
-          const payeeNameInput = row.querySelector('.grid-payee-name-input');
           const payeeNameSpan = row.querySelector('.grid-payee-name');
           const proxyCheck = row.querySelector('.grid-proxy-check');
           const proxyIdInput = row.querySelector('.grid-proxy-id');
-          const proxyNameInput = row.querySelector('.grid-proxy-name-input');
           const proxyNameSpan = row.querySelector('.grid-proxy-name');
 
           const amt = Number(amtInput?.value || 0);
@@ -4116,18 +4231,16 @@ function initializeEventsInternal() {
 
           const payeeIdentifier = payeeIdInput?.value.trim() || '';
           const payeeName = (
-            payeeNameInput?.value.trim()
-            || payeeNameSpan?.dataset.fullName
+            payeeNameSpan?.dataset.maskedName
             || payeeNameSpan?.innerText.trim()
             || ''
           ).replace(/^付款人：/, '').trim();
           const proxyPayerName = (
-            proxyNameInput?.value.trim()
-            || proxyNameSpan?.dataset.fullName
+            proxyNameSpan?.dataset.maskedName
             || proxyNameSpan?.innerText.replace('代付人：', '').trim()
             || ''
           ).trim();
-          if (!payeeIdentifier || !payeeName) {
+          if (!payeeIdentifier || !payeeName || payeeName.includes('查無') || payeeName.includes('查詢中')) {
             missingPayeeRows.push(index + 1);
           } else {
             selectedPayeeIdentifiers.add(payeeIdentifier);
@@ -4241,7 +4354,7 @@ function initializeEventsInternal() {
     e.preventDefault();
     const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
     await withActionLock('project:create', submitBtn, async () => {
-    if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+    if (!isFinanceOperator()) {
       showMessage('僅會計部門與 Admin 可建立專案', true);
       return;
     }
@@ -4548,7 +4661,7 @@ function renderVoucherCard(v) {
     actions += `<button class="primary-btn" onclick="viewVoucherDetail('${v.id}')">查看並審核</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
   }
-  if (['accounting', 'admin'].includes(role) && v.status === 'pending_accounting') {
+  if (['accounting', 'admin', 'super_admin'].includes(role) && v.status === 'pending_accounting') {
     actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="accounting">核准入帳</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="accounting">退件</button>`;
   }
@@ -4639,7 +4752,7 @@ async function renderVoucherWorkflowList() {
           `;
         }
       }
-      else if (['accounting', 'admin'].includes(currentUserRole)) {
+      else if (['accounting', 'admin', 'super_admin'].includes(currentUserRole)) {
         if (vStatus === 'pending_accounting') {
           actionButtons = `
             <button class="btn-small success" onclick="openAccountingReviewModal('${row.id}')">
@@ -5392,7 +5505,7 @@ async function loadAndRenderProjects() {
     const userRole = state.currentUser?.role;
 
     // 管理員和會計可以看到全公司總覽
-    if (['accounting', 'admin'].includes(userRole)) {
+    if (['accounting', 'admin', 'super_admin'].includes(userRole)) {
       html += '<option value="all">全公司總覽</option>';
     }
     // employee / manager 不要加 all，或加「本部門」且 value 仍走部門過濾
@@ -5412,7 +5525,7 @@ async function loadAndRenderProjects() {
     const savedProjectId = state.currentProjectId;
     if (savedProjectId && Array.from(select.options).some(opt => opt.value === savedProjectId)) {
       select.value = savedProjectId;
-    } else if (['accounting', 'admin'].includes(userRole)) {
+    } else if (['accounting', 'admin', 'super_admin'].includes(userRole)) {
       select.value = 'all';
       state.currentProjectId = 'all';
     } else if (projects.length > 0) {
@@ -5449,7 +5562,7 @@ async function fetchProjects() {
   const userRole = state.currentUser?.role;
   let query = supabase.from('projects').select('*').order('project_code');
 
-  if (!['admin', 'accounting'].includes(userRole)) {
+  if (!['admin', 'super_admin', 'accounting'].includes(userRole)) {
     const { data: memberships, error: membershipError } = await supabase
       .from('project_members')
       .select('project_id')
@@ -5629,7 +5742,7 @@ window.viewVoucherDetail = async (voucherId) => {
 };
 
 window.openVoidVoucherModal = async (voucherId) => {
-  if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+  if (!isFinanceOperator()) {
     showMessage('僅會計部門或管理員可以銷案。', true);
     return;
   }
@@ -5830,8 +5943,29 @@ window.saveBankEdit = async () => {
   }
 };
 
+function buildAccountCodeOptions(accounts, selectedCode = '') {
+  return `<option value="">請選擇科目...</option>${(accounts || []).map(acc => `
+    <option value="${escapeHtml(acc.code)}" ${acc.code === selectedCode ? 'selected' : ''}>${escapeHtml(acc.code)} ${escapeHtml(acc.name)}</option>
+  `).join('')}`;
+}
+
+window.applyBulkReviewAccountCode = () => {
+  const code = document.getElementById('bulkReviewAccountCode')?.value || '';
+  if (!code) return;
+  document.querySelectorAll('.review-line-account-code').forEach(select => {
+    select.value = code;
+  });
+};
+
+function collectReviewLineAccountCodes() {
+  return Array.from(document.querySelectorAll('.review-line-account-code')).map(select => ({
+    lineId: select.dataset.lineId,
+    accountCode: select.value
+  }));
+}
+
 async function ensureAccountingCanCloseVoucher(voucherId) {
-  if (!['accounting', 'admin'].includes(state.currentUser?.role)) {
+  if (!isFinanceOperator()) {
     throw new Error('僅會計部門可以核准入帳與付款銷案');
   }
 
@@ -5862,24 +5996,39 @@ window.accountingApproveAndClose = async (voucherId) => {
     triggerBtn.textContent = '處理中...';
   }
 
-  const accountCode = document.getElementById('reviewAccountCode')?.value;
+  const lineAssignments = collectReviewLineAccountCodes();
+  const missingLineNumbers = lineAssignments
+    .map((item, index) => item.accountCode ? null : index + 1)
+    .filter(Boolean);
+  const firstAccountCode = lineAssignments.find(item => item.accountCode)?.accountCode || '';
   const recipientId = document.getElementById('reviewPaymentRecipient')?.value || null;
   const note = document.getElementById('reviewNote')?.value.trim();
 
-  if (!accountCode) { alert('請選擇歸帳科目'); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
+  if (missingLineNumbers.length) { alert(`第 ${missingLineNumbers.join('、')} 筆明細尚未選擇歸帳科目`); if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
 
   try {
     await ensureAccountingCanCloseVoucher(voucherId);
 
     // 勾稽核對：明細金額、發票金額、科目有效性
-    const passedVerification = await confirmCrossVerification(voucherId, accountCode);
+    const passedVerification = await confirmCrossVerification(voucherId, firstAccountCode);
     if (!passedVerification) { if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = triggerBtn.dataset.originalLabel; } return; }
 
-    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId);
+    const validCodes = new Set((window.__cachedAccounts || []).map(item => item.code));
+    const invalid = lineAssignments.find(item => !validCodes.has(item.accountCode));
+    if (invalid) throw new Error(`找不到所選會計科目：${invalid.accountCode}`);
+
+    await Promise.all(lineAssignments.map(async item => {
+      const { error } = await supabase
+        .from('voucher_lines')
+        .update({ account_code: item.accountCode })
+        .eq('id', item.lineId)
+        .eq('voucher_id', voucherId);
+      if (error) throw error;
+    }));
 
     const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
-    const account = window.__cachedAccounts?.find(item => item.code === accountCode);
+    const account = window.__cachedAccounts?.find(item => item.code === firstAccountCode);
     if (!account) throw new Error('找不到所選會計科目');
 
     const { error: assignmentError } = await supabase.from('vouchers').update({
@@ -5934,32 +6083,34 @@ window.openAccountingReviewModal = async (voucherId) => {
           <p><strong>總金額：</strong>$${Number(voucher.total_amount).toLocaleString()}</p>
           
           <h4>明細項目</h4>
+          <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+            <select id="bulkReviewAccountCode" style="flex:1; padding:8px;" ${accountOptionsDisabled ? 'disabled' : ''}>
+              ${buildAccountCodeOptions(accounts)}
+            </select>
+            <button type="button" class="secondary" onclick="applyBulkReviewAccountCode()" ${accountOptionsDisabled ? 'disabled' : ''}>套用到全部明細</button>
+          </div>
           <table style="width:100%; border-collapse:collapse;">
-            <thead><tr><th>摘要</th><th>科目</th><th>金額</th></tr></thead>
+            <thead><tr><th>摘要</th><th>付款人</th><th>金額</th><th>指定會計科目</th><th>AI</th></tr></thead>
             <tbody>
-              ${voucher.voucher_lines.map(line => `
+              ${voucher.voucher_lines.map((line, index) => `
                 <tr>
-                  <td>${line.description}</td>
-                  <td>${line.account_code}</td>
+                  <td>${escapeHtml(line.description || line.item_category || '-')}</td>
+                  <td>${escapeHtml(line.payee_name || '-')}<br><span class="muted">${escapeHtml(line.payee_identifier || '')}</span></td>
                   <td>$${Number(line.amount).toLocaleString()}</td>
+                  <td>
+                    <select id="reviewLineAccount_${index}" class="review-line-account-code" data-line-id="${escapeHtml(line.id)}" style="width:100%; padding:6px;" ${accountOptionsDisabled ? 'disabled' : ''}>
+                      ${buildAccountCodeOptions(accounts, line.account_code || '')}
+                    </select>
+                    <div id="aiSuggestExplain_reviewLineAccount_${index}" class="ai-suggest-box"></div>
+                  </td>
+                  <td><button type="button" class="secondary" onclick="suggestLineAccountCodeAI('${voucherId}', '${escapeHtml(line.id)}', 'reviewLineAccount_${index}')" ${accountOptionsDisabled ? 'disabled' : ''}>AI</button></td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
 
           <h4 style="margin-top:20px;">歸帳設定</h4>
-          <label>會計科目：</label>
-          <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
-            <select id="reviewAccountCode" style="flex:1; padding:8px;">
-              <option value="">${accountOptionsDisabled ? '沒有可用的會計科目' : '請選擇歸帳科目...'}</option>
-              ${accounts.map(acc => `
-                <option value="${escapeHtml(acc.code)}">${escapeHtml(acc.code)} ${escapeHtml(acc.name)}</option>
-              `).join('')}
-            </select>
-            <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'reviewAccountCode')" style="white-space:nowrap; padding:8px 12px;" ${accountOptionsDisabled ? 'disabled' : ''}>✨ AI建議科目</button>
-          </div>
           ${accountOptionsDisabled ? '<div class="message error" style="margin:8px 0;">會計科目為空，請確認 accounts 資料與 RLS SELECT policy。</div>' : ''}
-          <div id="aiSuggestExplain_reviewAccountCode" class="ai-suggest-box"></div>
 
           <label>收款人（可於付款前補充或變更）：</label>
           <select id="reviewPaymentRecipient" style="width:100%; padding:8px; margin:8px 0;">
@@ -5992,6 +6143,18 @@ window.openAccountingReviewModal = async (voucherId) => {
 /**
  * 呼叫 /api/classify，依單據內容取得 AI（或關鍵字規則）建議的會計科目，並自動帶入指定的下拉選單
  */
+async function requestAccountSuggestion({ description, vendor, amount }) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const res = await fetch('/api/classify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData.session.access_token}` },
+    body: JSON.stringify({ description, vendor, amount })
+  });
+  const result = await res.json();
+  if (!res.ok || !result.ok) throw new Error(result.message || 'AI 建議失敗');
+  return result;
+}
+
 window.suggestAccountCodeAI = async (voucherId, selectElementId) => {
   const select = document.getElementById(selectElementId);
   const explainBox = document.getElementById(`aiSuggestExplain_${selectElementId}`);
@@ -6010,14 +6173,7 @@ window.suggestAccountCodeAI = async (voucherId, selectElementId) => {
     const description = voucher.voucher_lines?.map(l => l.description || l.item_category_note).filter(Boolean).join('；') || voucher.summary;
     const vendor = voucher.voucher_lines?.find(l => l.payee_name)?.payee_name || '';
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const res = await fetch('/api/classify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData.session.access_token}` },
-      body: JSON.stringify({ description, vendor, amount: voucher.total_amount })
-    });
-    const result = await res.json();
-    if (!res.ok || !result.ok) throw new Error(result.message || 'AI 建議失敗');
+    const result = await requestAccountSuggestion({ description, vendor, amount: voucher.total_amount });
 
     const { accountCode, explanation } = result.suggestion;
     if (accountCode) select.value = accountCode;
@@ -6029,6 +6185,38 @@ window.suggestAccountCodeAI = async (voucherId, selectElementId) => {
     if (explainBox) {
       explainBox.classList.remove('pending-review');
       explainBox.textContent = `AI 建議失敗：${err.message}`;
+    }
+  }
+};
+
+window.suggestLineAccountCodeAI = async (voucherId, lineId, selectElementId) => {
+  const select = document.getElementById(selectElementId);
+  const explainBox = document.getElementById(`aiSuggestExplain_${selectElementId}`);
+  if (!select) return;
+
+  try {
+    if (explainBox) explainBox.textContent = '分析中…';
+
+    const { data: line, error } = await supabase
+      .from('voucher_lines')
+      .select('description, item_category, item_category_note, payee_name, amount')
+      .eq('voucher_id', voucherId)
+      .eq('id', lineId)
+      .single();
+    if (error || !line) throw error || new Error('找不到明細資料');
+
+    const description = [line.item_category, line.description, line.item_category_note].filter(Boolean).join('；');
+    const result = await requestAccountSuggestion({ description, vendor: line.payee_name || '', amount: line.amount || 0 });
+    const { accountCode, explanation } = result.suggestion;
+    if (accountCode) select.value = accountCode;
+    if (explainBox) {
+      explainBox.classList.add('pending-review');
+      explainBox.textContent = `${result.mode === 'ai' ? 'AI' : '規則'}建議：${explanation || ''}`;
+    }
+  } catch (err) {
+    if (explainBox) {
+      explainBox.classList.remove('pending-review');
+      explainBox.textContent = `建議失敗：${err.message}`;
     }
   }
 };
@@ -6339,7 +6527,7 @@ async function renderFinancialCenter() {
   if (!container) return;
 
   const user = state.currentUser || JSON.parse(localStorage.getItem('currentUser') || '{}');
-  const isPrivileged = ['admin', 'accounting'].includes(user.role);
+  const isPrivileged = ['admin', 'super_admin', 'accounting'].includes(user.role);
 
   if (!isPrivileged) {
     container.innerHTML = `<div style="padding:40px; text-align:center; color:red;"><h3>權限不足</h3><p>此頁面僅限財務與系統管理員存取。</p></div>`;
@@ -6566,7 +6754,7 @@ window.openResubmitModal = async (voucherId) => {
 
     // B. 根據使用者權限取得專案清單（非 Admin/會計只能看到自己被指派的專案）
     let projectsData = [];
-    const isAdminOrAccounting = ['admin', 'accounting'].includes(state.currentUser?.role);
+    const isAdminOrAccounting = isFinanceOperator();
     
     if (isAdminOrAccounting) {
       const { data: pData } = await supabase.from('projects').select('id, name, project_code');
@@ -6683,9 +6871,8 @@ window.openResubmitModal = async (voucherId) => {
                       </td>
                       <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${l.amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
                       <td style="padding:8px; border:1px solid #ddd;">
-                        <input type="text" class="grid-payee-name-input" value="${escapeHtml(l.payee_name || '')}" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
-                        <input type="text" class="grid-payee-id" value="${escapeHtml(l.payee_identifier || '')}" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
-                        <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
+                        <input type="text" class="grid-payee-id" value="${escapeHtml(l.payee_identifier || '')}" placeholder="身分證/統編" style="width:90%; padding:4px;" oninput="queuePayeeLookup(this)" onblur="fetchPayeeName(this)">
+                        <span class="grid-payee-name" data-masked-name="${escapeHtml(maskPayeeName(l.payee_name || ''))}" style="font-size:12px; color:#666; display:block;">${escapeHtml(maskPayeeName(l.payee_name || ''))}</span>
                       </td>
                       <td style="padding:8px; border:1px solid #ddd; text-align:center;">
                         <input type="file" class="grid-attachment" accept="image/*,.pdf" style="display:none;" onchange="assignResubLineAttachment('${rowId}', this.files[0])">
@@ -6722,8 +6909,7 @@ window.openResubmitModal = async (voucherId) => {
                     </td>
                     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" value="${vch.total_amount || 0}" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
                     <td style="padding:8px; border:1px solid #ddd;">
-                      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
-                      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
+                      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" oninput="queuePayeeLookup(this)" onblur="fetchPayeeName(this)">
                       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
                     </td>
                     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -6812,8 +6998,7 @@ window.addResubExcelRow = () => {
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateResubTotal()"></td>
     <td style="padding:8px; border:1px solid #ddd;">
-      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
-      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
+      <input type="text" class="grid-payee-id" placeholder="身分證/統編" style="width:90%; padding:4px;" oninput="queuePayeeLookup(this)" onblur="fetchPayeeName(this)">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
     </td>
     <td style="padding:8px; border:1px solid #ddd; text-align:center;">
@@ -6871,8 +7056,9 @@ window.submitFullResubmission = async (e, voucherId) => {
   const newLines = [];
   const newInvoices = [];
   let totalAmount = 0;
+  const missingPayeeRows = [];
 
-  rows.forEach(row => {
+  rows.forEach((row, index) => {
     const month = row.querySelector('.grid-month').value;
     const invType = row.querySelector('.grid-inv-type').value;
     const invNum = row.querySelector('.grid-inv-num').value.trim();
@@ -6882,11 +7068,13 @@ window.submitFullResubmission = async (e, voucherId) => {
     const amount = Number(row.querySelector('.grid-amount').value) || 0;
     const payeeId = row.querySelector('.grid-payee-id').value.trim();
     const payeeName = (
-      row.querySelector('.grid-payee-name-input')?.value.trim()
-      || row.querySelector('.grid-payee-name')?.dataset.fullName
+      row.querySelector('.grid-payee-name')?.dataset.maskedName
       || row.querySelector('.grid-payee-name')?.innerText.trim()
       || ''
     ).replace(/^付款人：/, '').trim();
+    if (amount > 0 && (!payeeId || !payeeName || payeeName.includes('查無') || payeeName.includes('查詢中'))) {
+      missingPayeeRows.push(index + 1);
+    }
 
     totalAmount += amount;
 
@@ -6897,7 +7085,7 @@ window.submitFullResubmission = async (e, voucherId) => {
       item_category_note: categoryNote,
       amount: amount,
       payee_identifier: payeeId,
-      payee_name: payeeName.includes('查無') ? null : payeeName
+      payee_name: payeeName.includes('查無') || payeeName.includes('查詢中') ? null : payeeName
     });
 
     if (invType && invType !== '無') {
@@ -6913,6 +7101,10 @@ window.submitFullResubmission = async (e, voucherId) => {
 
   if (newLines.length === 0) {
     alert('請至少填寫一筆報支明細！');
+    return;
+  }
+  if (missingPayeeRows.length) {
+    alert(`第 ${missingPayeeRows.join('、')} 列請輸入身分證/統編並確認有帶出付款人姓名。`);
     return;
   }
 

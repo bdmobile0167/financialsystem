@@ -1,102 +1,141 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-// 關鍵字規則式分類（沒有設定 GEMINI_API_KEY 時使用，或 AI 呼叫失敗時的備援）
-// 對照的是系統實際的會計科目代碼（accounts 資料表），而非固定寫死的示範資料。
 const KEYWORD_RULES = [
-  { keywords: ['機票', '高鐵', '台鐵', '出差', '飯店', '旅館', '計程車', 'uber', '住宿'], code: '6110' }, // 差旅費
-  { keywords: ['廣告', 'facebook', 'fb', 'google ads', '行銷', '投放', 'ads', 'ig'], code: '6160' }, // 廣告費
-  { keywords: ['房租', '租金', '辦公室租', '車位租', '場地租'], code: '6220' }, // 租金支出
-  { keywords: ['文具', '影印紙', '碳粉', '辦公用品', '耗材'], code: '6130' }, // 文具用品費
-  { keywords: ['水費', '電費', '瓦斯費', '台電', '自來水'], code: '6140' }, // 水電瓦斯費
-  { keywords: ['修繕', '維修', '保養'], code: '6150' }, // 修繕費
-  { keywords: ['電話費', '網路費', '郵資', '快遞', '通訊費'], code: '6170' }, // 郵電通訊費
-  { keywords: ['保險費', '保費'], code: '6180' }, // 保險費
-  { keywords: ['訓練', '課程', '講師', '教育'], code: '6190' }, // 教育訓練費
-  { keywords: ['顧問', '諮詢服務', '外包服務'], code: '6200' }, // 顧問服務費
-  { keywords: ['餐費', '聚餐', '交際', '飲料', '咖啡', '請客戶'], code: '6210' }, // 餐飲交際費
-  { keywords: ['業務推廣', '展覽', '攤位', '禮品', '贈品'], code: '6120' }, // 業務推廣費
+  { codeHints: ['6110'], keywords: ['車馬', '交通', '住宿', '旅費', '差旅', '高鐵', '台鐵', '捷運', '計程車', 'taxi', 'uber', '飯店', '旅館', 'hotel', '機票'] },
+  { codeHints: ['6210'], keywords: ['餐飲', '交際', '餐費', '便當', '咖啡', '午餐', '晚餐', '聚餐', '招待', 'meal', 'restaurant'] },
+  { codeHints: ['6130'], keywords: ['文具', '紙張', '影印', '列印', '墨水', '耗材', 'office supplies', 'stationery'] },
+  { codeHints: ['6170'], keywords: ['郵電', '通訊', '電話', '網路', '電信', '郵資', '網域', 'domain', 'internet', 'phone'] },
+  { codeHints: ['6200'], keywords: ['顧問', '勞務', '服務費', '專業服務', '律師', '會計師', 'consulting', 'consultant', 'service fee'] },
+  { codeHints: ['6160'], keywords: ['廣告', 'facebook', 'google ads', 'meta ads', 'ig', '行銷', '投放', 'ads', 'advertising'] },
+  { codeHints: ['6220'], keywords: ['租金', '房租', '場租', 'rent', 'lease'] },
+  { codeHints: ['6150'], keywords: ['修繕', '維修', '保養', 'repair', 'maintenance'] },
+  { codeHints: ['6180'], keywords: ['保險', 'insurance'] },
+  { codeHints: ['6190'], keywords: ['教育', '訓練', '課程', '研習', 'training', 'course'] }
 ];
 
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findAccountByHints(accounts, hints) {
+  return hints
+    .map(code => accounts.find(account => account.code === code))
+    .find(Boolean);
+}
+
 function getFallbackClassification(accounts, description = '', vendor = '') {
-  const text = `${description} ${vendor}`.toLowerCase();
-  const hit = KEYWORD_RULES.find(rule => rule.keywords.some(k => text.includes(k.toLowerCase())));
-  const code = hit ? hit.code : '6230'; // 找不到就歸類到雜項支出
-  const account = accounts.find(a => a.code === code) || accounts.find(a => a.code === '6230');
+  const text = normalizeText(`${description} ${vendor}`);
+  const hit = KEYWORD_RULES.find(rule => rule.keywords.some(keyword => text.includes(normalizeText(keyword))));
+  const account = hit ? findAccountByHints(accounts, hit.codeHints) : null;
+
+  if (account) {
+    return {
+      accountCode: account.code,
+      accountName: account.name,
+      needsReview: false,
+      explanation: `依關鍵字比對，建議歸類為「${account.code} ${account.name}」。`
+    };
+  }
+
+  const misc = accounts.find(account => account.code === '6230') || accounts.find(account => account.type === 'expense');
   return {
-    accountCode: account?.code || '6230',
-    accountName: account?.name || '雜項支出',
-    explanation: hit ? `依關鍵字比對，歸類為「${account?.name}」。` : '未比對到明確類別，暫歸類為「雜項支出」，請人工複核。'
+    accountCode: misc?.code || '',
+    accountName: misc?.name || '',
+    needsReview: true,
+    explanation: '未比對到明確費用類型，暫以最低信心建議，請會計人工覆核或新增更精確的會計科目。'
   };
 }
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, message: '只允許 POST 請求。' });
+    res.status(405).json({ ok: false, message: '只允許 POST' });
     return;
   }
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    res.status(500).json({ ok: false, message: 'Supabase 環境變數未設定。' });
+  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+    res.status(500).json({ ok: false, message: 'Supabase server-side key 尚未設定' });
     return;
   }
 
   try {
-    // 僅限已登入使用者呼叫
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) {
-      res.status(401).json({ ok: false, message: '未登入。' });
+      res.status(401).json({ ok: false, message: '缺少登入權杖' });
       return;
     }
     const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(token);
     if (callerError || !callerData?.user) {
-      res.status(401).json({ ok: false, message: '登入狀態已失效，請重新登入。' });
+      res.status(401).json({ ok: false, message: '登入權杖無效，請重新登入' });
       return;
     }
 
     const { description = '', vendor = '', amount = 0 } = req.body || {};
 
     const { data: accounts, error: accErr } = await supabaseAdmin
-      .from('accounts').select('code, name, type').eq('type', 'expense').order('code');
+      .from('accounts')
+      .select('code, name, type')
+      .eq('type', 'expense')
+      .order('code');
     if (accErr) throw accErr;
 
+    const fallbackSuggestion = getFallbackClassification(accounts || [], description, vendor);
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      res.status(200).json({ ok: true, mode: 'fallback', suggestion: getFallbackClassification(accounts, description, vendor) });
+      res.status(200).json({ ok: true, mode: 'fallback', suggestion: fallbackSuggestion });
       return;
     }
 
     try {
       const { GoogleGenAI } = require('@google/genai');
       const ai = new GoogleGenAI({ apiKey });
+      const accountList = (accounts || []).map(account => `${account.code} ${account.name}`).join('\n');
+      const prompt = `
+你是台灣公司內部報支的會計科目分類助手。請只從下列費用科目選一個最適合的代碼。
 
-      const accountList = accounts.map(a => `${a.code} ${a.name}`).join('、');
-      const prompt = `你是熟悉台灣稅務與會計實務的資深會計師。請依據以下報支單據內容，從「可用會計科目清單」中選出最適合的一個費用科目：
+規則：
+- 車馬費、交通費、住宿費、出差相關費用通常歸類為差旅費。
+- 餐飲、招待、交際通常歸類為餐飲交際費。
+- 文具、紙張、列印耗材通常歸類為文具用品費。
+- 電話、網路、郵資通常歸類為郵電通訊費。
+- 若不確定，仍需選最接近科目，但 needsReview 必須為 true；不要一律選雜項支出。
+- 僅回傳 JSON，不要 Markdown。
 
-單據描述：${description || '無詳細描述'}
-廠商/店家：${vendor || '未註明'}
-金額：NT$ ${amount}
-
-可用會計科目清單（僅能從中選擇，不可自創）：
+可用科目：
 ${accountList}
 
-請只回傳純 JSON，格式如下，不要有 Markdown 符號或其他文字：
-{"accountCode": "科目代碼", "accountName": "科目名稱", "explanation": "約30字的分類理由"}`;
+報支內容：${description || '未提供'}
+付款人：${vendor || '未提供'}
+金額：NT$ ${amount}
+
+JSON 格式：
+{"accountCode":"科目代碼","accountName":"科目名稱","needsReview":false,"explanation":"20字以內理由"}
+`;
 
       const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
       const cleanJson = (response.text || '').replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
+      const account = (accounts || []).find(item => item.code === parsed.accountCode);
+      if (!account) throw new Error('AI 回傳不存在的會計科目');
 
-      // 驗證 AI 回傳的科目代碼確實存在，避免幻覺出不存在的科目
-      const valid = accounts.some(a => a.code === parsed.accountCode);
-      if (!valid) throw new Error('AI 回傳的科目代碼不在系統清單中');
-
-      res.status(200).json({ ok: true, mode: 'ai', suggestion: parsed });
+      res.status(200).json({
+        ok: true,
+        mode: 'ai',
+        suggestion: {
+          accountCode: account.code,
+          accountName: account.name,
+          needsReview: Boolean(parsed.needsReview),
+          explanation: parsed.explanation || `建議歸類為「${account.code} ${account.name}」。`
+        }
+      });
     } catch (aiErr) {
       console.error('AI 分類失敗，改用關鍵字規則:', aiErr);
-      res.status(200).json({ ok: true, mode: 'fallback_error', suggestion: getFallbackClassification(accounts, description, vendor) });
+      res.status(200).json({ ok: true, mode: 'fallback_error', suggestion: fallbackSuggestion });
     }
   } catch (error) {
-    res.status(500).json({ ok: false, message: `伺服器發生錯誤：${error.message}` });
+    res.status(500).json({ ok: false, message: `分類失敗：${error.message}` });
   }
 };

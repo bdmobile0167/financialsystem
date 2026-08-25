@@ -66,8 +66,7 @@ export const addExcelRow = (prefillFile = null) => {
     </td>
     <td style="padding:8px; border:1px solid #ddd;"><input type="number" class="grid-amount" placeholder="0" style="width:90%; padding:4px;" min="0" oninput="calculateVoucherTotal()"></td>
     <td style="padding:8px; border:1px solid #ddd;">
-      <input type="text" class="grid-payee-name-input" placeholder="付款人姓名／公司名稱" style="width:90%; padding:4px;">
-      <input type="text" class="grid-payee-id" placeholder="應付對象身分證/統編" style="width:90%; padding:4px; margin-top:4px;">
+      <input type="text" class="grid-payee-id" placeholder="應付對象身分證/統編" style="width:90%; padding:4px;" onblur="fetchPayeeName(this)">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
       <label style="font-size:11px; display:block; margin-top:4px;">
         <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付

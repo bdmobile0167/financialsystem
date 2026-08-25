@@ -1061,7 +1061,38 @@
             </form>
           </div>
 
-          <!-- 4. 事業項目與董監名單 -->
+          <!-- 4. 會計科目管理 -->
+          <div class="panel" id="accountManagementCard" style="margin-top: 16px;">
+            <h3>會計科目管理</h3>
+            <form id="accountManagementForm" class="form-grid">
+              <input type="hidden" id="accountManagementId" />
+              <div>
+                <label>科目代碼</label>
+                <input type="text" id="accountManagementCode" placeholder="例如 6110" required />
+              </div>
+              <div>
+                <label>科目名稱</label>
+                <input type="text" id="accountManagementName" placeholder="例如 差旅費" required />
+              </div>
+              <div>
+                <label>科目類型</label>
+                <select id="accountManagementType" required>
+                  <option value="asset">資產</option>
+                  <option value="liability">負債</option>
+                  <option value="equity">權益</option>
+                  <option value="revenue">收入</option>
+                  <option value="expense" selected>費用</option>
+                </select>
+              </div>
+              <div style="align-self:end;">
+                <button type="submit" class="primary-btn">儲存科目</button>
+                <button type="button" class="secondary" id="resetAccountManagementForm">清空</button>
+              </div>
+            </form>
+            <div id="accountManagementList" style="margin-top:14px;"></div>
+          </div>
+
+          <!-- 5. 事業項目與董監名單 -->
           <div class="panel" id="businessInfoCard" style="margin-top: 16px;">
             <h3>事業項目與董監名單</h3>
             <div id="businessInfoContent"></div>

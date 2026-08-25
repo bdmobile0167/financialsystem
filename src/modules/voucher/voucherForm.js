@@ -48,21 +48,16 @@ window.fetchPayeeName = async (inputEl) => {
   const nameSpan = container.querySelector('.grid-payee-name');
   if (!nameSpan) return;
   if (!identifier) { nameSpan.innerHTML = ''; return; }
-  if (!isFinanceOperator()) {
-    nameSpan.innerHTML = '';
-    delete nameSpan.dataset.fullName;
-    return;
-  }
-
   nameSpan.innerText = '查詢中...';
-  const { data, error } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
+  const { data, error } = await supabase.rpc('lookup_masked_payee_by_identifier', { p_identifier: identifier });
+  const payee = Array.isArray(data) ? data[0] : null;
 
-  if (error || !data) {
+  if (error || !payee?.masked_name) {
     nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
     return;
   }
-  nameSpan.innerText = maskPayeeName(data.name);
-  nameSpan.dataset.fullName = data.name;
+  nameSpan.innerText = payee.masked_name;
+  nameSpan.dataset.maskedName = payee.masked_name;
 };
 
 /**
@@ -170,7 +165,7 @@ window.submitNewPayee = async () => {
       if (idInput) idInput.value = identifier;
       if (nameSpan) { 
         nameSpan.innerText = maskPayeeName(name); 
-        nameSpan.dataset.fullName = name; 
+        nameSpan.dataset.maskedName = maskPayeeName(name); 
       }
     }
   } catch (error) {
@@ -204,16 +199,12 @@ window.fetchProxyPayerName = async (inputEl) => {
   const identifier = inputEl.value.trim();
   const nameSpan = inputEl.closest('td').querySelector('.grid-proxy-name');
   if (!identifier) { nameSpan.innerHTML = ''; return; }
-  if (!isFinanceOperator()) {
-    nameSpan.innerHTML = '';
-    delete nameSpan.dataset.fullName;
-    return;
-  }
   nameSpan.innerText = '查詢中...';
-  const { data } = await supabase.from('payees').select('name').eq('identifier', identifier).maybeSingle();
-  if (data) {
-    nameSpan.innerText = `代付人：${maskPayeeName(data.name)}`;
-    nameSpan.dataset.fullName = data.name;
+  const { data, error } = await supabase.rpc('lookup_masked_payee_by_identifier', { p_identifier: identifier });
+  const payee = Array.isArray(data) ? data[0] : null;
+  if (!error && payee?.masked_name) {
+    nameSpan.innerText = `代付人：${payee.masked_name}`;
+    nameSpan.dataset.maskedName = payee.masked_name;
   } else {
     nameSpan.innerHTML = `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增</button>`;
   }
