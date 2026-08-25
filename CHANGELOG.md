@@ -1,5 +1,22 @@
 ﻿# 變更紀錄
 
+## 0.2.38 - 2026-08-25
+
+- 部門管理新增刪除按鈕與關聯檢查；若仍有子部門、使用者、專案、部門預算、預算申請或憑證綁定，會先阻擋刪除。
+- 移除設定頁舊的本機「使用者核准」與未接正式流程的「匯出交易 JSON」區塊。
+- 事業項目與董監名單新增可編輯表格，支援新增、修改、刪除並儲存到 Supabase。
+- 董監名單儲存後會用出資合計同步 `company_settings.capital_cash`，讓已投入股本與財報來源一致。
+- 密碼設定補上送出鎖、欄位最小長度、autocomplete 與成功後清空表單。
+- Supabase company/department policy 對齊 `admin` / `super_admin` / `accounting` 管理權限。
+
+## 0.2.37 - 2026-08-25
+
+- 預算管理新增 Audit Trail：部門預算申請送出、更新、核准、退件，以及部門預算建立、調整、刪除都會寫入 `audit_logs`。
+- Audit Trail 畫面合併顯示 `voucher_workflow_logs` 與預算相關 `audit_logs`，並新增預算動作篩選。
+- `api/invite.js` 與 `api/reset-password.js` 改支援 `SUPABASE_SECRET_KEY`，保留 `SUPABASE_SERVICE_ROLE_KEY` 相容。
+- Serverless API 會拒絕 `sb_publishable_`、`sb_anon_`，並檢查舊版 JWT key 的 `role` 必須是 `service_role`，讓 Vercel 環境變數錯誤更容易定位。
+- 邀請與重設密碼 API 允許 `admin` / `super_admin` 操作。
+
 ## 0.2.36 - 2026-08-25
 
 - Supabase 新增資料表 RLS 改用 `(select auth.uid())` / `(select public.get_my_role())` / `(select public.get_my_department())` 型式，減少逐 row 重算。

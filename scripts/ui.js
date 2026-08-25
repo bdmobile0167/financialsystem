@@ -16,7 +16,7 @@ import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNo
 import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
 import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
-import { getCompanyDataBundle, saveCompanyInfo } from './companyContext.js';
+import { getCompanyDataBundle, saveCompanyInfo, saveCompanyBusinessItems, saveCompanyShareholders } from './companyContext.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
@@ -839,15 +839,40 @@ async function renderAuditTrail() {
   const keyword = (document.getElementById('auditTrailSearchInput')?.value || '').trim().toLowerCase();
 
   try {
-    let query = supabase
+    let workflowQuery = supabase
       .from('voucher_workflow_logs')
       .select('*, profiles!actor_id(full_name), vouchers(voucher_no, summary)')
       .order('created_at', { ascending: false })
       .limit(200);
-    if (actionFilter) query = query.eq('action', actionFilter);
+    if (actionFilter) workflowQuery = workflowQuery.eq('action', actionFilter);
 
-    const { data: logs, error } = await query;
-    if (error) throw error;
+    let systemAuditQuery = supabase
+      .from('audit_logs')
+      .select('*')
+      .in('table_name', ['department_budget_requests', 'department_budgets'])
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (actionFilter) systemAuditQuery = systemAuditQuery.eq('action', actionFilter);
+
+    const [{ data: workflowLogs, error: workflowError }, { data: systemLogs, error: systemError }] = await Promise.all([
+      workflowQuery,
+      systemAuditQuery
+    ]);
+    if (workflowError) throw workflowError;
+    if (systemError) throw systemError;
+
+    const operatorIds = [...new Set((systemLogs || []).map(log => log.user_id).filter(Boolean))];
+    const operatorNameById = {};
+    if (operatorIds.length) {
+      const { data: operators, error: operatorsError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', operatorIds);
+      if (operatorsError) console.warn('讀取 audit 操作人失敗:', operatorsError.message);
+      (operators || []).forEach(operator => {
+        operatorNameById[operator.id] = operator.full_name || operator.email;
+      });
+    }
 
     const actionLabels = {
       submit: '提交申請',
@@ -856,17 +881,67 @@ async function renderAuditTrail() {
       accounting_approve: '會計核准',
       reject: '會計退件',
       close: '付款銷案',
-      void: '銷案撤回'
+      void: '銷案撤回',
+      department_budget_request_create: '預算申請送出',
+      department_budget_request_update: '預算申請更新',
+      department_budget_request_approve: '預算申請核准',
+      department_budget_request_reject: '預算申請退件',
+      department_budget_create: '部門預算建立',
+      department_budget_update: '部門預算調整',
+      department_budget_delete: '部門預算刪除'
     };
 
-    const filtered = (logs || []).filter(log => {
+    const normalizedWorkflowLogs = (workflowLogs || []).map(log => ({
+      source: 'voucher',
+      created_at: log.created_at,
+      actorName: log.profiles?.full_name || '系統',
+      actorRole: log.actor_role,
+      action: log.action,
+      targetNo: log.vouchers?.voucher_no || '-',
+      summary: log.vouchers?.summary || '',
+      reason: log.reject_reason || '',
+      fromStatus: log.from_status || '',
+      toStatus: log.to_status || '',
+      voucherId: log.voucher_id
+    }));
+
+    const normalizedSystemLogs = (systemLogs || []).map(log => {
+      const nextData = log.new_data || {};
+      const previousData = log.old_data || {};
+      const departmentName = nextData.department_name || previousData.department_name || '';
+      const amount = nextData.requested_amount || nextData.amount || previousData.requested_amount || previousData.amount || '';
+      return {
+        source: 'system',
+        created_at: log.created_at,
+        actorName: operatorNameById[log.user_id] || '系統',
+        actorRole: '',
+        action: log.action,
+        targetNo: log.record_id || '-',
+        summary: [
+          log.table_name === 'department_budget_requests' ? '部門預算申請' : '部門預算',
+          nextData.fiscal_year || previousData.fiscal_year || '',
+          departmentName,
+          amount ? `NT$ ${Number(amount).toLocaleString()}` : ''
+        ].filter(Boolean).join(' / '),
+        reason: nextData.review_note || nextData.reason || previousData.review_note || previousData.reason || '',
+        fromStatus: previousData.status || '',
+        toStatus: nextData.status || '',
+        voucherId: null
+      };
+    });
+
+    const mergedLogs = [...normalizedWorkflowLogs, ...normalizedSystemLogs]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 200);
+
+    const filtered = mergedLogs.filter(log => {
       if (!keyword) return true;
       return [
-        log.vouchers?.voucher_no,
-        log.vouchers?.summary,
-        log.profiles?.full_name,
+        log.targetNo,
+        log.summary,
+        log.actorName,
         log.action,
-        log.reject_reason
+        log.reason
       ].some(value => String(value || '').toLowerCase().includes(keyword));
     });
 
@@ -889,28 +964,29 @@ async function renderAuditTrail() {
           </thead>
           <tbody>
             ${filtered.map(log => {
-              const roleLabel = log.actor_role === 'admin' ? '管理員'
-                : log.actor_role === 'accounting' ? '會計'
-                  : log.actor_role === 'manager' ? '主管' : '員工';
-              const voucherNo = escapeHtml(log.vouchers?.voucher_no || '-');
-              const summary = escapeHtml(log.vouchers?.summary || '');
-              const reason = escapeHtml(log.reject_reason || '');
-              const fromStatus = escapeHtml(log.from_status || '-');
-              const toStatus = escapeHtml(log.to_status || '-');
+              const roleLabel = log.actorRole === 'admin' ? '管理員'
+                : log.actorRole === 'accounting' ? '會計'
+                  : log.actorRole === 'manager' ? '主管'
+                    : log.actorRole ? '員工' : '系統';
+              const targetNo = escapeHtml(log.targetNo || '-');
+              const summary = escapeHtml(log.summary || '');
+              const reason = escapeHtml(log.reason || '');
+              const fromStatus = escapeHtml(log.fromStatus || '-');
+              const toStatus = escapeHtml(log.toStatus || '-');
               return `
                 <tr>
                   <td class="audit-time">${new Date(log.created_at).toLocaleString('zh-TW')}</td>
                   <td>
-                    <strong>${escapeHtml(log.profiles?.full_name || '系統')}</strong>
+                    <strong>${escapeHtml(log.actorName || '系統')}</strong>
                     <span class="audit-role">${roleLabel}</span>
                   </td>
                   <td><span class="audit-action">${escapeHtml(actionLabels[log.action] || log.action || '-')}</span></td>
                   <td>
-                    ${log.voucher_id ? `<button type="button" class="audit-voucher-link" onclick="viewVoucherDetail('${log.voucher_id}')">${voucherNo}</button>` : voucherNo}
+                    ${log.voucherId ? `<button type="button" class="audit-voucher-link" onclick="viewVoucherDetail('${log.voucherId}')">${targetNo}</button>` : targetNo}
                     ${summary ? `<div class="audit-summary">${summary}</div>` : ''}
                     ${reason ? `<div class="audit-reason">原因：${reason}</div>` : ''}
                   </td>
-                  <td>${log.from_status || log.to_status
+                  <td>${log.fromStatus || log.toStatus
                     ? `<span class="audit-delta"><s>${fromStatus}</s><span aria-hidden="true">→</span><strong>${toStatus}</strong></span>`
                     : '<span class="muted">-</span>'}</td>
                 </tr>`;
@@ -1048,23 +1124,106 @@ function fillCompanyInfoForm() {
   setVal('companyOpenDate', info.plannedOpenDate);
 }
 
+function canManageCompanyData() {
+  return ['admin', 'super_admin', 'accounting'].includes(state.currentUser?.role);
+}
+
+function buildBusinessItemRow(item = {}) {
+  return `
+    <tr class="business-item-row">
+      <td><input class="business-item-code" value="${escapeHtml(item.code || '')}" placeholder="代碼" /></td>
+      <td><input class="business-item-name" value="${escapeHtml(item.item || '')}" placeholder="營業項目" /></td>
+      <td><button type="button" class="danger remove-business-item-row" style="width:auto; padding:6px 10px;">刪除</button></td>
+    </tr>
+  `;
+}
+
+function buildDirectorShareholderRow(person = {}) {
+  return `
+    <tr class="director-shareholder-row">
+      <td><input class="director-name" value="${escapeHtml(person.name || '')}" placeholder="姓名" /></td>
+      <td><input class="director-role" value="${escapeHtml(person.role || '')}" placeholder="職務" /></td>
+      <td><input class="director-id-number" value="${escapeHtml(person.idNumber || '')}" placeholder="身分證/統編" /></td>
+      <td><input class="director-amount" type="number" min="0" value="${Number(person.amount || 0)}" placeholder="出資" /></td>
+      <td><input class="director-address" value="${escapeHtml(person.address || '')}" placeholder="地址" /></td>
+      <td><button type="button" class="danger remove-director-shareholder-row" style="width:auto; padding:6px 10px;">刪除</button></td>
+    </tr>
+  `;
+}
+
 function renderBusinessData() {
   const container = document.getElementById('businessInfoContent');
   if (!container) return;
-  const businessRows = (state.businessItems || []).map(item => `<li>${item.code} - ${item.item}</li>`).join('');
-  const directorRows = (state.directorShareholders || []).map(person => `
-    <li>姓名：${person.name ?? '-'} / 職務：${person.role ?? '-'} / 身分證：${maskIdentifierString(person.idNumber) || '-'} / 出資：${Number(person.amount || 0).toLocaleString()} / 地址：${person.address ?? '-'}</li>
-  `).join('');
+  const canEdit = canManageCompanyData();
+  const businessItems = state.businessItems || [];
+  const directors = state.directorShareholders || [];
+  const businessRows = businessItems.map(item => canEdit
+    ? buildBusinessItemRow(item)
+    : `<li>${escapeHtml(item.code)} - ${escapeHtml(item.item)}</li>`
+  ).join('');
+  const directorRows = directors.map(person => canEdit
+    ? buildDirectorShareholderRow(person)
+    : `<li>姓名：${escapeHtml(person.name ?? '-')} / 職務：${escapeHtml(person.role ?? '-')} / 身分證：${escapeHtml(maskIdentifierString(person.idNumber) || '-')} / 出資：${Number(person.amount || 0).toLocaleString()} / 地址：${escapeHtml(person.address ?? '-')}</li>`
+  ).join('');
+
+  if (canEdit) {
+    container.innerHTML = `
+      <div class="info-block">
+        <h4>營業項目</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th style="width:160px;">代碼</th><th>項目</th><th style="width:90px;">操作</th></tr></thead>
+            <tbody id="businessItemsEditorBody">${businessRows || buildBusinessItemRow()}</tbody>
+          </table>
+        </div>
+        <button type="button" id="addBusinessItemRowBtn" class="secondary" style="width:auto; margin-top:8px;">新增營業項目</button>
+      </div>
+      <div class="info-block" style="margin-top:16px;">
+        <h4>董監名單</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>姓名</th><th>職務</th><th>身分證/統編</th><th style="width:140px;">出資</th><th>地址</th><th style="width:90px;">操作</th></tr></thead>
+            <tbody id="directorShareholdersEditorBody">${directorRows || buildDirectorShareholderRow()}</tbody>
+          </table>
+        </div>
+        <button type="button" id="addDirectorShareholderRowBtn" class="secondary" style="width:auto; margin-top:8px;">新增董監</button>
+      </div>
+      <button type="button" id="saveBusinessInfoBtn" class="primary-btn" style="width:auto; margin-top:14px;">儲存事業項目與董監名單</button>
+    `;
+    return;
+  }
+
   container.innerHTML = `
     <div class="info-block">
       <h4>營業項目</h4>
-      <ul>${businessRows}</ul>
+      <ul>${businessRows || '<li>尚未設定</li>'}</ul>
     </div>
     <div class="info-block">
       <h4>董監名單</h4>
-      <ul>${directorRows}</ul>
+      <ul>${directorRows || '<li>尚未設定</li>'}</ul>
     </div>
   `;
+}
+
+function collectBusinessItemRows() {
+  return Array.from(document.querySelectorAll('#businessItemsEditorBody .business-item-row'))
+    .map(row => ({
+      code: row.querySelector('.business-item-code')?.value.trim() || '',
+      item: row.querySelector('.business-item-name')?.value.trim() || ''
+    }))
+    .filter(row => row.code || row.item);
+}
+
+function collectDirectorShareholderRows() {
+  return Array.from(document.querySelectorAll('#directorShareholdersEditorBody .director-shareholder-row'))
+    .map(row => ({
+      name: row.querySelector('.director-name')?.value.trim() || '',
+      role: row.querySelector('.director-role')?.value.trim() || '',
+      idNumber: row.querySelector('.director-id-number')?.value.trim() || '',
+      amount: Number(row.querySelector('.director-amount')?.value || 0),
+      address: row.querySelector('.director-address')?.value.trim() || ''
+    }))
+    .filter(row => row.name || row.role || row.idNumber || row.amount || row.address);
 }
 
 async function renderTransactionTable() {
@@ -2400,31 +2559,11 @@ function renderTable(id, rows) {
   });
 }
 
-function renderApprovalTable() {
-  const body = document.getElementById('approvalTableBody');
-  body.innerHTML = '';
-  if (!state.currentUser || !isAdminUser(state.currentUser.role)) {
-    body.innerHTML = '<tr><td colspan="4" class="muted">僅限管理者檢視核准申請。</td></tr>';
-    return;
-  }
-  const approvals = loadApprovalRequests();
-  if (!approvals.length) {
-    body.innerHTML = '<tr><td colspan="4" class="muted">目前尚無使用者申請。</td></tr>';
-    return;
-  }
-  approvals.forEach(item => {
-    const tr = document.createElement('tr');
-    const action = item.status === 'pending' ? `<button class="secondary approve-btn" data-email="${item.email}">核准</button>` : '已核准';
-    tr.innerHTML = `<td>${item.email}</td><td>${new Date(item.timestamp).toLocaleString()}</td><td>${item.status}</td><td>${action}</td>`;
-    body.appendChild(tr);
-  });
-}
-
 function updateSettings() {
   const settingsPanel = document.getElementById('settings');
   const passwordCard = document.getElementById('passwordCard');
   const companyCard = document.getElementById('companyInfoCard');
-  const canEditCompany = ['admin', 'accounting'].includes(state.currentUser?.role);
+  const canEditCompany = canManageCompanyData();
 
   if (settingsPanel && passwordCard && settingsPanel.firstElementChild !== passwordCard) {
     settingsPanel.insertBefore(passwordCard, settingsPanel.firstElementChild);
@@ -2443,7 +2582,7 @@ function updateSettings() {
     if (submitButton) submitButton.style.display = canEditCompany ? '' : 'none';
   }
 
-  ['systemSettingsCard', 'approvalCard', 'exportCard'].forEach(id => {
+  ['systemSettingsCard'].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.style.display = canEditCompany ? '' : 'none';
   });
@@ -3095,6 +3234,7 @@ function initializeEventsInternal() {
 
   safeListener('changePasswordForm', 'submit', async (e) => {
     e.preventDefault();
+    const submitButton = e.submitter || e.currentTarget.querySelector('button[type="submit"]');
     const newPassword = document.getElementById('newPassword').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
 
@@ -3108,18 +3248,22 @@ function initializeEventsInternal() {
       return;
     }
 
-    const result = await changeMyPassword(newPassword);
-    if (!result.ok) {
-      showMessage(`密碼修改失敗：${result.message}`, true);
-      return;
-    }
+    await withActionLock('password:change', submitButton, async () => {
+      const result = await changeMyPassword(newPassword);
+      if (!result.ok) {
+        showMessage(`密碼修改失敗：${result.message}`, true);
+        return;
+      }
 
-    if (state.currentUser) {
-      state.currentUser.mustChangePassword = false;
-      localStorage.setItem(USER_KEY, JSON.stringify(state.currentUser));
-    }
-    showMessage('密碼修改成功！');
-    e.target.reset();
+      if (state.currentUser) {
+        state.currentUser.mustChangePassword = false;
+        localStorage.setItem(USER_KEY, JSON.stringify(state.currentUser));
+      }
+      showMessage('密碼修改成功，請使用新密碼登入。');
+      e.target.reset();
+      const emailInput = document.getElementById('passwordUserEmail');
+      if (emailInput) emailInput.value = state.currentUser?.username || '';
+    }, { loadingText: '儲存中...' });
   });
 
   safeListener('bulkVoucherUpload', 'change', (e) => {
@@ -3375,6 +3519,7 @@ function initializeEventsInternal() {
 
   safeListener('forcePasswordForm', 'submit', async (e) => {
     e.preventDefault();
+    const submitButton = e.submitter || e.currentTarget.querySelector('button[type="submit"]');
     const newPassword = document.getElementById('forceNewPassword').value;
     const confirmPassword = document.getElementById('forceConfirmPassword').value;
     const messageEl = document.getElementById('forcePasswordMessage');
@@ -3384,16 +3529,19 @@ function initializeEventsInternal() {
       messageEl.textContent = '兩次輸入的密碼不一致。';
       return;
     }
-    const result = await changeMyPassword(newPassword);
-    if (!result.ok) {
-      messageEl.className = 'message error';
-      messageEl.textContent = result.message;
-      return;
-    }
-    state.currentUser.mustChangePassword = false;
-    localStorage.setItem(USER_KEY, JSON.stringify(state.currentUser));
-    document.getElementById('forcePasswordView').style.display = 'none';
-    showApp();
+    await withActionLock('password:force-change', submitButton, async () => {
+      const result = await changeMyPassword(newPassword);
+      if (!result.ok) {
+        messageEl.className = 'message error';
+        messageEl.textContent = result.message;
+        return;
+      }
+      state.currentUser.mustChangePassword = false;
+      localStorage.setItem(USER_KEY, JSON.stringify(state.currentUser));
+      e.target.reset();
+      document.getElementById('forcePasswordView').style.display = 'none';
+      showApp();
+    }, { loadingText: '更新中...' });
   });
 
   safeListener('loginForm', 'submit', async (e) => { 
@@ -3415,7 +3563,7 @@ function initializeEventsInternal() {
 
   safeListener('companyInfoForm', 'submit', async (e) => {
     e.preventDefault();
-    if (!['admin', 'accounting'].includes(state.currentUser?.role)) {
+    if (!canManageCompanyData()) {
       showMessage('只有管理員與會計部門可以修改公司資料。', true);
       return;
     }
@@ -3440,6 +3588,60 @@ function initializeEventsInternal() {
     } catch (error) {
       console.error('儲存公司資料失敗:', error);
       showMessage('公司資料儲存失敗：' + error.message, true);
+    }
+  });
+
+  safeListener('businessInfoContent', 'click', async (event) => {
+    const target = event.target;
+    if (!target) return;
+
+    if (target.closest('#addBusinessItemRowBtn')) {
+      document.getElementById('businessItemsEditorBody')?.insertAdjacentHTML('beforeend', buildBusinessItemRow());
+      return;
+    }
+
+    if (target.closest('#addDirectorShareholderRowBtn')) {
+      document.getElementById('directorShareholdersEditorBody')?.insertAdjacentHTML('beforeend', buildDirectorShareholderRow());
+      return;
+    }
+
+    if (target.closest('.remove-business-item-row')) {
+      target.closest('.business-item-row')?.remove();
+      return;
+    }
+
+    if (target.closest('.remove-director-shareholder-row')) {
+      target.closest('.director-shareholder-row')?.remove();
+      return;
+    }
+
+    const saveButton = target.closest('#saveBusinessInfoBtn');
+    if (!saveButton) return;
+    if (!canManageCompanyData()) {
+      showMessage('只有管理員與會計部門可以修改事業項目與董監名單。', true);
+      return;
+    }
+
+    try {
+      await withActionLock('company-business-info:save', saveButton, async () => {
+        const businessItems = collectBusinessItemRows();
+        const shareholders = collectDirectorShareholderRows();
+        if (!businessItems.length) throw new Error('至少需要一筆營業項目');
+        if (!shareholders.length) throw new Error('至少需要一筆董監名單');
+
+        state.businessItems = await saveCompanyBusinessItems(businessItems);
+        const result = await saveCompanyShareholders(shareholders);
+        state.directorShareholders = result.shareholders;
+        state.companyInfo = result.companyInfo;
+        saveState(state);
+        renderBusinessData();
+        renderCompanyData();
+        fillCompanyInfoForm();
+        await renderReports();
+        showMessage('事業項目與董監名單已儲存。');
+      });
+    } catch (error) {
+      showMessage('事業項目與董監名單儲存失敗：' + error.message, true);
     }
   });
 
@@ -5058,6 +5260,7 @@ async function renderAdminDepartmentList() {
                 <td><span class="badge ${d.parent_department_id ? 'info' : ''}">${d.parent_department_id ? '組別' : '部門'}</span></td>
                 <td>
                   <button onclick="editDepartmentName('${d.id}')" class="secondary" style="width:auto; padding:6px 12px;">修改名稱</button>
+                  <button onclick="deleteDepartment('${d.id}')" class="danger" style="width:auto; padding:6px 12px; margin-left:6px;">刪除</button>
                 </td>
               </tr>
             `).join('')}
@@ -5094,10 +5297,49 @@ window.editDepartmentName = async (id) => {
 };
 
 window.deleteDepartment = async (id) => {
-  if (confirm('確定刪除此部門？如果已有使用者或專案綁定，可能無法刪除。')) {
+  if (!isAdminUser(state.currentUser?.role)) {
+    alert('僅 admin 或 super_admin 可刪除部門。');
+    return;
+  }
+
+  const currentName = document.getElementById(`dept-display-name-${id}`)?.innerText || '此部門';
+  const blockingChecks = [
+    { table: 'departments', column: 'parent_department_id', label: '子部門/組別' },
+    { table: 'profiles', column: 'department_id', label: '使用者' },
+    { table: 'projects', column: 'department_id', label: '專案' },
+    { table: 'department_budgets', column: 'department_id', label: '部門預算' },
+    { table: 'department_budget_requests', column: 'department_id', label: '預算申請' },
+    { table: 'vouchers', column: 'department_id', label: '報支/憑證' }
+  ];
+
+  try {
+    const results = await Promise.all(blockingChecks.map(async check => {
+      const { count, error } = await supabase
+        .from(check.table)
+        .select('id', { count: 'exact', head: true })
+        .eq(check.column, id);
+      if (error) throw error;
+      return { ...check, count: count || 0 };
+    }));
+
+    const blockers = results.filter(result => result.count > 0);
+    if (blockers.length) {
+      alert(`無法刪除「${currentName}」，請先移轉或刪除關聯資料：\n${blockers.map(item => `${item.label} ${item.count} 筆`).join('\n')}`);
+      return;
+    }
+
+    if (!confirm(`確定刪除「${currentName}」？此操作無法復原。`)) return;
+
     const { error } = await supabase.from('departments').delete().eq('id', id);
-    if (error) alert('刪除失敗：' + error.message);
-    else renderAdminDepartmentList();
+    if (error) throw error;
+
+    showMessage('部門已刪除。');
+    await renderAdminDepartmentList();
+    await populateInviteDepartmentSelect();
+    await populateProjectDepartmentSelect();
+    await populateDepartmentBudgetFormOptions();
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
   }
 };
 

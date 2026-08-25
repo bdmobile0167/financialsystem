@@ -5,12 +5,30 @@ function json(res, status, body) {
   res.status(status).json(body);
 }
 
+function isInvalidAdminKey(key) {
+  if (/^(sb_publishable_|sb_anon_)/.test(key)) return true;
+  if (!key.startsWith('eyJ')) return false;
+
+  try {
+    const [, payload] = key.split('.');
+    if (!payload) return true;
+    const decoded = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return JSON.parse(decoded).role !== 'service_role';
+  } catch (_) {
+    return true;
+  }
+}
+
 function createAdminClient() {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!process.env.SUPABASE_URL || !supabaseSecretKey) {
+    throw new Error('Missing SUPABASE_URL and SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY');
+  }
+  if (isInvalidAdminKey(supabaseSecretKey)) {
+    throw new Error('Supabase admin key is not a secret/service role key. Set SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY in Vercel Production.');
   }
 
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  return createClient(process.env.SUPABASE_URL, supabaseSecretKey, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -59,8 +77,8 @@ module.exports = async (req, res) => {
     const callerClient = createCallerClient(token);
     const { data: callerRole, error: roleQueryError } = await callerClient.rpc('get_invite_caller_role');
 
-    if (roleQueryError || callerRole !== 'admin') {
-      json(res, 403, { ok: false, correlationId, message: 'Only admin users can reset passwords.' });
+    if (roleQueryError || !['admin', 'super_admin'].includes(callerRole)) {
+      json(res, 403, { ok: false, correlationId, message: 'Only admin or super_admin users can reset passwords.' });
       return;
     }
 

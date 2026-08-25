@@ -29,9 +29,9 @@
       <div id="forcePasswordMessage" class="message"></div>
       <form id="forcePasswordForm">
         <label>新密碼</label>
-        <input id="forceNewPassword" type="password" required minlength="6" />
+              <input id="forceNewPassword" type="password" required minlength="6" autocomplete="new-password" />
         <label>確認新密碼</label>
-        <input id="forceConfirmPassword" type="password" required minlength="6" />
+              <input id="forceConfirmPassword" type="password" required minlength="6" autocomplete="new-password" />
         <button type="submit" style="margin-top: 10px;">確認更新密碼</button>
       </form>
     </div>
@@ -924,6 +924,10 @@
                   <option value="accounting_approve">會計核准</option>
                   <option value="reject">會計退件</option>
                   <option value="close">付款銷案</option>
+                  <option value="department_budget_request_create">預算申請送出</option>
+                  <option value="department_budget_request_approve">預算申請核准</option>
+                  <option value="department_budget_request_reject">預算申請退件</option>
+                  <option value="department_budget_update">部門預算調整</option>
                 </select>
               </div>
               <div>
@@ -1050,9 +1054,9 @@
               <label>登入帳號</label>
               <input id="passwordUserEmail" type="email" readonly />
               <label>新密碼</label>
-              <input id="newPassword" type="password" placeholder="輸入新密碼" required />
+              <input id="newPassword" type="password" placeholder="輸入新密碼" required minlength="6" autocomplete="new-password" />
               <label>確認密碼</label>
-              <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required />
+              <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required minlength="6" autocomplete="new-password" />
               <button type="submit" class="secondary" style="margin-top: 10px;">儲存密碼</button>
             </form>
           </div>
@@ -1063,24 +1067,6 @@
             <div id="businessInfoContent"></div>
           </div>
 
-          <!-- 5. 使用者核准 -->
-          <div class="panel" id="approvalCard" style="margin-top: 16px;">
-            <h3>使用者核准</h3>
-            <p class="muted">管理者可查看其他帳號的登入申請並核准。</p>
-            <table>
-              <thead>
-                <tr><th>帳號</th><th>申請時間</th><th>狀態</th><th>操作</th></tr>
-              </thead>
-              <tbody id="approvalTableBody"></tbody>
-            </table>
-          </div>
-
-          <!-- 6. 匯出資料 -->
-          <div class="panel" id="exportCard" style="margin-top: 16px;">
-            <h3>匯出資料</h3>
-            <p class="muted">可把交易資料匯出為 JSON。</p>
-            <button id="exportBtn" class="secondary">匯出交易 JSON</button>
-          </div>
         </section>
       </main>
     </div>

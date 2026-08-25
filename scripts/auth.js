@@ -1,5 +1,4 @@
 ﻿import { USER_KEY } from './state.js';
-import { requestApproval, isEmailApproved } from './approval.js';
 
 function normalizeEmail(value) {
   return (value || '').trim().toLowerCase();
@@ -22,7 +21,7 @@ export function formatUser(user) {
 }
 
 export function isAdminUser(role) {
-  return role === 'admin';
+  return ['admin', 'super_admin'].includes(role);
 }
 
 export function saveCurrentUser(user) {

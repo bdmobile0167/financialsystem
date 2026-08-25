@@ -1,6 +1,6 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.36`
+目前本機版本：`0.2.38`
 
 這是部署於 Vercel、以 Supabase 為後端的財務管理系統。功能包含登入與權限、報支簽核、銀行帳戶與勾稽、專案預算、會計分錄、四大財報、IFRS 調整、通知及帳號管理。
 
@@ -10,10 +10,19 @@
 - Vercel 專案：`financialsystem`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 正式本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.36` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
+- 本機版本 `0.2.38` 尚未推送前，GitHub／Vercel 仍顯示 `0.2.16`。
 
 ## 本輪更新
 
+- 部門管理新增刪除前關聯檢查，避免刪到仍被使用者、專案、預算或憑證使用中的部門。
+- 移除設定頁舊的「使用者核准」與「匯出交易 JSON」區塊，保留正式帳號邀請與 CPA 審計包匯出。
+- 事業項目與董監名單改為可編輯表格，管理/會計可新增、修改、刪除並寫回 Supabase。
+- 儲存董監名單時會以出資合計同步更新已投入股本。
+- 密碼設定補上送出鎖、最小長度、autocomplete 與成功後清空欄位。
+- 預算管理納入 Audit Trail：部門預算申請、核准、退件、部門預算新增/調整/刪除會寫入 `audit_logs`。
+- Audit Trail 畫面新增預算申請與部門預算動作篩選，並合併顯示 workflow log 與 system audit log。
+- Vercel invite/reset-password API 改支援 `SUPABASE_SECRET_KEY`，並會拒絕 publishable/anon key；舊版 JWT key 需解碼為 `service_role` 才可作為 Admin API key。
+- 邀請與重設密碼 API 允許 `admin` / `super_admin` 執行。
 - Supabase 新增資料表 RLS 已改成 init-plan friendly policy，並補齊 FK index / 拆分重疊 policy。
 - 近期新增 SECURITY DEFINER helper 已撤回 `public` / `anon` 直接 execute 權限。
 - Dashboard CSS 改用既有色彩 token，並補齊 1024 / 768 / 390 viewport 規則。
