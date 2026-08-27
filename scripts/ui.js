@@ -1687,25 +1687,50 @@ window.editPaymentRecipient = async (recipientId) => {
   document.getElementById('paymentRecipientForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+function withTimeout(promise, message, timeoutMs = 12000) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
 window.openPaymentEditor = async (voucherId) => {
   if (!isFinanceOperator()) {
     alert('只有會計、管理員或超級管理員可以執行付款。');
     return;
   }
-  try {
-    const voucher = paymentRowsCache.find(item => item.id === voucherId);
-    if (!voucher) return alert('找不到付款資料，請重新整理付款清單。');
-    const [recipients, accounts, banks] = await Promise.all([
-      fetchPaymentRecipients(), fetchAccounts(), fetchBankAccounts()
-    ]);
-    window.__paymentEditorRecipients = recipients;
-    const selectedRecipient = recipients.find(item => item.id === voucher.payment_recipient_id) || {};
-    const selectedBankId = voucher.payment_bank_account_id || voucher.project?.default_bank_account_id || '';
-    const activeRecipients = recipients.filter(item => item.active);
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop';
-    modal.innerHTML = `
-      <div class="payment-editor-modal">
+  const voucher = paymentRowsCache.find(item => item.id === voucherId);
+  if (!voucher) {
+    alert('找不到付款資料，請重新整理付款清單。');
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="payment-editor-modal">
+      <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
+      <p class="muted">載入付款設定...</p>
+      <div class="button-row">
+        <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  void (async () => {
+    try {
+      const [recipients, accounts, banks] = await withTimeout(
+        Promise.all([fetchPaymentRecipients(), fetchAccounts(), fetchBankAccounts()]),
+        '付款設定資料載入逾時，請確認付款人主檔、會計科目與銀行帳戶是否可正常讀取。'
+      );
+      window.__paymentEditorRecipients = recipients;
+      const selectedRecipient = recipients.find(item => item.id === voucher.payment_recipient_id) || {};
+      const selectedBankId = voucher.payment_bank_account_id || voucher.project?.default_bank_account_id || '';
+      const activeRecipients = recipients.filter(item => item.active !== false);
+      const card = modal.querySelector('.payment-editor-modal');
+      if (!card) return;
+      card.innerHTML = `
         <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
         ${voucher.accounting_voucher_no ? `<p class="muted">會計憑證：${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜流水 #${voucher.accounting_sequence_no}` : ''}</p>` : ''}
         <p>${escapeHtml(voucher.summary || '')}</p>
@@ -1730,13 +1755,24 @@ window.openPaymentEditor = async (voucherId) => {
           <button type="button" class="secondary" onclick="savePaymentDraft('${voucher.id}')">儲存修改</button>
           <button type="button" class="primary-btn" onclick="confirmPaymentFromList('${voucher.id}')">確認已付款</button>
           <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">取消</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  } catch (error) {
-    console.error('開啟付款設定失敗:', error);
-    alert('開啟付款設定失敗：' + error.message);
-  }
+        </div>`;
+    } catch (error) {
+      console.error('開啟付款設定失敗:', error);
+      const card = modal.querySelector('.payment-editor-modal');
+      if (card) {
+        card.innerHTML = `
+          <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
+          <p class="message error">開啟付款設定失敗：${escapeHtml(error.message)}</p>
+          <p class="muted">請先確認「所有付款人」、會計科目與公司銀行帳戶資料都可以正常載入。</p>
+          <div class="button-row">
+            <button type="button" class="primary-btn" onclick="this.closest('.modal-backdrop').remove(); openPaymentEditor('${voucher.id}')">重新載入</button>
+            <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
+          </div>`;
+      } else {
+        alert('開啟付款設定失敗：' + error.message);
+      }
+    }
+  })();
 };
 
 window.populatePaymentRecipientFields = () => {

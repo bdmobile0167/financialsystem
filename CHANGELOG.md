@@ -1,5 +1,12 @@
 ﻿# 變更紀錄
 
+## 0.2.48 - 2026-08-27
+
+- 付款設定改為先建立 modal，再背景載入付款人、會計科目與公司銀行帳戶，避免按鈕停在「開啟中」但沒有視窗。
+- 付款設定資料載入加入 12 秒逾時提示；失敗時會在 modal 內顯示錯誤與重新載入按鈕。
+- 補上 `.modal-backdrop` 全域樣式，確保付款 modal 以 fixed overlay 顯示。
+- 收款人可用性判斷改為 `active !== false`，避免 active 欄位空值時全部被隱藏。
+
 ## 0.2.47 - 2026-08-27
 
 - 付款清單操作按鈕改用 `data-payment-action` 與 `paymentList` click 事件代理，不再依賴 inline `onclick`。
