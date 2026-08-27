@@ -1,99 +1,89 @@
 # 財務管理系統
 
-目前本機版本：`0.2.53`
+目前本機版本：`0.2.55`
 
-這是一套串接 Supabase 與 Vercel 的財務管理系統，涵蓋報支、會計審核、付款管理、銀行流水、專案與部門預算、薪資付款、財務報表、公司資料與 Audit Trail。
+這是以 Supabase + Vercel 為核心的公司財務管理系統，涵蓋報支、會計審核、付款管理、憑證、銀行流水、預算、薪資付款、財報與 Audit Trail。
 
-## 系統資訊
+## 專案資訊
 
 - GitHub：`bdmobile0167/financialsystem`
-- Vercel 專案：`financialsystem`
+- Vercel project：`financialsystem`
 - Production domain：`financialsystem-nine.vercel.app`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
-- 本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.53` 尚未確認已推送 GitHub / 部署 Vercel。
+- 本機正式目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
 
-## 近期完成
+## 目前重點
 
-- 付款管理按鈕改為「付款設定／確認付款」，移除容易誤解的 checkbox。
-- 確認付款前會檢查收款人、收款銀行、收款戶名、收款帳號、會計科目、公司付款銀行與付款日期。
-- 付款設定開啟失敗時會直接顯示錯誤，不再像按鈕沒有反應。
-- 付款管理按鈕已改用 JS 事件代理，不再依賴 inline onclick。
-- 付款設定視窗會先開啟再載入資料，並補齊 `.modal-backdrop` 顯示樣式。
-- 付款階段不再選會計科目，改顯示會計審核已指定的每筆明細科目。
-- 付款設定固定顯示既有付款金額與收款帳戶；資料錯誤時只更換本筆付款人，不在付款畫面改付款人主檔。
-- 同一付款人可有多個收款帳戶，付款設定會依原始付款人帶入全部帳戶供會計選擇。
-- 付款設定會列出明細項目筆數、每筆原填收款人與金額，並可搜尋更換收款人或帳號。
-- 會計備註會依付款日期自動帶入 `MMDD_摘要`。
-- Supabase Auth invite 500 已定位為 SMTP host 填成網站 URL，並新增本機 Management API 輔助腳本。
-- Supabase `close_voucher_by_accounting` RPC 已允許 `super_admin` 執行付款銷案。
-- 付款人隱私已收斂：一般員工/主管只輸入身分證或統編並看到 `O` 遮罩姓名。
-- 會計審核支援逐筆明細歸類、AI 科目建議與會計科目管理。
-- 預算管理支援申請/審核流程與 Audit Trail。
-- 事業項目、董監名單、公司股本來源已改為 Supabase 管理資料。
+- 前端 Supabase URL / anon key 已改由 `/api/public-config` 讀取 Vercel env，本機靜態測試才使用 fallback。
+- Supabase Auth invite 已改為正確語意：API 成功只代表 Supabase 接受邀請請求，實際 SMTP 投遞需看 Supabase Auth logs 或 SMTP test email。
+- 財報與 journal 明細已對 `journal_entries` 分頁查詢，避免超過 1000 筆後漏算。
+- 付款銷帳已依 `voucher_lines.account_code` 逐科目建立分錄，支援同一張 voucher 多個會計科目。
+- 通知鈴鐺已支援 Supabase Realtime，並保留 30 秒輪詢備援。
+- 薪資勞保、健保、勞退代收統編改由 `payroll_agency_mappings` 管理。
+- 付款設定可列出明細項目與收款人；會計/管理員可用姓名、身分證/統編、銀行、戶名或帳號搜尋收款人。
 
-## 付款操作
+## 環境變數
 
-在付款管理中，會計、管理員或超級管理員要按「付款設定／確認付款」。開啟視窗後，系統會固定顯示本筆付款金額、已指定收款人與收款帳戶，並列出這張單有幾筆付款項目、每筆原填收款人與金額。若同一付款人有多個帳戶，展開「更換本筆付款人」會優先列出該付款人的全部帳戶，也可搜尋其他付款人、銀行或帳號。會計確認公司付款銀行、付款日期與備註後，再按「確認已付款」。
+請參考 `.env.example` 與 `docs/ENVIRONMENT.md`。正式環境至少需要：
 
-付款完成後：
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SECRET_KEY` 或相容舊設定 `SUPABASE_SERVICE_ROLE_KEY`
+- `APP_LOGIN_URL`
+- `GEMINI_API_KEY`
 
-- 待付款篩選中該筆會消失。
-- 切到「已付款」或「全部」可看到付款狀態與付款憑證。
-- 系統會建立付款憑證、銀行流水與日記帳。
+若要用 Supabase 官方 invite 信：
 
-如果按下「付款設定／確認付款」後沒有視窗，請確認瀏覽器是否載入 `0.2.53`；新版會先顯示付款設定視窗與「載入付款設定...」。
+- `INVITE_EMAIL_PROVIDER=supabase`
+- Supabase Dashboard 的 Authentication SMTP 必須通過 test email。
 
-## Supabase 邀請信 SMTP
+若改用 Gmail nodemailer：
 
-Supabase Auth logs 已確認 invite 寄信錯誤是 SMTP host 被填成網站 URL。`https://financialsystem-nine.vercel.app` 要放在 Auth Site URL / Redirect URL，不能放在 SMTP Settings。
-
-SMTP Settings 應使用：
-
-- `smtp_host`：純 SMTP host，例如 `smtp.sendgrid.net`、`smtp.gmail.com`、`smtp.resend.com`。
-- `smtp_port`：`465` 或 `587`。
-- `smtp_admin_email`：寄件 email，不是網址。
-
-本機可用 `scripts/tools/update-supabase-smtp.ps1` 搭配環境變數呼叫 Supabase Management API；不要把 Personal Access Token 或 SMTP 密碼寫入檔案。
-
-## 主要待辦
-
-- Vercel Production 重新部署並驗收 `0.2.53`。
-- 修正 Supabase Auth SMTP host 並驗證邀請流程與 `INVITE_EMAIL_PROVIDER=supabase`。
-- 外部 Git server repository 初始化與 push。
-- 多收款人付款拆分資料結構與 UI。
-- 薪資付款的部門預算扣減邏輯。
-- Supabase advisor / RLS / production viewport 持續驗收。
-
-## 文件入口
-
-- `docs/AI_ENTRY_POINT.md`：AI / Codex 接手入口。
-- `docs/VERSION.md`：版本紀錄。
-- `CHANGELOG.md`：變更紀錄。
-- `docs/TASKS_PENDING.md`：未完成工作。
-- `docs/TASKS_COMPLETED.md`：已完成工作。
-- `docs/BUGS.md`：問題追蹤。
-- `docs/API.md`：API 說明。
-- `docs/DATABASE.md`：資料庫與 migration 摘要。
-- `docs/RLS_GUIDE.md`：RLS 權限指南。
-- `docs/SUPABASE_EMAIL_LOGIN.md`：Supabase SMTP 與登入邀請。
+- `GMAIL_USER`
+- `GMAIL_APP_PASSWORD`
 
 ## 本機啟動
 
-本專案使用 ES module，請用 HTTP server 開啟：
+此專案是靜態前端 + Vercel Serverless API。前端需透過 HTTP server 開啟：
 
 ```powershell
 python -m http.server 8123
 ```
 
-然後開啟：
+瀏覽：
 
 ```text
 http://127.0.0.1:8123/
 ```
 
-## 安全事項
+## 驗證指令
 
-- 不要把 Supabase secret/service role key、SMTP 密碼或 AI key 寫入前端檔案。
-- secret/service role key 必須只放在 Vercel Environment Variables。
-- 付款完成才會產生日記帳、銀行流水與付款憑證。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/lint-migrations.ps1
+```
+
+若有 Node/npm：
+
+```powershell
+npm run lint:migrations
+```
+
+## 主要文件
+
+- `docs/AI_ENTRY_POINT.md`：Codex / AI 交接入口。
+- `docs/VERSION.md`：版本紀錄。
+- `CHANGELOG.md`：變更紀錄。
+- `docs/TASKS_PENDING.md`：未完成工作。
+- `docs/TASKS_COMPLETED.md`：完成紀錄。
+- `docs/API.md`：API 與 env 說明。
+- `docs/ARCHITECTURE.md`：架構紀錄。
+- `docs/DATABASE.md`：資料庫與 migration 紀錄。
+- `docs/RLS_GUIDE.md`：RLS 權限紀錄。
+- `docs/SUPABASE_EMAIL_LOGIN.md`：Supabase SMTP 與登入邀請排查。
+
+## 待辦重點
+
+- Production 重新部署並做 Vercel / Supabase invite 驗收。
+- Supabase Dashboard SMTP test email 仍需確認實際投遞。
+- 外部 Git server 仍需 SSH key / remote push。
+- 多收款人付款拆分仍是較大的後續資料模型調整。
