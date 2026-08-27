@@ -1,5 +1,13 @@
 ﻿# 變更紀錄
 
+## 0.2.55 - 2026-08-27
+
+- 修正付款銷帳 RPC：有 `voucher_lines.account_code` 時，`journal_entries` 依明細科目與金額逐科目入帳，不再整張單用單一 `accounting_account_id`。
+- 移除 `journal_entries_one_per_voucher` 唯一索引，允許同一張 voucher 產生多筆分錄；保留一般 `idx_journal_entries_voucher_id` 查詢索引。
+- 新增 `voucher_lines.created_at`，支援付款分錄重建排序。
+- 已修復 `VOU-20260825-5269`：分錄現在為 `6110 差旅費 2,000`、`6230 雜項支出 20,000`。
+- 已批次重建已關帳且明細科目完整的舊 voucher 分錄。
+
 ## 0.2.54 - 2026-08-27
 
 - 新增 `/api/public-config` 與 `.env.example`，前端 Supabase URL / anon key 改以 Vercel env 為正式來源，本機保留 fallback。
