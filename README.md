@@ -1,6 +1,6 @@
 # 財務管理系統
 
-目前本機版本：`0.2.46`
+目前本機版本：`0.2.47`
 
 這是一套串接 Supabase 與 Vercel 的財務管理系統，涵蓋報支、會計審核、付款管理、銀行流水、專案與部門預算、薪資付款、財務報表、公司資料與 Audit Trail。
 
@@ -11,13 +11,14 @@
 - Production domain：`financialsystem-nine.vercel.app`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
 - 本機目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
-- 本機版本 `0.2.46` 尚未確認已推送 GitHub / 部署 Vercel。
+- 本機版本 `0.2.47` 尚未確認已推送 GitHub / 部署 Vercel。
 
 ## 近期完成
 
 - 付款管理按鈕改為「付款設定／確認付款」，移除容易誤解的 checkbox。
 - 確認付款前會檢查收款人、收款銀行、收款戶名、收款帳號、會計科目、公司付款銀行與付款日期。
 - 付款設定開啟失敗時會直接顯示錯誤，不再像按鈕沒有反應。
+- 付款管理按鈕已改用 JS 事件代理，不再依賴 inline onclick。
 - Supabase `close_voucher_by_accounting` RPC 已允許 `super_admin` 執行付款銷案。
 - 付款人隱私已收斂：一般員工/主管只輸入身分證或統編並看到 `O` 遮罩姓名。
 - 會計審核支援逐筆明細歸類、AI 科目建議與會計科目管理。
@@ -34,11 +35,11 @@
 - 切到「已付款」或「全部」可看到付款狀態與付款憑證。
 - 系統會建立付款憑證、銀行流水與日記帳。
 
-如果線上畫面仍看到左側 checkbox 或「編輯／付款」，代表 Production 或瀏覽器快取仍是舊版。
+如果按下「付款設定／確認付款」後完全沒有反應，請確認瀏覽器是否載入 `0.2.47`；新版按鈕會短暫顯示「開啟中...」。
 
 ## 主要待辦
 
-- Vercel Production 重新部署並驗收 `0.2.46`。
+- Vercel Production 重新部署並驗收 `0.2.47`。
 - 驗證 Supabase Auth SMTP 邀請流程與 `INVITE_EMAIL_PROVIDER=supabase`。
 - 外部 Git server repository 初始化與 push。
 - 多收款人付款拆分資料結構與 UI。

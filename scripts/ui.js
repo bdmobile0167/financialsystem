@@ -1438,7 +1438,9 @@ async function renderPaymentManagement() {
             <td>${escapeHtml(voucher.accounting_account ? `${voucher.accounting_account.code} ${voucher.accounting_account.name}` : '未指定科目')}<br><span class="muted">${escapeHtml(voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '尚未指定付款銀行')}</span></td>
             <td><strong>NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</strong></td>
             <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? `已付款 ${voucher.payment_date || ''}` : '待付款'}</span>${payment?.payment_no ? `<br><strong class="payment-voucher-number">${escapeHtml(payment.payment_no)}${payment.payment_sequence_no ? `｜#${payment.payment_sequence_no}` : ''}</strong>` : ''}</td>
-            <td>${paid ? `<button type="button" class="secondary" onclick="viewPaymentVoucher('${voucher.id}')">查看付款憑證</button>` : `<button type="button" class="primary-btn" style="width:auto; padding:8px 12px;" onclick="openPaymentEditor('${voucher.id}')">付款設定／確認付款</button>`}</td>
+            <td>${paid
+              ? `<button type="button" class="secondary" data-payment-action="view-voucher" data-voucher-id="${voucher.id}">查看付款憑證</button>`
+              : `<button type="button" class="primary-btn" style="width:auto; padding:8px 12px;" data-payment-action="open-editor" data-voucher-id="${voucher.id}">付款設定／確認付款</button>`}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>` : '<p class="muted">目前沒有符合條件的付款資料。</p>';
@@ -4063,6 +4065,31 @@ function initializeEventsInternal() {
   safeListener('paymentStatusFilter', 'change', () => renderPaymentManagement());
   safeListener('exportPaymentListBtn', 'click', () => {
     exportPaymentListToExcel().catch(error => showMessage('匯出付款清單失敗：' + error.message, true));
+  });
+  safeListener('paymentList', 'click', async (event) => {
+    const button = event.target.closest('button[data-payment-action]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const voucherId = button.dataset.voucherId;
+    if (!voucherId) {
+      alert('找不到付款單據 ID，請重新整理付款清單。');
+      return;
+    }
+    if (button.dataset.paymentAction === 'open-editor') {
+      try {
+        await withActionLock(`payment-editor:${voucherId}`, button, async () => {
+          await window.openPaymentEditor(voucherId);
+        }, { loadingText: '開啟中...' });
+      } catch (error) {
+        console.error('付款設定按鈕執行失敗:', error);
+        alert('付款設定按鈕執行失敗：' + error.message);
+      }
+      return;
+    }
+    if (button.dataset.paymentAction === 'view-voucher') {
+      window.viewPaymentVoucher(voucherId);
+    }
   });
   document.querySelectorAll('.payment-mode-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
