@@ -329,6 +329,21 @@ button.danger:hover {
   gap: 10px 12px;
 }
 
+.payment-accounting-summary {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 14px;
+  background: var(--surface-strong);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.payment-accounting-lines {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
 .payment-voucher-number {
   display: inline-block;
   margin-top: 6px;
