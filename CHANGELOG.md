@@ -1,5 +1,19 @@
 ﻿# 變更紀錄
 
+## 0.2.51 - 2026-08-27
+
+- 付款設定改為固定確認既有付款金額、收款人與收款帳戶，付款階段不再把帳號欄位當作可編輯主檔。
+- 新增「更換本筆付款人」區塊；只有收款人錯誤時才展開下拉更換該張 voucher 的付款人。
+- `savePaymentAssignment()` 不再更新 `payment_recipients` 銀行帳號主檔，避免付款確認誤改付款人資料。
+- 付款確認仍會檢查收款銀行、戶名、帳號、付款銀行與付款日期是否完整。
+
+## 0.2.50 - 2026-08-27
+
+- 透過 Supabase Auth logs 確認官方 invite 信件 500 根因：SMTP host 被填成 `https://financialsystem-nine.vercel.app/?`。
+- `docs/SUPABASE_EMAIL_LOGIN.md` 補上 SMTP Settings 正確欄位格式、Dashboard 修正位置與 Management API 修正方式。
+- 新增 `scripts/tools/update-supabase-smtp.ps1`，可用 Supabase Personal Access Token 從本機更新 Auth SMTP config，並防止 host 填入 URL 或 `:465`。
+- `TASKS_PENDING` 與 `BUGS` 記錄後續仍需修正 Supabase Dashboard / Management API 設定並重送 invite 驗收。
+
 ## 0.2.49 - 2026-08-27
 
 - 付款設定移除會計科目下拉，付款階段不再重新選科目。

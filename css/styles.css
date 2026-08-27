@@ -329,6 +329,39 @@ button.danger:hover {
   gap: 10px 12px;
 }
 
+.payment-confirmation-card {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.payment-confirmation-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.payment-confirmation-amount {
+  color: var(--brand);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-recipient-change {
+  margin: 0 0 14px;
+}
+
+.payment-recipient-change .secondary {
+  width: auto;
+  margin-bottom: 8px;
+}
+
 .payment-accounting-summary {
   padding: 12px 14px;
   border: 1px solid var(--border);
