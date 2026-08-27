@@ -1,6 +1,6 @@
 {
   "name": "financial-system",
-  "version": "0.2.51",
+  "version": "0.2.53",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
