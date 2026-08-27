@@ -12,7 +12,7 @@ import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, resetUserPassword, toggleUserActive, inviteNewUser, updateUserPermissions, getDefaultPermissions, fetchProjectMembers, updateProjectMembers as saveProjectMembersApi } from '../src/modules/admin/adminApi.js';
-import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from './notifications.js';
+import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead, subscribeMyNotifications } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
 import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
@@ -1375,6 +1375,18 @@ async function fetchPayeeDetails() {
   return data || [];
 }
 
+async function fetchPayrollAgencyIdentifiers() {
+  const { data, error } = await supabase
+    .from('payroll_agency_mappings')
+    .select('payee_identifier')
+    .eq('active', true);
+  if (error) {
+    console.warn('載入薪資代收機構設定失敗，使用預設排除清單：', error.message);
+    return ['24616337-1', '24616337-2', '24616337-3'];
+  }
+  return (data || []).map(item => item.payee_identifier).filter(Boolean);
+}
+
 function recipientSummary(recipient, line) {
   if (recipient) {
     return `
@@ -1495,6 +1507,34 @@ function paymentRecipientOptionLabel(recipient) {
   return `${recipient?.display_name || '未命名'}｜${recipient?.identifier || '-'}${bankText ? `｜${bankText}` : ''}${accountText}`;
 }
 
+function paymentRecipientSearchText(recipient) {
+  return [
+    recipient?.display_name,
+    recipient?.identifier,
+    recipient?.bank_name,
+    recipient?.bank_branch,
+    recipient?.account_name,
+    recipient?.account_number
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function renderPaymentRecipientSelectOptions(recipients, selectedRecipientId = '', query = '') {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const filteredRecipients = (recipients || []).filter(item => {
+    if (!normalizedQuery) return true;
+    return paymentRecipientSearchText(item).includes(normalizedQuery);
+  });
+  const selectedExists = filteredRecipients.some(item => item.id === selectedRecipientId);
+  const selectedRecipient = (recipients || []).find(item => item.id === selectedRecipientId);
+  const visibleRecipients = selectedRecipient && !selectedExists
+    ? [selectedRecipient, ...filteredRecipients]
+    : filteredRecipients;
+  return [
+    '<option value="">請選擇收款人</option>',
+    ...visibleRecipients.map(item => `<option value="${item.id}" ${item.id === selectedRecipientId ? 'selected' : ''}>${escapeHtml(paymentRecipientOptionLabel(item))}</option>`)
+  ].join('');
+}
+
 window.togglePaymentRecipientChange = () => {
   const panel = document.getElementById('paymentRecipientChangePanel');
   const button = document.getElementById('paymentRecipientChangeToggle');
@@ -1506,16 +1546,13 @@ window.togglePaymentRecipientChange = () => {
 window.filterPaymentRecipientOptions = () => {
   const input = document.getElementById('paymentRecipientSearch');
   const select = document.getElementById('paymentEditorRecipient');
-  const query = (input?.value || '').trim().toLowerCase();
   if (!select) return;
-  Array.from(select.options).forEach(option => {
-    if (!option.value) {
-      option.hidden = false;
-      return;
-    }
-    const haystack = (option.dataset.search || option.textContent || '').toLowerCase();
-    option.hidden = query ? !haystack.includes(query) : false;
-  });
+  const selectedRecipientId = select.value || window.__paymentEditorSelectedRecipientId || '';
+  select.innerHTML = renderPaymentRecipientSelectOptions(
+    window.__paymentEditorRecipients || [],
+    selectedRecipientId,
+    input?.value || ''
+  );
 };
 
 function getPaymentAccountDisplay(voucher) {
@@ -1719,7 +1756,12 @@ async function renderPayrollPaymentPanel() {
   if (!list || !bankSelect || !isFinanceOperator()) return;
 
   try {
-    const [payees, banks] = await Promise.all([fetchPayeeDetails(), fetchBankAccounts()]);
+    const [payees, banks, agencyIdentifiers] = await Promise.all([
+      fetchPayeeDetails(),
+      fetchBankAccounts(),
+      fetchPayrollAgencyIdentifiers()
+    ]);
+    const agencyIdentifierSet = new Set(agencyIdentifiers);
     populateBankSelect(bankSelect, banks || []);
     const dateInput = document.getElementById('payrollPaymentDate');
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
@@ -1729,7 +1771,7 @@ async function renderPayrollPaymentPanel() {
       summaryInput.value = `${now.getFullYear() - 1911}${String(now.getMonth() + 1).padStart(2, '0')} 薪資`;
     }
     const employeePayees = payees
-      .filter(payee => payee.is_active !== false && !['24616337-1', '24616337-2', '24616337-3'].includes(payee.identifier))
+      .filter(payee => payee.is_active !== false && !agencyIdentifierSet.has(payee.identifier))
       .filter(payee => (payee.type || 'individual') === 'individual');
 
     list.innerHTML = employeePayees.length ? `
@@ -1914,6 +1956,7 @@ window.openPaymentEditor = async (voucherId) => {
         ...activeRecipients.map(item => [item.id, item])
       ]).values());
       window.__paymentEditorRecipients = selectableRecipients;
+      window.__paymentEditorSelectedRecipientId = selectedRecipientId;
       const card = modal.querySelector('.payment-editor-modal');
       if (!card) return;
       card.innerHTML = `
@@ -1928,10 +1971,7 @@ window.openPaymentEditor = async (voucherId) => {
           <button type="button" id="paymentRecipientChangeToggle" class="secondary" onclick="togglePaymentRecipientChange()">更換本筆付款人</button>
           <div id="paymentRecipientChangePanel" hidden>
             <label>搜尋收款人／帳號<input id="paymentRecipientSearch" type="search" placeholder="輸入姓名、身分證/統編、銀行或帳號" oninput="filterPaymentRecipientOptions()"></label>
-            <label>更換收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()"><option value="">請選擇收款人</option>${selectableRecipients.map(item => {
-              const searchText = [item.display_name, item.identifier, item.bank_name, item.bank_branch, item.account_name, item.account_number].filter(Boolean).join(' ');
-              return `<option value="${item.id}" data-search="${escapeHtml(searchText)}" ${item.id === selectedRecipientId ? 'selected' : ''}>${escapeHtml(paymentRecipientOptionLabel(item))}</option>`;
-            }).join('')}</select></label>
+            <label>更換收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()">${renderPaymentRecipientSelectOptions(selectableRecipients, selectedRecipientId)}</select></label>
             <p class="muted">若收款人或帳號錯誤，這裡只更換本筆付款人；付款人主檔請到「所有付款人」維護。</p>
           </div>
         </div>
@@ -1966,6 +2006,7 @@ window.openPaymentEditor = async (voucherId) => {
 
 window.populatePaymentRecipientFields = () => {
   const recipientId = document.getElementById('paymentEditorRecipient')?.value;
+  window.__paymentEditorSelectedRecipientId = recipientId || '';
   const recipient = (window.__paymentEditorRecipients || []).find(item => item.id === recipientId) || {};
   const bankText = [recipient.bank_name, recipient.bank_branch].filter(Boolean).join(' ');
   const accountName = recipient.account_name || recipient.display_name || '';
@@ -4255,9 +4296,9 @@ function initializeEventsInternal() {
           permissions: getInvitePermissions()
         });
         resultBox.style.display = 'block';
-        resultBox.className = result.emailSent ? 'message success' : 'message warning';
-        if (result.emailSent && result.emailProvider === 'supabase') {
-          resultBox.textContent = `帳號已建立，Supabase 邀請信已寄至 ${result.credentials.email}，使用者點擊信件連結後設定密碼。`;
+        resultBox.className = result.emailSent === false ? 'message warning' : 'message success';
+        if (result.emailProvider === 'supabase') {
+          resultBox.textContent = `帳號已建立，Supabase 已接受邀請請求：${result.credentials.email}。實際寄信由 Supabase SMTP 背景處理，請用 Auth logs 或 SMTP test email 確認。`;
         } else if (result.emailSent) {
           resultBox.textContent = `帳號已建立，邀請信已寄至 ${result.credentials.email}（使用者登入後系統會強制要求設定新密碼）。`;
         } else {
@@ -7647,6 +7688,7 @@ window.renderUserManagementView = renderUserManagementPanel;
 
 // ===== 通知功能 =====
 let notificationPollTimer = null;
+let notificationRealtimeUnsubscribe = null;
 
 async function refreshNotificationBadge() {
   try {
@@ -7735,6 +7777,18 @@ function initNotificationBell() {
   }
 
   refreshNotificationBadge();
+
+  if (!notificationRealtimeUnsubscribe) {
+    void subscribeMyNotifications(async () => {
+      await refreshNotificationBadge();
+      const openPanel = document.getElementById('notificationPanel');
+      if (openPanel?.style.display === 'block') await renderNotificationList();
+    }).then(unsubscribe => {
+      notificationRealtimeUnsubscribe = unsubscribe;
+    }).catch(error => {
+      console.warn('啟用通知即時更新失敗，保留 30 秒輪詢：', error.message);
+    });
+  }
 
   if (!notificationPollTimer) {
     notificationPollTimer = setInterval(refreshNotificationBadge, 30000);

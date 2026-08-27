@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient.js';
 
+let notificationRealtimeChannel = null;
+
 /**
  * 建立一則通知給指定使用者
  * @param {string} userId 收到通知的使用者 id（profiles.id）
@@ -90,6 +92,38 @@ export async function fetchUnreadCount() {
 export async function markNotificationRead(notificationId) {
   const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
   if (error) console.error('標記已讀失敗:', error);
+}
+
+export async function subscribeMyNotifications(onChange) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || typeof supabase.channel !== 'function') return () => {};
+
+  if (notificationRealtimeChannel) {
+    await supabase.removeChannel(notificationRealtimeChannel);
+    notificationRealtimeChannel = null;
+  }
+
+  notificationRealtimeChannel = supabase
+    .channel(`notifications:${user.id}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+      payload => {
+        if (typeof onChange === 'function') onChange(payload);
+      }
+    )
+    .subscribe(status => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('Notification realtime subscription status:', status);
+      }
+    });
+
+  return async () => {
+    if (notificationRealtimeChannel) {
+      await supabase.removeChannel(notificationRealtimeChannel);
+      notificationRealtimeChannel = null;
+    }
+  };
 }
 
 export async function markAllNotificationsRead() {

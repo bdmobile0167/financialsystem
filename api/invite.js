@@ -22,7 +22,9 @@ function isInvalidAdminKey(key) {
   try {
     const [, payload] = key.split('.');
     if (!payload) return true;
-    const decoded = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    const decoded = Buffer
+      .from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+      .toString('utf8');
     return JSON.parse(decoded).role !== 'service_role';
   } catch (_) {
     return true;
@@ -78,12 +80,14 @@ function validateInvitePayload(body = {}, options = {}) {
     : {};
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('email 格式不正確');
-  if (!fullName) errors.push('fullName 為必填');
-  if (!ALLOWED_ROLES.has(role)) errors.push('role 不在允許範圍');
+  if (!fullName) errors.push('fullName 必填');
+  if (!ALLOWED_ROLES.has(role)) errors.push('role 不允許');
   if (departmentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(departmentId)) {
     errors.push('departmentId 必須是 UUID');
   }
-  if (!options.supabaseInvite && (!password || password.length < 6)) errors.push('password 至少需要 6 個字元');
+  if (!options.supabaseInvite && (!password || password.length < 6)) {
+    errors.push('password 至少 6 個字元');
+  }
 
   return {
     ok: errors.length === 0,
@@ -100,23 +104,23 @@ async function sendInviteEmail({ to, fullName, tempPassword, correlationId }) {
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width:520px; margin:0 auto; color:#1e293b;">
-      <h2 style="color:#1d4ed8;">財務管理系統帳號已建立</h2>
-      <p>${fullName || ''} 您好，管理員已建立您的登入帳號。</p>
+      <h2 style="color:#1d4ed8;">財務系統帳號已建立</h2>
+      <p>${fullName || ''} 您好，管理員已為您建立財務系統帳號。</p>
       <table style="border-collapse:collapse; margin:16px 0;">
-        <tr><td style="padding:6px 12px; color:#64748b;">登入信箱</td><td style="padding:6px 12px; font-weight:600;">${to}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">登入帳號</td><td style="padding:6px 12px; font-weight:600;">${to}</td></tr>
         <tr><td style="padding:6px 12px; color:#64748b;">初始密碼</td><td style="padding:6px 12px; font-weight:600;">${tempPassword}</td></tr>
       </table>
       <p><a href="${APP_LOGIN_URL}" style="display:inline-block; background:#1d4ed8; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;">前往登入</a></p>
-      <p style="color:#dc2626; font-size:14px;">首次登入後請立即變更密碼。</p>
+      <p style="color:#dc2626; font-size:14px;">首次登入後系統會要求變更密碼。</p>
       <p style="color:#94a3b8; font-size:12px;">Correlation ID: ${correlationId}</p>
     </div>
   `;
 
   try {
     await transporter.sendMail({
-      from: `"財務管理系統" <${process.env.GMAIL_USER}>`,
+      from: `"財務系統" <${process.env.GMAIL_USER}>`,
       to,
-      subject: '財務管理系統帳號邀請',
+      subject: '財務系統帳號邀請',
       html
     });
     return { sent: true };
@@ -155,14 +159,13 @@ module.exports = async (req, res) => {
     }
 
     const callerClient = createCallerClient(token);
-    const { data: callerRole, error: roleQueryError } = await callerClient
-      .rpc('get_invite_caller_role');
+    const { data: callerRole, error: roleQueryError } = await callerClient.rpc('get_invite_caller_role');
 
     if (roleQueryError || !callerRole) {
       json(res, 500, {
         ok: false,
         correlationId,
-        message: `無法讀取呼叫者角色資料：${roleQueryError?.message || '查無資料'}`
+        message: `讀取邀請權限失敗：${roleQueryError?.message || '未知錯誤'}`
       });
       return;
     }
@@ -175,7 +178,7 @@ module.exports = async (req, res) => {
     const shouldUseSupabaseInvite = useSupabaseInviteEmail();
     const validation = validateInvitePayload(req.body || {}, { supabaseInvite: shouldUseSupabaseInvite });
     if (!validation.ok) {
-      json(res, 400, { ok: false, correlationId, message: validation.errors.join('；') });
+      json(res, 400, { ok: false, correlationId, message: validation.errors.join('，') });
       return;
     }
 
@@ -219,23 +222,36 @@ module.exports = async (req, res) => {
           console.error('invite rollback failed', { correlationId, createdUserId, error: rollback.error.message });
         }
       }
-      json(res, 400, { ok: false, correlationId, message: `寫入 profile 失敗，已嘗試回滾 Auth user：${profileError.message}` });
+      json(res, 400, {
+        ok: false,
+        correlationId,
+        message: `寫入 profile 失敗，已嘗試回滾 Auth user：${profileError.message}`
+      });
       return;
     }
 
     const emailResult = shouldUseSupabaseInvite
-      ? { sent: true, provider: 'supabase' }
+      ? {
+          sent: null,
+          queued: true,
+          provider: 'supabase',
+          reason: 'Supabase Auth accepted the invite request. SMTP delivery is asynchronous; verify delivery in Auth logs or SMTP test email.'
+        }
       : await sendInviteEmail({ to: email, fullName, tempPassword: password, correlationId });
 
     json(res, 200, {
       ok: true,
       correlationId,
-      message: emailResult.sent
-        ? `帳號已建立並寄出邀請信：${email}`
-        : `帳號已建立，但 Email 未寄出：${emailResult.reason}`,
-      emailSent: emailResult.sent,
+      message: shouldUseSupabaseInvite
+        ? `帳號已建立，Supabase 已接受邀請請求：${email}。實際寄信由 Supabase SMTP 背景處理，請用 Auth logs 或 SMTP test email 確認。`
+        : (emailResult.sent
+            ? `帳號已建立並寄出邀請信：${email}`
+            : `帳號已建立，但 Email 未寄出：${emailResult.reason}`),
+      emailSent: shouldUseSupabaseInvite ? null : emailResult.sent,
+      emailQueued: shouldUseSupabaseInvite ? true : Boolean(emailResult.sent),
       emailProvider: shouldUseSupabaseInvite ? 'supabase' : 'gmail',
-      emailError: emailResult.sent ? null : emailResult.reason,
+      emailError: shouldUseSupabaseInvite || emailResult.sent ? null : emailResult.reason,
+      emailNote: shouldUseSupabaseInvite ? emailResult.reason : null,
       credentials: { email, tempPassword: shouldUseSupabaseInvite ? null : password }
     });
   } catch (error) {

@@ -2,6 +2,72 @@ import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } f
 import { supabase } from './supabaseClient.js';
 import { getCompanyInfo } from './companyContext.js';
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+function applyJournalEntryDateFilters(query, startDate, endDate) {
+  let nextQuery = query;
+  if (startDate) nextQuery = nextQuery.gte('entry_date', startDate);
+  if (endDate) nextQuery = nextQuery.lte('entry_date', endDate);
+  return nextQuery;
+}
+
+async function fetchAllSupabaseRows(buildQuery, {
+  label = 'supabase rows',
+  pageSize = SUPABASE_PAGE_SIZE,
+  buildCountQuery = null
+} = {}) {
+  const rows = [];
+  let expectedCount = null;
+
+  if (buildCountQuery) {
+    const { count, error } = await buildCountQuery();
+    if (error) {
+      console.warn(`Unable to count ${label}:`, error.message);
+    } else {
+      expectedCount = count || 0;
+    }
+  }
+
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await buildQuery().range(from, to);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    if (from > 100000) throw new Error(`${label} pagination exceeded safety limit`);
+  }
+
+  if (expectedCount !== null && rows.length < expectedCount) {
+    console.warn(`${label} fetched ${rows.length} rows but count is ${expectedCount}.`);
+  }
+
+  return rows;
+}
+
+function buildJournalEntriesQuery(selectColumns, startDate, endDate, selectOptions = {}) {
+  return applyJournalEntryDateFilters(
+    supabase.from('journal_entries').select(selectColumns, selectOptions),
+    startDate,
+    endDate
+  );
+}
+
+function buildJournalViewQuery(startDate, endDate) {
+  return buildJournalEntriesQuery(`
+      id,
+      entry_date,
+      memo,
+      debit_amount,
+      credit_amount,
+      voucher_id,
+      debit_account:accounts!journal_entries_debit_account_id_fkey(code, name),
+      credit_account:accounts!journal_entries_credit_account_id_fkey(code, name),
+      vouchers(voucher_no)
+    `, startDate, endDate)
+    .order('entry_date', { ascending: false });
+}
+
 export function summarizeTransactions(transactions) {
   const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const expense = transactions.filter(t => t.type === '支出').reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -9,10 +75,14 @@ export function summarizeTransactions(transactions) {
   return { revenue, expense, netProfit };
 }
 
-async function fetchSupabaseTrialBalance(startDate, endDate) {  let query = supabase.from('journal_entries').select('*');  if (startDate) query = query.gte('entry_date', startDate);
-  if (endDate) query = query.lte('entry_date', endDate);
-  const { data: entries, error } = await query;
-  if (error) throw error;
+async function fetchSupabaseTrialBalance(startDate, endDate) {
+  const entries = await fetchAllSupabaseRows(
+    () => buildJournalEntriesQuery('*', startDate, endDate),
+    {
+      label: 'journal_entries trial balance',
+      buildCountQuery: () => buildJournalEntriesQuery('id', startDate, endDate, { count: 'exact', head: true })
+    }
+  );
 
   let accQuery = supabase.from('accounts').select('*');  const { data: accounts, error: accError } = await accQuery;
   if (accError) throw accError;
@@ -71,26 +141,13 @@ async function fetchSupabaseTrialBalanceWithIds(startDate, endDate) {
 
 export async function buildJournal(transactions = [], startDate = null, endDate = null) {
   try {
-    let query = supabase
-      .from('journal_entries')
-      .select(`
-          id,
-          entry_date,
-          memo,
-          debit_amount,
-          credit_amount,
-          voucher_id,
-          debit_account:accounts!journal_entries_debit_account_id_fkey(code, name),
-          credit_account:accounts!journal_entries_credit_account_id_fkey(code, name),
-          vouchers(voucher_no) 
-      `)
-      .order('entry_date', { ascending: false });
-      
-    if (startDate) query = query.gte('entry_date', startDate);
-    if (endDate) query = query.lte('entry_date', endDate);
-
-    const { data: journalEntries, error } = await query;
-    if (error) throw error;
+    const journalEntries = await fetchAllSupabaseRows(
+      () => buildJournalViewQuery(startDate, endDate),
+      {
+        label: 'journal_entries journal view',
+        buildCountQuery: () => buildJournalEntriesQuery('id', startDate, endDate, { count: 'exact', head: true })
+      }
+    );
 
     // 💡 修復重複出現問題：利用 Map 以 id 作為 key 進行去重
     const uniqueEntries = Array.from(new Map(journalEntries.map(e => [e.id, e])).values());

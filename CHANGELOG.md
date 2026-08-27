@@ -1,5 +1,16 @@
 ﻿# 變更紀錄
 
+## 0.2.54 - 2026-08-27
+
+- 新增 `/api/public-config` 與 `.env.example`，前端 Supabase URL / anon key 改以 Vercel env 為正式來源，本機保留 fallback。
+- 重寫 `/api/invite` 可讀訊息；Supabase Auth invite 現在回報「邀請請求已交給 Supabase」，不再保證背景 SMTP 已寄出。
+- `journal_entries` 財報核心查詢與 journal 明細改為 `.range()` 分頁，避免超過 Supabase 單次 1000 筆限制時靜默漏資料。
+- 通知鈴鐺新增 Supabase Realtime 訂閱 `public.notifications`，保留 30 秒輪詢備援。
+- 新增 `payroll_agency_mappings`，薪資勞保/健保/勞退代收統編改由資料表設定；遠端 migration 已套用。
+- 修正 `close_voucher_by_accounting`、`create_payroll_payment_batch` 角色判斷回歸，最終 RPC 已改用 `public.get_my_role()`。
+- 新增 `scripts/tools/lint-migrations.ps1` 與 `npm run lint:migrations`，防止新 migration 再直接查 `profiles.role`。
+- 付款設定的收款人搜尋改為重建選項清單，可用姓名、身分證/統編、銀行、戶名或帳號搜尋；此功能仍只在會計/管理員付款管理中可見。
+
 ## 0.2.53 - 2026-08-27
 
 - 付款設定新增「付款項目」區塊，列出明細筆數、每筆摘要、原填收款人、金額與科目。
