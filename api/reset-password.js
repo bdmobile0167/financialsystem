@@ -1,55 +1,11 @@
-const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-
-function json(res, status, body) {
-  res.status(status).json(body);
-}
-
-function isInvalidAdminKey(key) {
-  if (/^(sb_publishable_|sb_anon_)/.test(key)) return true;
-  if (!key.startsWith('eyJ')) return false;
-
-  try {
-    const [, payload] = key.split('.');
-    if (!payload) return true;
-    const decoded = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-    return JSON.parse(decoded).role !== 'service_role';
-  } catch (_) {
-    return true;
-  }
-}
-
-function createAdminClient() {
-  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!process.env.SUPABASE_URL || !supabaseSecretKey) {
-    throw new Error('Missing SUPABASE_URL and SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY');
-  }
-  if (isInvalidAdminKey(supabaseSecretKey)) {
-    throw new Error('Supabase admin key is not a secret/service role key. Set SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY in Vercel Production.');
-  }
-
-  return createClient(process.env.SUPABASE_URL, supabaseSecretKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-}
-
-function createCallerClient(accessToken) {
-  const apiKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!process.env.SUPABASE_URL || !apiKey) {
-    throw new Error('Missing SUPABASE_URL or Supabase API key');
-  }
-
-  return createClient(process.env.SUPABASE_URL, apiKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-}
+const { createAdminClient, json, requireRole } = require('./_supabaseServer');
 
 module.exports = async (req, res) => {
   const correlationId = crypto.randomUUID();
 
   if (req.method !== 'POST') {
-    json(res, 405, { ok: false, correlationId, message: 'Only POST is allowed' });
+    json(res, 405, { ok: false, correlationId, message: 'Only POST is allowed.' });
     return;
   }
 
@@ -62,30 +18,16 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    if (!token) {
-      json(res, 401, { ok: false, correlationId, message: 'Missing or expired login session. Please sign in again.' });
-      return;
-    }
-
-    const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(token);
-    if (callerError || !callerData?.user) {
-      json(res, 401, { ok: false, correlationId, message: 'Invalid login session. Please sign in again.' });
-      return;
-    }
-
-    const callerClient = createCallerClient(token);
-    const { data: callerRole, error: roleQueryError } = await callerClient.rpc('get_invite_caller_role');
-
-    if (roleQueryError || !['admin', 'super_admin'].includes(callerRole)) {
-      json(res, 403, { ok: false, correlationId, message: 'Only admin or super_admin users can reset passwords.' });
+    const roleCheck = await requireRole(req, supabaseAdmin, ['admin', 'super_admin']);
+    if (!roleCheck.ok) {
+      json(res, roleCheck.status, { ok: false, correlationId, message: roleCheck.message });
       return;
     }
 
     const userId = String(req.body?.userId || '').trim();
     const password = String(req.body?.password || '').trim();
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
       json(res, 400, { ok: false, correlationId, message: 'userId must be a valid UUID.' });
       return;
     }
@@ -105,7 +47,6 @@ module.exports = async (req, res) => {
       .from('profiles')
       .update({ must_change_password: false })
       .eq('id', userId);
-
     if (profileError) {
       json(res, 400, { ok: false, correlationId, message: `Password updated, but profile sync failed: ${profileError.message}` });
       return;

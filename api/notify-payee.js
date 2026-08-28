@@ -1,9 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
 const nodemailer = require('nodemailer');
+const { createAdminClient, json, requireRole } = require('./_supabaseServer');
 
-const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-// 建立 Gmail SMTP 寄信器（沿用邀請信已設定的 GMAIL_USER / GMAIL_APP_PASSWORD）
 function getMailTransporter() {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return null;
   return nodemailer.createTransport({
@@ -15,96 +12,106 @@ function getMailTransporter() {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildPayeeEmailHtml({ payeeName, voucherNo, amount, paymentDate }) {
   return `
-    <div style="font-family: 'Microsoft JhengHei', Arial, sans-serif; max-width:520px; margin:0 auto; color:#1e293b;">
-      <h2 style="color:#0f766e;">款項已匯出通知</h2>
-      <p>您好，${payeeName || ''}：</p>
-      <p>您登記為受款人的請款單，已完成付款作業，明細如下：</p>
+    <div style="font-family: Arial, sans-serif; max-width:520px; margin:0 auto; color:#1e293b;">
+      <h2 style="color:#0f766e;">Payment completed</h2>
+      <p>Hello ${escapeHtml(payeeName || '')},</p>
+      <p>Your payment has been processed. Details are listed below.</p>
       <table style="border-collapse:collapse; margin:16px 0;">
-        <tr><td style="padding:6px 12px; color:#64748b;">單據編號</td><td style="padding:6px 12px; font-weight:600;">${voucherNo}</td></tr>
-        <tr><td style="padding:6px 12px; color:#64748b;">匯款金額</td><td style="padding:6px 12px; font-weight:600;">NT$ ${Number(amount || 0).toLocaleString()}</td></tr>
-        <tr><td style="padding:6px 12px; color:#64748b;">付款日期</td><td style="padding:6px 12px; font-weight:600;">${paymentDate || ''}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">Voucher no.</td><td style="padding:6px 12px; font-weight:600;">${escapeHtml(voucherNo)}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">Amount</td><td style="padding:6px 12px; font-weight:600;">NT$ ${Number(amount || 0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">Payment date</td><td style="padding:6px 12px; font-weight:600;">${escapeHtml(paymentDate || '')}</td></tr>
       </table>
-      <p style="color:#94a3b8; font-size:12px; margin-top:24px;">此信件為系統自動發送，請勿直接回覆；若有疑問請聯繫財務部門。</p>
+      <p style="color:#94a3b8; font-size:12px; margin-top:24px;">This is an automatic notification from the financial system.</p>
     </div>
   `;
 }
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, message: '只允許 POST 請求。' });
+    json(res, 405, { ok: false, message: 'Only POST is allowed.' });
     return;
   }
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    res.status(500).json({ ok: false, message: 'Supabase 環境變數未設定。' });
+
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = createAdminClient();
+  } catch (error) {
+    json(res, 500, { ok: false, message: error.message });
     return;
   }
 
   try {
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    if (!token) {
-      res.status(401).json({ ok: false, message: '未登入。' });
-      return;
-    }
-    const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(token);
-    if (callerError || !callerData?.user) {
-      res.status(401).json({ ok: false, message: '登入狀態已失效，請重新登入。' });
+    const roleCheck = await requireRole(req, supabaseAdmin, ['admin', 'super_admin', 'accounting']);
+    if (!roleCheck.ok) {
+      json(res, roleCheck.status, { ok: false, message: roleCheck.message });
       return;
     }
 
     const { voucherId } = req.body || {};
     if (!voucherId) {
-      res.status(400).json({ ok: false, message: '請提供 voucherId。' });
+      json(res, 400, { ok: false, message: 'voucherId is required.' });
       return;
     }
 
-    const { data: voucher, error: vError } = await supabaseAdmin
+    const { data: voucher, error: voucherError } = await supabaseAdmin
       .from('vouchers')
       .select('id, voucher_no, payment_date, total_amount')
       .eq('id', voucherId)
       .single();
-    if (vError || !voucher) {
-      res.status(404).json({ ok: false, message: '查無此單據。' });
+    if (voucherError || !voucher) {
+      json(res, 404, { ok: false, message: 'Voucher was not found.' });
       return;
     }
 
-    const { data: lines, error: lError } = await supabaseAdmin
+    const { data: lines, error: lineError } = await supabaseAdmin
       .from('voucher_lines')
       .select('payee_identifier, amount')
       .eq('voucher_id', voucherId);
-    if (lError) {
-      res.status(400).json({ ok: false, message: lError.message });
+    if (lineError) {
+      json(res, 400, { ok: false, message: lineError.message });
       return;
     }
 
-    const identifiers = [...new Set((lines || []).map(l => l.payee_identifier).filter(Boolean))];
+    const identifiers = [...new Set((lines || []).map(line => line.payee_identifier).filter(Boolean))];
     if (identifiers.length === 0) {
-      res.status(200).json({ ok: true, message: '此單據沒有登記受款人資料，略過通知。', sentCount: 0 });
+      json(res, 200, { ok: true, message: 'Voucher has no payee identifiers to notify.', sentCount: 0 });
       return;
     }
 
-    const { data: payees, error: pError } = await supabaseAdmin
+    const { data: payees, error: payeeError } = await supabaseAdmin
       .from('payees')
       .select('identifier, name, email')
       .in('identifier', identifiers);
-    if (pError) {
-      res.status(400).json({ ok: false, message: pError.message });
+    if (payeeError) {
+      json(res, 400, { ok: false, message: payeeError.message });
       return;
     }
-    const payeeByIdentifier = {};
-    (payees || []).forEach(p => { payeeByIdentifier[p.identifier] = p; });
 
-    // 同一位受款人在同一張單據可能出現在多個明細行，先加總金額再各寄一封信
+    const payeeByIdentifier = Object.fromEntries((payees || []).map(payee => [payee.identifier, payee]));
     const totalsByIdentifier = {};
-    (lines || []).forEach(l => {
-      if (!l.payee_identifier) return;
-      totalsByIdentifier[l.payee_identifier] = (totalsByIdentifier[l.payee_identifier] || 0) + Number(l.amount || 0);
-    });
+    for (const line of lines || []) {
+      if (!line.payee_identifier) continue;
+      totalsByIdentifier[line.payee_identifier] = (totalsByIdentifier[line.payee_identifier] || 0) + Number(line.amount || 0);
+    }
 
     const transporter = getMailTransporter();
     if (!transporter) {
-      res.status(200).json({ ok: true, message: 'GMAIL_USER / GMAIL_APP_PASSWORD 尚未設定，略過寄信。', sentCount: 0 });
+      json(res, 200, {
+        ok: true,
+        message: 'GMAIL_USER / GMAIL_APP_PASSWORD are not configured. No email was sent.',
+        sentCount: 0
+      });
       return;
     }
 
@@ -118,11 +125,12 @@ module.exports = async (req, res) => {
         skipped.push(identifier);
         continue;
       }
+
       try {
         await transporter.sendMail({
-          from: `"財務管理系統" <${process.env.GMAIL_USER}>`,
+          from: `"Financial System" <${process.env.GMAIL_USER}>`,
           to: payee.email,
-          subject: `款項已匯出通知－單據 ${voucher.voucher_no}`,
+          subject: `Payment completed: ${voucher.voucher_no}`,
           html: buildPayeeEmailHtml({
             payeeName: payee.name,
             voucherNo: voucher.voucher_no,
@@ -131,19 +139,21 @@ module.exports = async (req, res) => {
           })
         });
         sentCount++;
-      } catch (err) {
-        errors.push(`${payee.email}：${err.message}`);
+      } catch (error) {
+        errors.push(`${payee.email}: ${error.message}`);
       }
     }
 
-    res.status(200).json({
+    json(res, 200, {
       ok: true,
-      message: `已寄出 ${sentCount} 封通知信${skipped.length ? `，${skipped.length} 位受款人未登記 Email 已略過` : ''}${errors.length ? `，${errors.length} 封寄送失敗` : ''}。`,
+      message: `Sent ${sentCount} payment notification(s).`,
       sentCount,
       skippedCount: skipped.length,
+      errorCount: errors.length,
+      skipped,
       errors
     });
   } catch (error) {
-    res.status(500).json({ ok: false, message: `伺服器發生錯誤：${error.message}` });
+    json(res, 500, { ok: false, message: `Payment notification failed: ${error.message}` });
   }
 };

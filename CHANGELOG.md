@@ -1,5 +1,11 @@
 ﻿# 變更紀錄
 
+## 0.2.61 - 2026-08-28
+
+- `api/notify-payee.js`、`api/scan-receipt.js`、`api/classify.js` 改為優先使用 `SUPABASE_SECRET_KEY`，並保留 `SUPABASE_SERVICE_ROLE_KEY` 舊設定相容。
+- 三支 server API 補 admin key 類型檢查，避免誤把 publishable/anon key 當作 server-side key 時產生難追的 production 錯誤。
+- 透過 Vercel MCP 確認 `financialsystem` project 最新 production deployment 為 `READY`，commit message 為 `Version 0.2.60`。
+- 透過 Vercel runtime logs 查詢 production 近 1 小時 error：未找到錯誤紀錄。
 ## 0.2.60 - 2026-08-28
 
 - 整理 `docs/TASKS_PENDING.md`，移除重複 P0 區塊與已完成項目，讓 pending 只保留仍需處理或驗收的工作。
