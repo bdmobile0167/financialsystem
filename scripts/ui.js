@@ -8,7 +8,6 @@ import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/mod
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
-import { resolveVoucherNumber } from '../src/modules/voucher/voucherNumbering.js';
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, resetUserPassword, toggleUserActive, inviteNewUser, updateUserPermissions, getDefaultPermissions, fetchProjectMembers, updateProjectMembers as saveProjectMembersApi } from '../src/modules/admin/adminApi.js';
@@ -1052,7 +1051,7 @@ function render() {
   fillCompanyInfoForm();
   renderBusinessData();
   updateSettings();
-  if (canViewBankAccounts) {
+  if (canViewBankAccounts || canViewFinancials || userHasPermission('canViewJournalLedger')) {
     renderBankAccounts();
   }
   if (userHasPermission('canViewVouchers') || canManageProjects || canViewFinancials) {
@@ -1229,7 +1228,7 @@ function collectDirectorShareholderRows() {
 async function renderTransactionTable() {
   const body = document.getElementById('transactionTableBody');
   if (!body) return;
-  body.innerHTML = '<tr><td colspan="8" class="muted">載入交易資料...</td></tr>';
+  body.innerHTML = '<tr><td colspan="10" class="muted">載入交易資料...</td></tr>';
 
   let txs = [];
   try {
@@ -1261,9 +1260,31 @@ async function renderTransactionTable() {
       project_id: transaction.voucher?.project_id,
       source: 'supabase'
     }));
+
+    const manualTransactionIds = txs
+      .filter(tx => !tx.voucher_id && tx.id)
+      .map(tx => tx.id);
+    const journalByTransactionId = new Map();
+    if (manualTransactionIds.length) {
+      const { data: journals, error: journalError } = await supabase
+        .from('journal_entries')
+        .select('transaction_id, debit_account:accounts!journal_entries_debit_account_id_fkey(code, name), credit_account:accounts!journal_entries_credit_account_id_fkey(code, name)')
+        .in('transaction_id', manualTransactionIds);
+      if (journalError) {
+        console.warn('載入交易分錄失敗:', journalError.message);
+      } else {
+        (journals || []).forEach(entry => {
+          journalByTransactionId.set(entry.transaction_id, {
+            debit: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
+            credit: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-'
+          });
+        });
+      }
+    }
+    txs = txs.map(tx => ({ ...tx, journal: journalByTransactionId.get(tx.id) || null }));
   } catch (error) {
     console.error('載入 Supabase 交易失敗:', error);
-    body.innerHTML = `<tr><td colspan="8" class="message error">載入交易失敗：${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="message error">載入交易失敗：${escapeHtml(error.message)}</td></tr>`;
     return;
   }
   
@@ -1273,7 +1294,7 @@ async function renderTransactionTable() {
 
   body.innerHTML = '';
   if (!txs.length) {
-    body.innerHTML = '<tr><td colspan="8" class="muted">目前尚無交易資料。</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="muted">目前尚無交易資料。</td></tr>';
     return;
   }
   
@@ -1298,14 +1319,16 @@ async function renderTransactionTable() {
               ? '<span class="badge danger">憑證異常</span>'
               : '<span class="badge wait">無憑證</span>'));
 
-    // 嚴格對應 HTML Header: 憑證 | 日期 | 銀行 | 明細 | 類型 | 分類 | 金額 | 操作
+    // 嚴格對應 HTML Header: 憑證 | 日期 | 銀行 | 明細 | 類型 | 分類 | 借方 | 貸方 | 金額 | 操作
     row.innerHTML = `
       <td>${voucherDisplay}</td>
-      <td>${tx.date || tx.tx_date || '-'}</td>
+      <td>${escapeHtml(tx.date || tx.tx_date || '-')}</td>
       <td>${escapeHtml(tx.bank || getBankNickname(tx.bankAccountId) || '未指定銀行')}</td>
-      <td>${tx.detail}<div class="muted">${tx.customer || ''}</div></td>
-      <td>${tx.type}</td>
-      <td>${tx.category || '營業'}</td>
+      <td>${escapeHtml(tx.detail)}<div class="muted">${escapeHtml(tx.customer || '')}</div></td>
+      <td>${escapeHtml(tx.type || '')}</td>
+      <td>${escapeHtml(tx.category || '營業')}</td>
+      <td>${escapeHtml(tx.journal?.debit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
+      <td>${escapeHtml(tx.journal?.credit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
       <td>$${Number(tx.amount).toLocaleString()}</td>
       <td>${tx.voucher_id
         ? '<span class="muted">由付款憑證管理</span>'
@@ -1321,7 +1344,7 @@ async function deleteUnvouchedTransactions() {
     showMessage('僅會計部門與 Admin 可刪除交易。', true);
     return;
   }
-  const rows = (window.__transactionRowsCache || []).filter(tx => !tx.voucher_id && !tx.transaction_no);
+  const rows = (window.__transactionRowsCache || []).filter(tx => !tx.voucher_id);
   if (!rows.length) {
     showMessage('目前沒有可刪除的無憑證交易。');
     return;
@@ -1330,17 +1353,18 @@ async function deleteUnvouchedTransactions() {
 
   const ids = rows.map(tx => tx.id).filter(Boolean);
   if (ids.length) {
-    const { error } = await supabase
-      .from('bank_transactions')
-      .delete()
-      .in('id', ids);
-    if (error) {
-      showMessage('刪除無憑證交易失敗：' + error.message, true);
-      return;
+    for (const id of ids) {
+      const { error } = await supabase.rpc('delete_manual_bank_transaction_entry', {
+        p_bank_transaction_id: id
+      });
+      if (error) {
+        showMessage('刪除無憑證交易失敗：' + error.message, true);
+        return;
+      }
     }
   }
 
-  state.transactions = (state.transactions || []).filter(tx => tx.voucher_id || tx.transaction_no || tx.voucher || tx.voucher_no);
+  state.transactions = (state.transactions || []).filter(tx => tx.voucher_id || tx.voucher_id === undefined);
   saveState(state);
   await renderTransactionTable();
   renderDashboard();
@@ -1715,7 +1739,7 @@ window.viewPayeePaymentHistory = async (payeeId) => {
       <p class="muted">${escapeHtml(payee.identifier || '')}</p>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>付款日期</th><th>摘要</th><th>申請/會計單號</th><th>付款單號</th><th>出款銀行</th><th>金額</th><th>狀態</th></tr></thead>
+          <thead><tr><th>付款日期</th><th>摘要</th><th>申請/會計單號</th><th>付款單號</th><th>出款銀行</th><th>金額</th><th>狀態</th><th>操作</th></tr></thead>
           <tbody>${rows.map(voucher => {
             const payment = getVoucherPayment(voucher);
             const bank = payment?.bank || voucher.payment_bank || {};
@@ -1727,8 +1751,9 @@ window.viewPayeePaymentHistory = async (payeeId) => {
               <td>${escapeHtml(bank.nickname || bank.bank_name || '-')}<br><span class="muted">${escapeHtml(bank.account_number || '')}</span></td>
               <td>NT$ ${Number(payment?.amount || voucher.total_amount || 0).toLocaleString()}</td>
               <td><span class="badge ${voucher.status === 'closed' ? 'success' : 'wait'}">${voucher.status === 'closed' ? '已付款' : escapeHtml(voucher.status || '-')}</span></td>
+              <td><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove(); viewVoucherDetail('${voucher.id}')">查看單據</button></td>
             </tr>`;
-          }).join('') || '<tr><td colspan="7" class="muted">尚無付款紀錄。</td></tr>'}</tbody>
+          }).join('') || '<tr><td colspan="8" class="muted">尚無付款紀錄。</td></tr>'}</tbody>
         </table>
       </div>
       <div class="button-row"><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button></div>
@@ -2950,6 +2975,8 @@ async function renderBankAccounts() {
     const [bankAccounts, ledgerAccounts] = await Promise.all([loadBankAccounts(), fetchAccounts()]);
     const accounts = Array.isArray(bankAccounts) ? bankAccounts : [];
     const ledgerById = new Map((ledgerAccounts || []).map(account => [account.id, account]));
+    window.__transactionAccounts = ledgerAccounts || [];
+    window.__bankAccountsForTransaction = accounts;
     const ledgerSelect = document.getElementById('bankLedgerAccountId');
     if (ledgerSelect) {
       const selectedValue = ledgerSelect.value;
@@ -2960,33 +2987,86 @@ async function renderBankAccounts() {
       const defaultAccount = assetAccounts.find(account => account.code === '1102');
       ledgerSelect.value = selectedValue || defaultAccount?.id || '';
     }
-
     body.innerHTML = accounts.map(a => {
       const linkedAccountId = a.ledger_account_id || a.accounting_account_id || null;
       const linkedAccount = linkedAccountId ? ledgerById.get(linkedAccountId) : null;
       const totalBalance = a.current_balance ?? a.balance ?? a.opening_balance ?? null;
       const balanceDisplay = totalBalance === null ? '尚無餘額資料' : Number(totalBalance).toLocaleString();
+      const accountTail = a.account_number ? String(a.account_number).slice(-5) : '-';
 
       return `
-        <tr>
-          <td>${a.bank_name || a.bankName || '未命名'}</td>
-          <td>${a.account_number || a.accountNumber || '-'}</td>
-          <td>${a.nickname || '-'}</td>
-          <td>${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<span class="badge wait">未綁定</span>'}</td>
-          <td>${balanceDisplay}</td>
-          <td>
+        <article class="bank-account-card">
+          <div class="bank-account-main">
+            <strong>${escapeHtml(a.nickname || a.bank_name || a.bankName || '未命名')}</strong>
+            <span>${escapeHtml(a.bank_name || a.bankName || '')}</span>
+          </div>
+          <div class="bank-account-meta">
+            <span>帳號末碼：${escapeHtml(accountTail)}</span>
+            <span>完整帳號：${escapeHtml(a.account_number || a.accountNumber || '-')}</span>
+            <span>綁定科目：${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<em>未綁定</em>'}</span>
+          </div>
+          <div class="bank-account-balance">NT$ ${balanceDisplay}</div>
+          <div class="bank-account-actions">
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
             <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>
-          </td>
-        </tr>
+          </div>
+        </article>
       `;
-    }).join('') || '<tr><td colspan="6" class="muted">尚未設定銀行帳戶。</td></tr>';
+    }).join('') || '<p class="muted">尚未設定銀行帳戶。</p>';
 
     populateBankSelect(document.getElementById('txBankAccount'), accounts);
     populateBankSelect(document.getElementById('vBankAccount'), accounts);
+    populateTransactionAccountSelects(ledgerAccounts || [], accounts);
+    const txDate = document.getElementById('txDate');
+    if (txDate && !txDate.value) txDate.value = new Date().toISOString().slice(0, 10);
   } catch (e) {
     console.error(e);
-    body.innerHTML = '<tr><td colspan="5" class="muted">載入失敗</td></tr>';
+    body.innerHTML = '<p class="muted">載入失敗</p>';
+  }
+}
+
+function buildAccountOptions(accounts, selectedId = '') {
+  return '<option value="">請選擇科目</option>' + (accounts || []).map(account =>
+    `<option value="${account.id}" ${account.id === selectedId ? 'selected' : ''}>${escapeHtml(account.code)} ${escapeHtml(account.name)}</option>`
+  ).join('');
+}
+
+function getSelectedBankLedgerAccountId() {
+  const bankId = document.getElementById('txBankAccount')?.value;
+  const bank = (window.__bankAccountsForTransaction || []).find(item => item.id === bankId);
+  return bank?.ledger_account_id || bank?.accounting_account_id || '';
+}
+
+function populateTransactionAccountSelects(accounts, banks = []) {
+  const debitSelect = document.getElementById('txDebitAccount');
+  const creditSelect = document.getElementById('txCreditAccount');
+  if (!debitSelect || !creditSelect) return;
+  const selectedDebit = debitSelect.value;
+  const selectedCredit = creditSelect.value;
+  debitSelect.innerHTML = buildAccountOptions(accounts, selectedDebit);
+  creditSelect.innerHTML = buildAccountOptions(accounts, selectedCredit);
+  window.__bankAccountsForTransaction = banks;
+  updateTransactionAccountDefaults();
+}
+
+function updateTransactionAccountDefaults() {
+  const accounts = window.__transactionAccounts || [];
+  const debitSelect = document.getElementById('txDebitAccount');
+  const creditSelect = document.getElementById('txCreditAccount');
+  const type = document.getElementById('txType')?.value;
+  if (!debitSelect || !creditSelect || !accounts.length) return;
+
+  const bankLedgerId = getSelectedBankLedgerAccountId();
+  const defaultRevenue = accounts.find(account => String(account.code || '').startsWith('4'));
+  const defaultExpense = accounts.find(account => String(account.code || '') === '6230')
+    || accounts.find(account => String(account.code || '').startsWith('6') || String(account.code || '').startsWith('5'));
+
+  if (type === '收入') {
+    if (bankLedgerId) debitSelect.value = bankLedgerId;
+    if (defaultRevenue) creditSelect.value = defaultRevenue.id;
+  } else if (type === '支出') {
+    if (defaultExpense) debitSelect.value = defaultExpense.id;
+    if (bankLedgerId) creditSelect.value = bankLedgerId;
   }
 }
 
@@ -3261,9 +3341,7 @@ window.fetchPayeeName = async (inputEl) => {
   const payee = Array.isArray(data) ? data[0] : null;
 
   if (error || !payee?.masked_name) {
-    nameSpan.innerHTML = isFinanceOperator()
-      ? `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`
-      : '查無付款人，請確認身分證/統編或請會計建立主檔';
+    nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
     delete nameSpan.dataset.maskedName;
     return;
   }
@@ -3272,15 +3350,12 @@ window.fetchPayeeName = async (inputEl) => {
 };
 
 window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
-  if (!isFinanceOperator()) {
-    showMessage('請直接填寫付款人姓名與身分證/統編；付款人主檔由會計人員維護。', true);
-    return;
-  }
   const container = document.getElementById('addPayeeModalContainer');
   container.innerHTML = `
-    <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9999;">
-      <div style="background:#fff; padding:24px; border-radius:8px; max-width:420px; width:90%;">
+    <div class="modal-backdrop">
+      <div class="modal-card payee-self-create-modal">
         <h3 style="margin-top:0;">新增付款人</h3>
+        <p class="muted">只會新增這一筆身分證/統編對應的付款人；一般員工仍不能查看完整付款人名單。</p>
         
         <label>身分證／統一編號</label>
         <input type="text" id="newPayeeIdentifier" value="${prefillIdentifier || ''}" style="width:100%; padding:6px; margin-bottom:10px;">
@@ -3303,8 +3378,10 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
         <label>地址</label>
         <input type="text" id="newPayeeAddress" style="width:100%; padding:6px; margin-bottom:10px;">
         
-        <!-- 匯款資訊區塊 -->
         <div style="background:#f9fafb; padding:12px; border-radius:6px; margin-bottom:14px; border:1px solid #e5e7eb;">
+          <label style="font-weight:600; color:#374151;">銀行名稱（選填）</label>
+          <input type="text" id="newPayeeBankName" placeholder="例如：中國信託、玉山銀行" style="width:100%; padding:6px; margin-bottom:10px;">
+
           <label style="font-weight:600; color:#374151;">金融機構代號（選填，共7碼）</label>
           <div style="font-size:12px; color:#6b7280; margin-bottom:4px;">前3碼總行代號 + 後4碼分支代號（例如中國信託營業部：8220016）</div>
           <input type="text" id="newPayeeBankCode" placeholder="請輸入7碼數字" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,'')" style="width:100%; padding:6px; margin-bottom:10px;">
@@ -3332,12 +3409,17 @@ window.submitNewPayee = async () => {
   }
 
   // 取得匯款資訊
+  const bankName = document.getElementById('newPayeeBankName')?.value.trim() || '';
   const bankCode = document.getElementById('newPayeeBankCode').value.trim();
   const bankAcc = document.getElementById('newPayeeBankAccount').value.trim();
   
   // 檢核金融機構代碼是否確實填滿7碼
   if (bankCode && bankCode.length !== 7) {
     alert('金融機構代號必須為完整的7碼數字（3碼總行+4碼分支）。');
+    return;
+  }
+  if (bankAcc && !bankName && !bankCode) {
+    alert('有填銀行帳號時，請一併填寫銀行名稱或7碼金融機構代號。');
     return;
   }
 
@@ -3348,17 +3430,20 @@ window.submitNewPayee = async () => {
   }
 
   const payload = {
-    identifier,
-    name,
-    type: document.getElementById('newPayeeType').value,
-    email: document.getElementById('newPayeeEmail').value.trim() || null,
-    phone: document.getElementById('newPayeePhone').value.trim() || null,
-    address: document.getElementById('newPayeeAddress').value.trim() || null,
-    bank_account: finalBankAccount
+    p_identifier: identifier,
+    p_name: name,
+    p_type: document.getElementById('newPayeeType').value,
+    p_bank_name: bankName || (bankCode ? `金融代號 ${bankCode}` : null),
+    p_bank_branch: bankCode || null,
+    p_account_name: name,
+    p_account_number: bankAcc || finalBankAccount,
+    p_email: document.getElementById('newPayeeEmail').value.trim() || null,
+    p_phone: document.getElementById('newPayeePhone').value.trim() || null,
+    p_address: document.getElementById('newPayeeAddress').value.trim() || null
   };
 
   try {
-    const { error } = await supabase.from('payees').insert({ ...payload,  });
+    const { data, error } = await supabase.rpc('create_payee_from_identifier', payload);
     if (error) throw error;
     
     showMessage('付款人已新增。');
@@ -3374,8 +3459,9 @@ window.submitNewPayee = async () => {
       
       if (idInput) idInput.value = identifier;
       if (nameSpan) { 
-        nameSpan.innerText = maskPayeeName(name); 
-        nameSpan.dataset.maskedName = maskPayeeName(name); 
+        const maskedName = (Array.isArray(data) ? data[0]?.masked_name : data?.masked_name) || maskPayeeName(name);
+        nameSpan.innerText = maskedName; 
+        nameSpan.dataset.maskedName = maskedName; 
       }
     }
   } catch (error) {
@@ -3895,13 +3981,16 @@ function initializeEventsInternal() {
         const index = parseInt(deleteBtn.dataset.index, 10);
         if (confirm('確定要刪除這筆交易紀錄嗎？')) {
           if (transactionId) {
-            const { error } = await supabase.from('bank_transactions').delete().eq('id', transactionId);
+            const { error } = await supabase.rpc('delete_manual_bank_transaction_entry', {
+              p_bank_transaction_id: transactionId
+            });
             if (error) return showMessage('刪除交易失敗：' + error.message, true);
           } else if (!isNaN(index)) {
             state.transactions.splice(index, 1);
             saveState(state);
           }
           await renderTransactionTable();
+          await renderReports();
           showMessage('交易已成功刪除。');
         }
       }
@@ -4133,6 +4222,9 @@ function initializeEventsInternal() {
     }
   });
 
+  safeListener('txType', 'change', updateTransactionAccountDefaults);
+  safeListener('txBankAccount', 'change', updateTransactionAccountDefaults);
+
   safeListener('transactionForm', 'submit', async (e) => { 
     e.preventDefault();
     const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
@@ -4148,32 +4240,54 @@ function initializeEventsInternal() {
         return;
       }
     }
-    const voucherType = document.getElementById('txVoucherType').value;
     const rawVoucher = document.getElementById('txVoucher').value.trim();
     const date = document.getElementById('txDate').value;
     const bankAccountId = document.getElementById('txBankAccount').value;
+    const debitAccountId = document.getElementById('txDebitAccount')?.value;
+    const creditAccountId = document.getElementById('txCreditAccount')?.value;
+    const amount = Number(document.getElementById('txAmount').value);
+    const type = document.getElementById('txType').value;
+    const category = document.getElementById('txCategory').value;
+    const description = document.getElementById('txDetail').value.trim();
 
     if (!bankAccountId) {
       throw new Error('請選擇銀行帳戶');
     }
+    if (!debitAccountId || !creditAccountId) {
+      throw new Error('請選擇借方與貸方科目');
+    }
+    if (debitAccountId === creditAccountId) {
+      throw new Error('借方與貸方科目不可相同');
+    }
+    if (!amount || amount <= 0) {
+      throw new Error('請輸入大於 0 的交易金額');
+    }
+    if (!description) {
+      throw new Error('請填寫交易明細');
+    }
 
-    const transactionNo = resolveVoucherNumber(voucherType, rawVoucher, date);
-    const { error: transactionError } = await supabase.from('bank_transactions').insert({
-      tx_date: date,
-      bank_account_id: bankAccountId,
-      counterparty: document.getElementById('txCustomer').value.trim() || null,
-      description: document.getElementById('txDetail').value.trim() || null,
-      type: document.getElementById('txType').value,
-      category: document.getElementById('txCategory').value,
-      amount: Number(document.getElementById('txAmount').value),
-      remark: document.getElementById('txRemark').value.trim(),
-      transaction_no: transactionNo,
-      attachment_id: attachmentId || null
+    const transactionNo = rawVoucher || null;
+    const { data: result, error: transactionError } = await supabase.rpc('create_manual_bank_transaction_entry', {
+      p_tx_date: date,
+      p_bank_account_id: bankAccountId,
+      p_type: type,
+      p_amount: amount,
+      p_debit_account_id: debitAccountId,
+      p_credit_account_id: creditAccountId,
+      p_description: description,
+      p_counterparty: document.getElementById('txCustomer').value.trim() || null,
+      p_category: category,
+      p_remark: document.getElementById('txRemark').value.trim() || null,
+      p_transaction_no: transactionNo,
+      p_attachment_id: attachmentId || null
     });
     if (transactionError) throw transactionError;
     await renderTransactionTable();
+    await renderReports();
     e.target.reset();
-    showMessage(`交易已新增至 Supabase：${transactionNo}`);
+    updateTransactionAccountDefaults();
+    const createdNo = Array.isArray(result) ? result[0]?.transaction_no : result?.transaction_no;
+    showMessage(`交易已新增並入帳：${createdNo || transactionNo || '已產生單號'}`);
     } catch (err) {
       console.error('新增交易失敗:', err);
       showMessage('新增交易失敗：' + err.message, true);

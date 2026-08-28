@@ -145,24 +145,86 @@
         <section id="transactions" class="tab-panel" style="display:none;">
           <div class="panel transaction-panel">
             <div class="panel-header">
-              <h3>交易總覽（唯讀總帳）</h3>
+              <h3>交易入帳</h3>
             </div>
-            <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:14px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-              <p style="margin:0; font-size:13px; color:#3730a3;">💡 新增交易請一律透過「報支申請」提出，會自動經過核簽流程並正確產生分錄；本頁僅供查詢已入帳的交易紀錄。</p>
-              <button type="button" class="primary-btn" style="width:auto;" onclick="document.querySelector('[data-tab=\'voucherWorkflow\']').click();">＋ 前往新增報支申請</button>
-            </div>
+            <p class="muted">會計可直接建立銀行進出帳，並指定借方與貸方科目；儲存後會同步產生銀行流水與日記帳。</p>
+            <form id="transactionForm" class="transaction-entry-form">
+              <div class="form-grid">
+                <div>
+                  <label>日期</label>
+                  <input type="date" id="txDate" required />
+                </div>
+                <div>
+                  <label>銀行帳戶</label>
+                  <select id="txBankAccount" required>
+                    <option value="">請選擇銀行帳戶</option>
+                  </select>
+                </div>
+                <div>
+                  <label>類型</label>
+                  <select id="txType" required>
+                    <option value="收入">收入</option>
+                    <option value="支出">支出</option>
+                  </select>
+                </div>
+                <div>
+                  <label>分類</label>
+                  <select id="txCategory" required>
+                    <option value="營業">營業</option>
+                    <option value="投資">投資</option>
+                    <option value="融資">融資</option>
+                  </select>
+                </div>
+                <div>
+                  <label>金額</label>
+                  <input type="number" id="txAmount" min="1" step="1" required />
+                </div>
+                <div>
+                  <label>交易單號</label>
+                  <input type="text" id="txVoucher" placeholder="留空由系統產生" />
+                </div>
+                <div>
+                  <label>借方科目</label>
+                  <select id="txDebitAccount" required>
+                    <option value="">請選擇借方科目</option>
+                  </select>
+                </div>
+                <div>
+                  <label>貸方科目</label>
+                  <select id="txCreditAccount" required>
+                    <option value="">請選擇貸方科目</option>
+                  </select>
+                </div>
+                <div>
+                  <label>交易對象</label>
+                  <input type="text" id="txCustomer" placeholder="客戶、廠商或摘要對象" />
+                </div>
+                <div>
+                  <label>附件</label>
+                  <input type="file" id="txAttachment" />
+                </div>
+              </div>
+              <label>明細</label>
+              <input type="text" id="txDetail" placeholder="例如：0827_營業收入、客戶收款、銀行轉入" required />
+              <label>備註</label>
+              <textarea id="txRemark" rows="2" placeholder="選填"></textarea>
+              <div class="button-row">
+                <button type="submit" class="primary-btn">新增交易並入帳</button>
+                <button type="button" class="secondary" onclick="document.querySelector('[data-tab=\'voucherWorkflow\']').click();">前往報支申請</button>
+              </div>
+            </form>
           </div>
           <div class="panel">
             <div class="panel-header">
               <div>
                 <h3>交易清單</h3>
-                <p class="muted">無憑證交易可直接清除；已關聯付款憑證的交易請回付款管理處理。</p>
+                <p class="muted">手動入帳會顯示借方／貸方科目；已關聯付款憑證的交易請回付款管理處理。</p>
               </div>
               <button type="button" id="deleteUnvouchedTransactionsBtn" class="danger">刪除全部無憑證</button>
             </div>
             <table>
               <thead>
-                <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>金額</th><th>操作</th></tr>
+                <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>借方</th><th>貸方</th><th>金額</th><th>操作</th></tr>
               </thead>
               <tbody id="transactionTableBody"></tbody>
             </table>
@@ -170,7 +232,7 @@
         </section>
 
         <section id="bankAccounts" class="tab-panel" style="display:none;">
-          <div class="grid grid-2">
+          <div class="bank-account-layout">
             <div class="panel">
               <h3>新增銀行帳戶</h3>
               <form id="bankAccountForm">
@@ -191,10 +253,7 @@
             </div>
             <div class="panel">
               <h3>目前銀行帳戶</h3>
-              <table>
-                <thead><tr><th>銀行</th><th>帳號</th><th>暱稱</th><th>綁定科目</th><th>目前餘額</th><th>操作</th></tr></thead>
-                <tbody id="bankAccountTableBody"></tbody>
-              </table>
+              <div id="bankAccountTableBody" class="bank-account-card-list"></div>
             </div>
           </div>
         </section>

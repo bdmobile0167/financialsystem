@@ -1,6 +1,20 @@
-# 財務管理系統
+﻿# 財務管理系統
 
-目前本機版本：`0.2.55`
+目前本機版本：`0.2.60`
+
+## 0.2.60 重點
+
+
+
+- docs/TASKS_PENDING.md 已整理為單一待辦清單，完成項目移至 completed。
+- 獨立收入管理、應收帳款與發票收入流程已列為 TASK-017 後續功能。
+- 修正 production 入口 scripts/main.js 啟動語法錯誤，確保 scripts/ui.js 可正常載入。
+- 舊版 src/modules/voucher/voucherForm.js 已隔離為 deprecated guard，避免誤用舊付款人新增流程。
+- 付款人新增補既有資料保護：身份證/統編已存在時，只回傳既有預設收款帳戶，不讓一般員工新增錯誤銀行帳戶。
+- 有填銀行帳號時，付款人新增表單會要求銀行名稱或 7 碼金融機構代號。
+- 交易管理的「交易入帳」是目前收入入口，可新增收入並指定借方/貸方科目。
+
+---
 
 這是以 Supabase + Vercel 為核心的公司財務管理系統，涵蓋報支、會計審核、付款管理、憑證、銀行流水、預算、薪資付款、財報與 Audit Trail。
 
@@ -87,3 +101,7 @@ npm run lint:migrations
 - Supabase Dashboard SMTP test email 仍需確認實際投遞。
 - 外部 Git server 仍需 SSH key / remote push。
 - 多收款人付款拆分仍是較大的後續資料模型調整。
+
+
+
+

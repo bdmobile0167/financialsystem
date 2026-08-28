@@ -1,5 +1,44 @@
 ﻿# 變更紀錄
 
+## 0.2.60 - 2026-08-28
+
+- 整理 `docs/TASKS_PENDING.md`，移除重複 P0 區塊與已完成項目，讓 pending 只保留仍需處理或驗收的工作。
+- 新增 `TASK-017：獨立收入管理流程`，記錄目前收入可由交易管理入帳，但正式收入申請、應收帳款與發票收入流程尚未建立。
+
+## 0.2.59 - 2026-08-28
+
+- 修正 `scripts/main.js` 的啟動錯誤處理字串，避免入口檔語法錯誤導致 `scripts/ui.js` 無法載入。
+- 將未被 production 入口使用且已亂碼的 `src/modules/voucher/voucherForm.js` 改為 deprecated guard module，避免未來誤 import 後覆蓋正式付款人新增流程。
+- 已用本機 HTTP server 與 Chrome headless 截圖驗證登入頁可載入，未出現啟動失敗 banner。
+
+## 0.2.58 - 2026-08-28
+
+- `create_payee_from_identifier` 補強既有付款人處理：身份證/統編已存在時，只回傳既有預設收款帳戶，不讓一般員工透過 RPC 新增第二套銀行帳戶。
+- 新付款人仍可在新增時同步建立 `payment_recipients`，保留付款管理可帶入銀行資料的流程。
+- 付款人新增 modal 補前端檢核：有填銀行帳號時，必須填銀行名稱或 7 碼金融機構代號，避免產生付款時不可用的半套資料。
+- 已用 rollback 測試確認：新付款人會產生收款帳戶；既有付款人不會被注入新的銀行帳戶。
+- 已用測試收入單確認 `create_manual_bank_transaction_entry` 會同步寫入 `bank_transactions`、`transactions`、`journal_entries`，並用正式刪除 RPC 清理測試資料。
+
+## 0.2.57 - 2026-08-28
+
+- 付款人新增 modal 補「銀行名稱」欄位，避免只填金融代號與帳號時，付款管理缺少收款銀行名稱。
+- `create_payee_from_identifier` 改為新增付款人後同步建立 `payment_recipients` 預設收款帳戶。
+- 已用一般員工身分 rollback 測試新增付款人，再以 admin 身分確認 `payment_recipients` 有銀行名稱、金融代號、戶名與帳號。
+
+## 0.2.56 - 2026-08-28
+
+- 交易管理新增「交易入帳」表單，會計/管理員可直接建立收入或支出，並指定借方與貸方會計科目。
+- 新增 Supabase RPC `create_manual_bank_transaction_entry`，手動交易會同步寫入 `bank_transactions`、`transactions` 與 `journal_entries`。
+- 新增 Supabase RPC `delete_manual_bank_transaction_entry`，刪除手動交易時會同步清除銀行流水、交易表與日記帳。
+- 交易清單新增借方/貸方欄位，方便查核每筆手動交易是否已入帳到正確科目。
+- 交易頁載入條件修正：有財務或日記帳權限時會載入銀行帳戶與會計科目下拉，避免表單可見但選項空白。
+- 「刪除全部無憑證」改為刪除所有未關聯 voucher 的手動交易，包含自動產生 `TX-...` 單號的收入/支出。
+- 一般員工輸入身分證/統編查無付款人時，可透過 `create_payee_from_identifier` 受控新增該筆付款人；仍不開放完整付款人名單。
+- 修正 `create_payee_from_identifier` 的 `identifier` 欄位名稱衝突，避免一般員工新增付款人時 RPC 失敗。
+- 銀行帳戶頁改為卡片式排版，並補強付款人明細 modal 的實底背景與點擊可用性。
+- 收斂財務敏感表 grants：撤除 `anon` 對付款人、收款帳戶、銀行流水、交易表與日記帳的表權限；`authenticated` 僅保留 CRUD。
+- 收斂 `bank_accounts` grants：撤除匿名表權限，登入者只保留 CRUD，實際可見資料仍由 RLS 限制會計/管理角色。
+
 ## 0.2.55 - 2026-08-27
 
 - 修正付款銷帳 RPC：有 `voucher_lines.account_code` 時，`journal_entries` 依明細科目與金額逐科目入帳，不再整張單用單一 `accounting_account_id`。
@@ -179,7 +218,7 @@
 ## 0.2.32 - 2026-08-25
 
 - 交易清單補齊銀行帳戶顯示，改用 `bank_transactions.bank_account_id` 關聯的銀行暱稱/銀行名與帳號。
-- 新增「刪除全部無憑證」按鈕，可一次清除未關聯憑證且沒有交易憑證號的銀行交易。
+- 新增「刪除全部無憑證」按鈕；0.2.56 起可清除所有未關聯 voucher 的手動交易，包含系統產生 `TX-...` 單號的交易。
 
 ## 0.2.31 - 2026-08-25
 
@@ -302,4 +341,6 @@
 
 - 修正帳號管理 renderer 重複宣告。
 - 新增事件初始化 guard 與建立帳號 action lock。
+
+
 
