@@ -5,10 +5,12 @@ function toNumber(value) {
 
 function parseYushan187(lines) {
   const records = [];
+  const balanceLabel = '\u9918\u984d';
+  const totalLabel = '\u5408\u8a08';
 
   for (const raw of lines) {
     const line = String(raw || '').trim();
-    if (!line || line.includes('餘額') || line.includes('page:') || line.includes('合計')) continue;
+    if (!line || line.includes(balanceLabel) || line.includes('page:') || line.includes(totalLabel)) continue;
 
     const tokens = line.split(/\s+/);
     if (tokens.length < 9) continue;
@@ -30,8 +32,25 @@ function parseMegaGeneric(lines) {
   const moneyPattern = /\d{1,3}(?:,\d{3})*\.\d{2}/;
   const datePattern = /^\d{4}\/\d{2}\/\d{2}/;
   const datetimePattern = /\d{4}\/\d{2}\/\d{2}\(\d{2}:\d{2}:\d{2}\)/g;
-  const noisePattern = /交易明細|帳號|Mega International|兆豐|頁次|列印|合計|餘額/;
-  const headerPattern = /交易日期|摘要|支出|收入|交易金額|存入|提出/;
+  const noisePattern = new RegExp([
+    '\u4ea4\u6613\u660e\u7d30',
+    '\u5e33\u865f',
+    'Mega International',
+    '\u5146\u8c50',
+    '\u9801\u6b21',
+    '\u5217\u5370',
+    '\u5408\u8a08',
+    '\u9918\u984d'
+  ].join('|'));
+  const headerPattern = new RegExp([
+    '\u4ea4\u6613\u65e5\u671f',
+    '\u6458\u8981',
+    '\u652f\u51fa',
+    '\u6536\u5165',
+    '\u4ea4\u6613\u91d1\u984d',
+    '\u5b58\u5165',
+    '\u63d0\u51fa'
+  ].join('|'));
 
   const cleanDetail = text => String(text || '')
     .replace(datePattern, '')
@@ -93,11 +112,11 @@ function parseMegaGeneric(lines) {
 }
 
 const PARSERS = {
-  '玉山187': parseYushan187,
-  '兆豐347': parseMegaGeneric,
-  '兆豐703': parseMegaGeneric,
-  '兆豐182': parseMegaGeneric,
-  '兆豐697': parseMegaGeneric
+  ['\u7389\u5c71187']: parseYushan187,
+  ['\u5146\u8c50347']: parseMegaGeneric,
+  ['\u5146\u8c50703']: parseMegaGeneric,
+  ['\u5146\u8c50182']: parseMegaGeneric,
+  ['\u5146\u8c50697']: parseMegaGeneric
 };
 
 module.exports = async (req, res) => {

@@ -1,11 +1,12 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.63`
+目前本機版本：`0.2.64`
 
-## 0.2.63 重點
+## 0.2.64 重點
 
+- 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.63`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.64`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -13,7 +14,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 已查到 `0.2.62` `READY`，`0.2.63` 仍需由使用者推送/部署後驗收。
+- Vercel production 已查到 `0.2.62` `READY`，`0.2.64` 仍需由使用者推送/部署後驗收。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - 獨立收入管理、應收帳款與發票收入流程已列為 `TASK-017` 後續功能。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。
@@ -89,6 +90,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/lint-migration
 ```powershell
 npm run lint:migrations
 ```
+
+## GitHub 上傳清單
+
+應上傳：
+
+- `api/`
+- `css/`
+- `docs/`
+- `scripts/`
+- `src/`
+- `supabase/migrations/`
+- `.env.example`
+- `.gitignore`
+- `CHANGELOG.md`
+- `index.html`
+- `package.json`
+- `README.md`
+
+不要上傳：
+
+- `.env`、`.env.local`、`.env.*.local`
+- `.vercel/`、`.netlify/`
+- `node_modules/`
+- `.tmp-*` 截圖或 smoke-test 暫存資料夾
+- 真實 Supabase secret key、Gmail app password、Gemini API key
 
 ## 主要文件
 

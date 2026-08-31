@@ -1,5 +1,11 @@
 ﻿# 變更紀錄
 
+## 0.2.64 - 2026-08-31
+
+- 修正 `.gitignore`，移除 `/docs/` 忽略規則，讓任務、版本、API、資料庫與交接文件能上傳到 GitHub。
+- 重建 `.gitignore` 為可讀規則，保留 `node_modules/`、`.env*.local`、`.vercel/`、`.netlify/`、暫存截圖與本機產物忽略。
+- README 補上 GitHub 上傳清單與不要上傳的本機/secret 檔案清單。
+- 部署動作依使用者指示保留手動執行；本機只完成程式與文件更新。
 ## 0.2.63 - 2026-08-31
 
 - 補上 `pdf-parse` dependency，修正 Vercel production `/api/parse-bank-statement` 找不到 module 造成 500。
