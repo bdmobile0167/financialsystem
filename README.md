@@ -1,12 +1,16 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.64`
+目前本機版本：`0.2.67`
 
-## 0.2.64 重點
+## 0.2.67 重點
 
+- 銀行對帳單匯入已新增重複資料防呆；同一銀行、日期、摘要、對象、收入/支出與餘額相同的資料會跳過。
+- 已新增銀行對帳單匯入唯一索引 migration，部署資料庫時可在 DB 層防止重複匯入。
+- 已隔離舊交易表單直寫銀行流水入口，手動收入/支出只保留正式 RPC 流程，同步寫入銀行流水、交易表與日記帳。
+- 已修正銀行 PDF 解析 parser key 壞碼，`玉山187` 與 `兆豐` 系列 bankCode 不會再因檔案編碼損壞被判定不支援。
 - 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.64`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.67`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -14,7 +18,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 已查到 `0.2.62` `READY`，`0.2.64` 仍需由使用者推送/部署後驗收。
+- Vercel production 已查到 `0.2.62` `READY`，`0.2.67` 仍需由使用者推送/部署後驗收。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - 獨立收入管理、應收帳款與發票收入流程已列為 `TASK-017` 後續功能。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。

@@ -7,7 +7,7 @@ import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reve
 import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
-import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance, setupTransactionForm } from '../src/modules/bank/bankAccounts.js';
+import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } from '../src/modules/bank/bankAccounts.js';
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
 import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, resetUserPassword, toggleUserActive, inviteNewUser, updateUserPermissions, getDefaultPermissions, fetchProjectMembers, updateProjectMembers as saveProjectMembersApi } from '../src/modules/admin/adminApi.js';
@@ -3930,48 +3930,6 @@ function initializeEventsInternal() {
     });
   }
 
-  const addTransactionForm = document.getElementById('addTransactionForm');
-  if (addTransactionForm) {
-    addTransactionForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const submitBtn = e.submitter || addTransactionForm.querySelector('button[type="submit"]');
-      await withActionLock('bank-transaction:add', submitBtn, async () => {
-
-      const bankAccountId = document.getElementById('trans_bank_account_id').value;
-      const transType = document.getElementById('trans_type').value;
-      const amount = parseFloat(document.getElementById('trans_amount').value);
-      const transDate = document.getElementById('trans_date').value;
-      const description = document.getElementById('trans_description').value;
-
-      if (!bankAccountId || !transType || !amount || !transDate) {
-        return alert('請填寫所有必填欄位！');
-      }
-
-      try {
-        const { error } = await supabase
-          .from('bank_transactions')
-          .insert([{
-            bank_account_id: bankAccountId,
-            type: transType,
-            amount: amount,
-            tx_date: transDate,
-            description: description,          }]);
-
-        if (error) throw error;
-
-        alert('交易新增成功！');
-        document.getElementById('addTransactionModal').style.display = 'none';
-        e.target.reset();
-        await reloadAppData();
-        render();
-      } catch (err) {
-        alert(`新增交易失敗: ${err.message}`);
-        console.error('新增銀行交易失敗:', err);
-      }
-      });
-    });
-  }
-
   const transactionTableBody = document.getElementById('transactionTableBody');
   if (transactionTableBody) {
     transactionTableBody.addEventListener('click', async (e) => {
@@ -4872,8 +4830,6 @@ function initializeEventsInternal() {
       showMessage('新增部門失敗：' + err.message, true);
     }
   });
-
-  setupTransactionForm();
 }
 
 let voucherLines = [];
@@ -7749,6 +7705,40 @@ async function handleParseStatement() {
 }
 
 // 4. 修改確認匯入邏輯
+function normalizeStatementKey(row) {
+  const numberKey = value => Number(value || 0).toFixed(2);
+  return [
+    row.tx_date || '',
+    String(row.detail || '').trim(),
+    String(row.counterparty || '').trim(),
+    numberKey(row.expense),
+    numberKey(row.income),
+    row.balance === null || row.balance === undefined ? '' : numberKey(row.balance)
+  ].join('|');
+}
+
+async function filterExistingStatementRows(bankAccountId, rows) {
+  if (!rows.length) return { newRows: [], duplicateCount: 0 };
+
+  const dates = rows.map(row => row.tx_date).filter(Boolean).sort();
+  const minDate = dates[0];
+  const maxDate = dates[dates.length - 1];
+  if (!minDate || !maxDate) return { newRows: rows, duplicateCount: 0 };
+
+  const { data, error } = await supabase
+    .from('bank_statement_transactions')
+    .select('tx_date, detail, counterparty, expense, income, balance, source_file_name')
+    .eq('bank_account_id', bankAccountId)
+    .gte('tx_date', minDate)
+    .lte('tx_date', maxDate);
+
+  if (error) throw error;
+
+  const existingKeys = new Set((data || []).map(normalizeStatementKey));
+  const newRows = rows.filter(row => !existingKeys.has(normalizeStatementKey(row)));
+  return { newRows, duplicateCount: rows.length - newRows.length };
+}
+
 async function handleConfirmImportStatement() {
   const bankAccountId = document.getElementById('statementBankAccountId').value;
   // 匯入資料庫時，一併把解析規則(bankCode)存進去備查
@@ -7772,11 +7762,22 @@ async function handleConfirmImportStatement() {
         uploaded_by: user.id
       }));
 
-    const rowsWithCompany = rows.map(r => ({ ...r,  }));
-    const { error } = await supabase.from('bank_statement_transactions').insert(rowsWithCompany);
+    if (!rows.length) {
+      showMessage('沒有可匯入的對帳資料。', true);
+      return;
+    }
+
+    const { newRows, duplicateCount } = await filterExistingStatementRows(bankAccountId, rows);
+    if (!newRows.length) {
+      showMessage(`沒有新增資料，${duplicateCount} 筆都已存在於對帳庫。`);
+      return;
+    }
+
+    const { error } = await supabase.from('bank_statement_transactions').insert(newRows);
     if (error) throw error;
 
-    showMessage(`已匯入 ${rows.length} 筆對帳資料。`);
+    const skippedText = duplicateCount ? `，已跳過 ${duplicateCount} 筆重複資料` : '';
+    showMessage(`已匯入 ${newRows.length} 筆對帳資料${skippedText}。`);
     document.getElementById('statementPreviewArea').innerHTML = '';
     document.getElementById('statementFileInput').value = '';
     document.getElementById('detectedParserText').innerHTML = '';
