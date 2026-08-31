@@ -1,6 +1,6 @@
 {
   "name": "financial-system",
-  "version": "0.2.67",
+  "version": "0.2.68",
   "private": true,
   "scripts": {
     "lint:migrations": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/lint-migrations.ps1"

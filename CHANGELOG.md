@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 0.2.68 - 2026-08-31
+
+- 補回遠端已套用但本機缺失的 `20260831022735_consolidate_duplicate_permissive_policies.sql`，避免 migration history 與 repository 不一致。
+- 新增 `20260831101000_restrict_voucher_manager_update_scope.sql`，移除 `vouchers role update` 對全體 manager 的跨部門更新放行。
+- 新增 `20260831102000_allow_super_admin_profile_role.sql`，讓 `profiles.role` check constraint 支援 `super_admin`。
+- 重建 `docs/RLS_GUIDE.md` 為乾淨 UTF-8，補上角色權限、vouchers policy 與驗收規則。
+- `docs/ARCHITECTURE.md` 補 module rule：新功能優先放 `src/modules/`，`scripts/` 只保留入口與尚未遷移的舊邏輯。
+
 ## 0.2.67 - 2026-08-31
 
 - 銀行對帳單確認匯入前會先查詢同銀行帳戶、日期區間內既有資料，重複資料會跳過，不再每次按匯入都新增同一批明細。
