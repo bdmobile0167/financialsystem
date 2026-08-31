@@ -1,6 +1,6 @@
 {
   "name": "financial-system",
-  "version": "0.2.62",
+  "version": "0.2.63",
   "private": true,
   "scripts": {
     "lint:migrations": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/lint-migrations.ps1"
@@ -8,6 +8,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "nodemailer": "^6.9.14",
-    "@google/genai": "^0.14.0"
+    "@google/genai": "^0.14.0",
+    "pdf-parse": "^1.1.1"
   }
 }

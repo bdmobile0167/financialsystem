@@ -1,5 +1,10 @@
 ﻿# 變更紀錄
 
+## 0.2.63 - 2026-08-31
+
+- 補上 `pdf-parse` dependency，修正 Vercel production `/api/parse-bank-statement` 找不到 module 造成 500。
+- `/api/parse-bank-statement` 改為在驗證 `fileBase64` 與 `bankCode` 後才載入 PDF parser，缺參數會正確回 400，不會因 cold start module 載入失敗先炸掉。
+- 部署動作依使用者指示保留手動執行；本機只完成程式與文件更新。
 ## 0.2.62 - 2026-08-31
 
 - 新增 `api/_supabaseServer.js`，集中 server-side Supabase admin key 檢查、登入驗證與角色檢查。

@@ -1,5 +1,3 @@
-const pdfParse = require('pdf-parse');
-
 function toNumber(value) {
   if (!value) return 0;
   return parseFloat(String(value).replace(/,/g, '')) || 0;
@@ -121,6 +119,7 @@ module.exports = async (req, res) => {
       return;
     }
 
+    const pdfParse = require('pdf-parse');
     const buffer = Buffer.from(fileBase64, 'base64');
     const pdfData = await pdfParse(buffer);
     const records = parser(pdfData.text.split('\n'));
