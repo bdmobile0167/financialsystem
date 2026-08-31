@@ -1,10 +1,17 @@
 ﻿# 變更紀錄
 
+## 0.2.62 - 2026-08-31
+
+- 新增 `api/_supabaseServer.js`，集中 server-side Supabase admin key 檢查、登入驗證與角色檢查。
+- 重寫 `/api/invite`、`/api/reset-password`、`/api/notify-payee`、`/api/scan-receipt`、`/api/classify` 與 `/api/parse-bank-statement` 的壞碼訊息，避免 serverless API 因亂碼字串造成載入或錯誤提示異常。
+- `/api/notify-payee` 補後端角色限制，只有 `admin`、`super_admin`、`accounting` 可寄付款通知。
+- `/api/classify` 明確要求 AI 選最接近會計科目，低信心才標記人工確認，不再把車馬、住宿、軟體授權等常見項目預設丟到雜項支出。
+- 前端 `inviteNewUser()` 修復壞掉的錯誤字串與 JSON 解析 fallback，避免帳號邀請 module 載入失敗。
 ## 0.2.61 - 2026-08-28
 
 - `api/notify-payee.js`、`api/scan-receipt.js`、`api/classify.js` 改為優先使用 `SUPABASE_SECRET_KEY`，並保留 `SUPABASE_SERVICE_ROLE_KEY` 舊設定相容。
 - 三支 server API 補 admin key 類型檢查，避免誤把 publishable/anon key 當作 server-side key 時產生難追的 production 錯誤。
-- 透過 Vercel MCP 確認 `financialsystem` project 最新 production deployment 為 `READY`，commit message 為 `Version 0.2.60`。
+- 透過 Vercel MCP 確認 `financialsystem` project 最新 production deployment 為 `READY`，commit message 為 `Version 0.2.61`。
 - 透過 Vercel runtime logs 查詢 production 近 1 小時 error：未找到錯誤紀錄。
 ## 0.2.60 - 2026-08-28
 

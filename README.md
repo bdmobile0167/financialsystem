@@ -1,14 +1,16 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.61`
+目前本機版本：`0.2.62`
 
-## 0.2.61 重點
-
-
+## 0.2.62 重點
 
 
+- serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
+- `/api/invite`、`/api/reset-password`、`/api/notify-payee`、`/api/scan-receipt`、`/api/classify`、`/api/parse-bank-statement` 已清除壞碼訊息。
+- 付款通知 API 已限制只有會計與管理角色可觸發。
+- AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 已查到 `0.2.60` `READY`，`0.2.61` 仍需推送/部署後驗收。
+- Vercel production 已查到 `0.2.61` `READY`，`0.2.62` 仍需推送/部署後驗收。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - 獨立收入管理、應收帳款與發票收入流程已列為 `TASK-017` 後續功能。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。
