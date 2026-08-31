@@ -1,6 +1,17 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.68`
+目前本機版本：`0.2.70`
+
+## 0.2.70 重點
+
+- 會計審核改走 `approve_voucher_review_by_accounting` RPC，明細逐列科目、付款人、備註、核准狀態、預算與 workflow log 同一交易完成。
+- 付款設定改走 `save_voucher_payment_assignment` RPC，付款人、付款銀行與會計備註不再直接分段寫入 `vouchers`。
+- 主管核准/退件與重送改走 RPC，狀態與 workflow log 不再分段寫入。
+
+## 0.2.69 重點
+
+- 單據新增改走 `create_voucher_with_details` RPC，主檔、明細、發票與送出流程紀錄同一交易完成。
+- 單據修改改走 `update_voucher_with_details` RPC，主檔、明細、發票與部門/專案預算 scope 不再分段成功。
 
 ## 0.2.68 重點
 
@@ -14,7 +25,7 @@
 - 已修正銀行 PDF 解析 parser key 壞碼，`玉山187` 與 `兆豐` 系列 bankCode 不會再因檔案編碼損壞被判定不支援。
 - 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.68`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.70`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -22,7 +33,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 已查到 `0.2.62` `READY`，`0.2.68` 仍需由使用者推送/部署後驗收。
+- Vercel production 已查到 `0.2.62` `READY`，`0.2.70` 仍需由使用者推送/部署後驗收。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - 獨立收入管理、應收帳款與發票收入流程已列為 `TASK-017` 後續功能。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。

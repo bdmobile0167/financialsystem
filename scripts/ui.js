@@ -2092,11 +2092,12 @@ async function savePaymentAssignment(voucherId) {
   const recipientAccountNumber = document.getElementById('paymentEditorRecipientAccountNumber')?.value.trim() || null;
   const voucher = paymentRowsCache.find(item => item.id === voucherId);
   const accountRef = getPaymentDebitAccountRef(voucher);
-  const { data: updatedVoucher, error } = await supabase.from('vouchers').update({
-    payment_recipient_id: recipientId,
-    payment_bank_account_id: bankId,
-    accounting_note: note
-  }).eq('id', voucherId).eq('status', 'approved').select('id, status').maybeSingle();
+  const { data: updatedVoucher, error } = await supabase.rpc('save_voucher_payment_assignment', {
+    p_voucher_id: voucherId,
+    p_payment_recipient_id: recipientId,
+    p_payment_bank_account_id: bankId,
+    p_accounting_note: note
+  });
   if (error) throw error;
   if (!updatedVoucher) {
     throw new Error('此付款資料已不是待付款狀態，請重新整理付款清單後再操作。');
@@ -6400,30 +6401,20 @@ window.accountingApproveAndClose = async (voucherId) => {
     const invalid = lineAssignments.find(item => !validCodes.has(item.accountCode));
     if (invalid) throw new Error(`找不到所選會計科目：${invalid.accountCode}`);
 
-    await Promise.all(lineAssignments.map(async item => {
-      const { error } = await supabase
-        .from('voucher_lines')
-        .update({ account_code: item.accountCode })
-        .eq('id', item.lineId)
-        .eq('voucher_id', voucherId);
-      if (error) throw error;
-    }));
-
     const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', voucherId).single();
     if (vErr) throw vErr;
     const account = window.__cachedAccounts?.find(item => item.code === firstAccountCode);
     if (!account) throw new Error('找不到所選會計科目');
 
-    const { error: assignmentError } = await supabase.from('vouchers').update({
-      accounting_account_id: account.id,
-      payment_recipient_id: recipientId,
-      accounting_note: note || null,
-      accounting_approved_at: new Date().toISOString(),
-      accounting_approved_by: state.currentUser?.id
-    }).eq('id', voucherId).eq('status', 'pending_accounting');
-    if (assignmentError) throw assignmentError;
-
-    await accountingApprove(voucher);
+    await accountingApprove(voucher, {
+      lineAssignments: lineAssignments.map(item => ({
+        line_id: item.lineId,
+        account_code: item.accountCode
+      })),
+      accountingAccountId: account.id,
+      paymentRecipientId: recipientId,
+      accountingNote: note || null
+    });
 
     document.querySelector('.modal-backdrop')?.remove();
     showMessage('會計已核准，單據已加入付款清單；付款前仍可修改科目、銀行與收款人。');

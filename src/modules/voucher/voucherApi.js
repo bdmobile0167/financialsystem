@@ -70,6 +70,43 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = nul
 }
 
 // 2. 修正後的 createVoucher（完整支援專案、時程、附件名稱、申請人 ID）
+function normalizeUuidSelection(value) {
+  if (!value || value === 'all') return null;
+  return value;
+}
+
+function buildVoucherLinePayload(lines = []) {
+  return (lines || []).map(l => {
+    const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
+    const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
+
+    return {
+      description: l.description,
+      account_code: cleanCode !== '' ? cleanCode : null,
+      amount: l.amount,
+      receipt_month: l.receipt_month || null,
+      receipt_type: l.receipt_type || null,
+      invoice_number: l.invoice_number || null,
+      item_category: l.item_category || null,
+      item_category_note: l.item_category_note || null,
+      payee_identifier: l.payee_identifier || null,
+      payee_name: l.payee_name || null,
+      is_proxy_payment: l.is_proxy_payment || false,
+      proxy_payer_identifier: l.proxy_payer_identifier || null,
+      proxy_payer_name: l.proxy_payer_name || null
+    };
+  });
+}
+
+function buildInvoicePayload(lines = []) {
+  return (lines || []).map(i => ({
+    invoice_type: i.invoice_type,
+    invoice_number: i.invoice_number || null,
+    amount: i.amount,
+    tax_amount: i.tax_amount || 0
+  }));
+}
+
 export async function createVoucher(payload) {
   const {
     txDate, category = '營業', summary, departmentId, currentManagerId,
@@ -84,9 +121,8 @@ export async function createVoucher(payload) {
   const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
   // 1. 建立主檔（包含專案與時程）
-  const { data: voucher, error } = await supabase
-    .from('vouchers')
-    .insert({
+  const { data: voucher, error } = await supabase.rpc('create_voucher_with_details', {
+    p_voucher: {
       voucher_no: voucherNo,
       tx_date: txDate,
       category,
@@ -95,60 +131,21 @@ export async function createVoucher(payload) {
       applicant_id: finalApplicantId,
       current_manager_id: currentManagerId || null,
       total_amount: totalAmount,
-      project_id: projectId && projectId !== 'all' ? projectId : null,
-      department_budget_id: projectId && projectId !== 'all' ? null : (departmentBudgetId || null),
+      project_id: normalizeUuidSelection(projectId),
+      department_budget_id: projectId && projectId !== 'all' ? null : normalizeUuidSelection(departmentBudgetId),
       budget_scope: projectId && projectId !== 'all' ? 'project' : 'department',
       status: status,
       trip_start_date: tripStartDate || null,
       trip_end_date: tripEndDate || null
-      ,    })
-    .select()
-    .single();
+    },
+    p_lines: buildVoucherLinePayload(detailLines || []),
+    p_invoices: buildInvoicePayload(invoiceLines || [])
+  });
 
   if (error) throw error;
 
   // 2. 建立明細行（包含附件檔名記錄）
-  if (detailLines && detailLines.length > 0) {
-    const finalLines = detailLines.map((l, index) => {
-      const row = rows ? rows[index] : null;
-      const rowId = row?.dataset?.rowId;
-      const file = rowId && attachmentsMap ? attachmentsMap[rowId] : null;
-
-      const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
-      const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
-
-      return {
-        voucher_id: voucher.id,
-        description: l.description,
-        account_code: cleanCode !== '' ? cleanCode : null,
-        amount: l.amount,
-        item_category: l.item_category || null,
-        item_category_note: l.item_category_note || null,
-        payee_identifier: l.payee_identifier || null,
-        payee_name: l.payee_name || null,
-        is_proxy_payment: l.is_proxy_payment || false,
-        proxy_payer_identifier: l.proxy_payer_identifier || null,
-        proxy_payer_name: l.proxy_payer_name || null
-      };
-    });
-
-    const { error: lineError } = await supabase.from('voucher_lines').insert(finalLines);
-    if (lineError) throw lineError;
-  }
-
   // 3. 建立發票明細（確保多筆發票完整存入）
-  if (invoiceLines && invoiceLines.length > 0) {
-    const finalInvoices = invoiceLines.map(i => ({
-      voucher_id: voucher.id,
-      invoice_type: i.invoice_type,
-      invoice_number: i.invoice_number || null,
-      amount: i.amount,
-      tax_amount: i.tax_amount || 0
-    }));
-    const { error: invoiceError } = await supabase.from('invoices').insert(finalInvoices);
-    if (invoiceError) throw invoiceError;
-  }
-
   // 4. 上傳實際實體檔案至儲存空間
   if (rows && attachmentsMap) {
     const attachmentUploads = Array.from(rows).map(async (row, index) => {
@@ -162,7 +159,6 @@ export async function createVoucher(payload) {
   }
 
   // 5. 寫入審批歷程
-  await logWorkflow(voucher.id, 'submit', null, 'pending_review');
 
   // 6. 通知主管有新單待審核
   if (currentManagerId) {
@@ -180,18 +176,13 @@ export async function createVoucher(payload) {
 export async function managerApprove(voucher) {
   // 用「原子性條件更新」防止重複點擊：只有目前狀態仍是 pending_review 時才會更新成功，
   // 若已被處理過（例如使用者連點多次），這裡會傳回空陣列，避免重複觸發後續動作。
-  const { data, error } = await supabase
-    .from('vouchers')
-    .update({ status: VOUCHER_STATUS.PENDING_ACCOUNTING, updated_at: new Date().toISOString() })
-    .eq('id', voucher.id)
-    .eq('status', VOUCHER_STATUS.PENDING_REVIEW)
-    .select();
+  const { data, error } = await supabase.rpc('approve_voucher_by_manager', {
+    p_voucher_id: voucher.id
+  });
   if (error) throw error;
-  if (!data || data.length === 0) {
+  if (!data) {
     throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
   }
-  await logWorkflow(voucher.id, 'manager_approve', voucher.status, VOUCHER_STATUS.PENDING_ACCOUNTING);
-
   // 通知所有會計人員：有單據待歸帳
   const { data: full } = await supabase.from('vouchers').select('voucher_no, summary, total_amount').eq('id', voucher.id).single();
   const accountingUserIds = await getUserIdsByRole('accounting');
@@ -204,18 +195,14 @@ export async function managerApprove(voucher) {
 }
 
 export async function managerReject(voucher, reason) {
-  const { data, error } = await supabase
-    .from('vouchers')
-    .update({ status: VOUCHER_STATUS.MANAGER_REJECTED, updated_at: new Date().toISOString() })
-    .eq('id', voucher.id)
-    .eq('status', VOUCHER_STATUS.PENDING_REVIEW)
-    .select();
+  const { data, error } = await supabase.rpc('reject_voucher_by_manager', {
+    p_voucher_id: voucher.id,
+    p_reason: reason || null
+  });
   if (error) throw error;
-  if (!data || data.length === 0) {
+  if (!data) {
     throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
   }
-  await logWorkflow(voucher.id, 'manager_reject', voucher.status, VOUCHER_STATUS.MANAGER_REJECTED, reason);
-
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
@@ -227,49 +214,27 @@ export async function managerReject(voucher, reason) {
   }
 }
 
-export async function accountingApprove(voucher) {
+export async function accountingApprove(voucher, options = {}) {
   // 用「原子性條件更新」防止重複點擊／重複呼叫：只有目前狀態仍是 pending_accounting 時才會更新成功。
   // 這可避免同一張單據因連點多次而重複扣除專案預算、重複寫入歷程與通知。
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data, error } = await supabase
-    .from('vouchers')
-    .update({
-      status: VOUCHER_STATUS.APPROVED,
-      accounting_approved_at: new Date().toISOString(),
-      accounting_approved_by: user?.id || null,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', voucher.id)
-    .eq('status', VOUCHER_STATUS.PENDING_ACCOUNTING)
-    .select();
+  const {
+    lineAssignments = [],
+    accountingAccountId = null,
+    paymentRecipientId = null,
+    accountingNote = null
+  } = options;
+
+  const { data: approvedVoucher, error } = await supabase.rpc('approve_voucher_review_by_accounting', {
+    p_voucher_id: voucher.id,
+    p_line_assignments: lineAssignments,
+    p_accounting_account_id: accountingAccountId,
+    p_payment_recipient_id: paymentRecipientId,
+    p_accounting_note: accountingNote
+  });
   if (error) throw error;
-  if (!data || data.length === 0) {
+  if (!approvedVoucher) {
     throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
   }
-  await logWorkflow(voucher.id, 'accounting_approve', voucher.status, VOUCHER_STATUS.APPROVED);
-
-  const approvedVoucher = data[0] || voucher;
-  if (approvedVoucher.project_id) {    const { data: proj } = await supabase
-      .from('projects').select('remaining_budget').eq('id', approvedVoucher.project_id).single();
-    if (proj) {
-      const newRemaining = Number(proj.remaining_budget || 0) - Number(approvedVoucher.total_amount || 0);
-      await supabase.from('projects').update({ remaining_budget: Math.max(0, newRemaining) }).eq('id', approvedVoucher.project_id);
-    }
-  } else if (approvedVoucher.department_budget_id) {
-    const { data: budget } = await supabase
-      .from('department_budgets')
-      .select('remaining_amount')
-      .eq('id', approvedVoucher.department_budget_id)
-      .single();
-    if (budget) {
-      const newRemaining = Number(budget.remaining_amount || 0) - Number(approvedVoucher.total_amount || 0);
-      await supabase
-        .from('department_budgets')
-        .update({ remaining_amount: Math.max(0, newRemaining), updated_at: new Date().toISOString() })
-        .eq('id', approvedVoucher.department_budget_id);
-    }
-  }
-
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
@@ -283,22 +248,14 @@ export async function accountingApprove(voucher) {
 
 // 會計退件 → 直接退回申請人
 export async function accountingReject(voucher, reason) {
-  const { data, error } = await supabase
-    .from('vouchers')
-    .update({ 
-      status: 'accounting_rejected', 
-      updated_at: new Date().toISOString() 
-    })
-    .eq('id', voucher.id)
-    .eq('status', VOUCHER_STATUS.PENDING_ACCOUNTING)
-    .select();
+  const { data, error } = await supabase.rpc('reject_voucher_by_accounting', {
+    p_voucher_id: voucher.id,
+    p_reason: reason || null
+  });
   if (error) throw error;
-  if (!data || data.length === 0) {
+  if (!data) {
     throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
   }
-
-  await logWorkflow(voucher.id, 'reject', voucher.status, 'accounting_rejected', reason);
-
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
@@ -311,11 +268,12 @@ export async function accountingReject(voucher, reason) {
 }
 
 export async function resubmitVoucher(voucher, { summary, amount }) {
-  const { error } = await supabase.from('vouchers').update({
-    summary, total_amount: amount, status: 'pending_review', updated_at: new Date().toISOString()
-  }).eq('id', voucher.id);
+  const { error } = await supabase.rpc('resubmit_voucher', {
+    p_voucher_id: voucher.id,
+    p_summary: summary,
+    p_total_amount: amount
+  });
   if (error) throw error;
-  await logWorkflow(voucher.id, 'resubmit', voucher.status, 'pending_review');
 }
 
 /**
@@ -326,7 +284,7 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 export async function updateVoucher(voucherId, payload) {
   const {
     txDate, category, summary, departmentId, currentManagerId,
-    projectId, totalAmount, status,
+    projectId, departmentBudgetId, totalAmount, status,
     detailLines, invoiceLines,
     voucherType, manualNumber,
     tripStartDate, tripEndDate,
@@ -342,21 +300,29 @@ export async function updateVoucher(voucherId, payload) {
   if (summary !== undefined) updateData.summary = summary;
   if (departmentId !== undefined) updateData.department_id = departmentId;
   if (currentManagerId !== undefined) updateData.current_manager_id = currentManagerId || null;
-  if (projectId !== undefined) updateData.project_id = (projectId && projectId !== 'all') ? projectId : null;
+  if (projectId !== undefined) {
+    updateData.project_id = normalizeUuidSelection(projectId);
+    updateData.budget_scope = projectId && projectId !== 'all' ? 'project' : 'department';
+    updateData.department_budget_id = projectId && projectId !== 'all' ? null : normalizeUuidSelection(departmentBudgetId);
+  } else if (departmentBudgetId !== undefined) {
+    updateData.project_id = null;
+    updateData.department_budget_id = normalizeUuidSelection(departmentBudgetId);
+    updateData.budget_scope = 'department';
+  }
   if (totalAmount !== undefined) updateData.total_amount = totalAmount;
   if (status !== undefined) updateData.status = status;
   if (tripStartDate !== undefined) updateData.trip_start_date = tripStartDate || null;
   if (tripEndDate !== undefined) updateData.trip_end_date = tripEndDate || null;
-  updateData.updated_at = new Date().toISOString();
-
-  const { error: updateError } = await supabase
-    .from('vouchers')
-    .update(updateData)
-    .eq('id', voucherId);
+  const { error: updateError } = await supabase.rpc('update_voucher_with_details', {
+    p_voucher_id: voucherId,
+    p_voucher_patch: updateData,
+    p_lines: detailLines !== undefined ? buildVoucherLinePayload(detailLines) : null,
+    p_invoices: invoiceLines !== undefined ? buildInvoicePayload(invoiceLines) : null
+  });
   if (updateError) throw updateError;
 
   // 2. 更新明細行（刪除舊行 → 插入新行）
-  if (detailLines !== undefined) {
+  if (false && detailLines !== undefined) {
     // 刪除舊明細
     const { error: deleteLinesError } = await supabase
       .from('voucher_lines')
@@ -390,7 +356,7 @@ export async function updateVoucher(voucherId, payload) {
   }
 
   // 3. 更新發票明細（刪除舊發票 → 插入新發票）
-  if (invoiceLines !== undefined) {
+  if (false && invoiceLines !== undefined) {
     const { error: deleteInvError } = await supabase
       .from('invoices')
       .delete()

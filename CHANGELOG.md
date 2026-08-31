@@ -1,5 +1,19 @@
 # 變更紀錄
 
+## 0.2.70 - 2026-08-31
+
+- 新增 `20260831104000_atomic_voucher_review_payment_rpc.sql`，會計明細歸類、付款人/備註設定與會計核准同一交易完成。
+- 新增 `20260831105000_atomic_manager_review_rpc.sql`，主管核准、主管退件與重送狀態、workflow log 同一交易完成。
+- 付款設定改走 `save_voucher_payment_assignment` RPC。
+- 會計審核送出改一次呼叫 `accountingApprove(voucher, options)`，不再先逐筆 update `voucher_lines` 再 update `vouchers`。
+
+## 0.2.69 - 2026-08-31
+
+- 新增 `20260831103000_atomic_voucher_details_rpc.sql`，建立 atomic voucher 新增、修改與會計核准 RPC。
+- 報支新增改走 `create_voucher_with_details`，主檔、明細、發票與送出流程紀錄同一交易完成。
+- 報支修改改走 `update_voucher_with_details`，主檔、明細、發票與部門/專案預算 scope 同步更新。
+- 會計核准改走 `approve_voucher_by_accounting`，核准狀態、預算扣減與 workflow log 同一交易完成。
+
 ## 0.2.68 - 2026-08-31
 
 - 補回遠端已套用但本機缺失的 `20260831022735_consolidate_duplicate_permissive_policies.sql`，避免 migration history 與 repository 不一致。
