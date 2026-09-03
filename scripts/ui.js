@@ -1733,10 +1733,15 @@ window.viewPayeePaymentHistory = async (payeeId) => {
   try {
     const { payee, rows } = await fetchPayeePaymentHistory(payeeId);
     const modal = document.createElement('div');
-    modal.className = 'modal-backdrop';
-    modal.innerHTML = `<div class="modal-card" style="max-width:980px;">
-      <h3>${escapeHtml(payee.name)} 付款明細</h3>
-      <p class="muted">${escapeHtml(payee.identifier || '')}</p>
+    modal.className = 'modal-backdrop payee-history-backdrop';
+    modal.innerHTML = `<div class="modal-card payee-history-modal">
+      <div class="payee-history-header">
+        <div>
+          <h3>${escapeHtml(payee.name)} 付款明細</h3>
+          <p class="muted">${escapeHtml(payee.identifier || '')}</p>
+        </div>
+        <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
+      </div>
       <div class="table-scroll">
         <table>
           <thead><tr><th>付款日期</th><th>摘要</th><th>申請/會計單號</th><th>付款單號</th><th>出款銀行</th><th>金額</th><th>狀態</th><th>操作</th></tr></thead>
@@ -1756,7 +1761,6 @@ window.viewPayeePaymentHistory = async (payeeId) => {
           }).join('') || '<tr><td colspan="8" class="muted">尚無付款紀錄。</td></tr>'}</tbody>
         </table>
       </div>
-      <div class="button-row"><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button></div>
     </div>`;
     document.body.appendChild(modal);
   } catch (error) {
@@ -3038,6 +3042,29 @@ function getSelectedBankLedgerAccountId() {
   return bank?.ledger_account_id || bank?.accounting_account_id || '';
 }
 
+function getSelectedOptionText(selectEl) {
+  return selectEl?.selectedOptions?.[0]?.textContent?.trim() || '';
+}
+
+function updateTransactionAccountSummary() {
+  const summary = document.getElementById('txAccountSummary');
+  const debitSelect = document.getElementById('txDebitAccount');
+  const creditSelect = document.getElementById('txCreditAccount');
+  const type = document.getElementById('txType')?.value || '收入';
+  if (!summary || !debitSelect || !creditSelect) return;
+
+  const debitText = getSelectedOptionText(debitSelect) || '尚未選擇';
+  const creditText = getSelectedOptionText(creditSelect) || '尚未選擇';
+  const ruleText = type === '收入'
+    ? '收入入帳：借方通常是銀行/現金，貸方是收入科目。'
+    : '支出入帳：借方通常是費用/成本，貸方是銀行/現金。';
+  summary.innerHTML = `
+    <strong>${escapeHtml(ruleText)}</strong>
+    <span>目前借方：${escapeHtml(debitText)}</span>
+    <span>目前貸方：${escapeHtml(creditText)}</span>
+  `;
+}
+
 function populateTransactionAccountSelects(accounts, banks = []) {
   const debitSelect = document.getElementById('txDebitAccount');
   const creditSelect = document.getElementById('txCreditAccount');
@@ -3069,6 +3096,7 @@ function updateTransactionAccountDefaults() {
     if (defaultExpense) debitSelect.value = defaultExpense.id;
     if (bankLedgerId) creditSelect.value = bankLedgerId;
   }
+  updateTransactionAccountSummary();
 }
 
 async function renderVoucherCenter() {
@@ -3342,7 +3370,8 @@ window.fetchPayeeName = async (inputEl) => {
   const payee = Array.isArray(data) ? data[0] : null;
 
   if (error || !payee?.masked_name) {
-    nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增付款人</button>`;
+    const encodedIdentifier = encodeURIComponent(identifier);
+    nameSpan.innerHTML = `查無資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal(decodeURIComponent('${encodedIdentifier}'), this)">＋ 新增付款人</button>`;
     delete nameSpan.dataset.maskedName;
     return;
   }
@@ -3350,8 +3379,13 @@ window.fetchPayeeName = async (inputEl) => {
   nameSpan.dataset.maskedName = payee.masked_name;
 };
 
+function closePayeeSelfCreateModal() {
+  document.querySelector('#addPayeeModalContainer .modal-backdrop')?.remove();
+}
+
 window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
-  const container = document.getElementById('addPayeeModalContainer');
+  const container = document.getElementById('addPayeeModalContainer') || document.body;
+  closePayeeSelfCreateModal();
   container.innerHTML = `
     <div class="modal-backdrop">
       <div class="modal-card payee-self-create-modal">
@@ -3359,7 +3393,7 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
         <p class="muted">只會新增這一筆身分證/統編對應的付款人；一般員工仍不能查看完整付款人名單。</p>
         
         <label>身分證／統一編號</label>
-        <input type="text" id="newPayeeIdentifier" value="${prefillIdentifier || ''}" style="width:100%; padding:6px; margin-bottom:10px;">
+        <input type="text" id="newPayeeIdentifier" value="${escapeHtml(prefillIdentifier || '')}" style="width:100%; padding:6px; margin-bottom:10px;">
         
         <label>姓名／公司名稱</label>
         <input type="text" id="newPayeeName" style="width:100%; padding:6px; margin-bottom:10px;" required>
@@ -3392,13 +3426,14 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
         </div>
         
         <div style="text-align:right;">
-          <button type="button" class="secondary" onclick="document.querySelector('.modal-backdrop').remove()">取消</button>
-          <button type="button" class="primary-btn" onclick="submitNewPayee('${triggerBtn ? triggerBtn.closest('td, div').querySelector('.grid-payee-id')?.id || '' : ''}')">儲存</button>
+          <button type="button" class="secondary" onclick="closePayeeSelfCreateModal()">取消</button>
+          <button type="button" class="primary-btn" onclick="submitNewPayee()">儲存</button>
         </div>
       </div>
     </div>`;
   window.__payeeTriggerContext = triggerBtn;
 };
+window.closePayeeSelfCreateModal = closePayeeSelfCreateModal;
 
 window.submitNewPayee = async () => {
   const identifier = document.getElementById('newPayeeIdentifier').value.trim();
@@ -3448,7 +3483,7 @@ window.submitNewPayee = async () => {
     if (error) throw error;
     
     showMessage('付款人已新增。');
-    document.querySelector('.modal-backdrop')?.remove();
+    closePayeeSelfCreateModal();
     window.__cachedPayees = [...(window.__cachedPayees || []), { identifier, name }];
     
     // 回填到原本觸發的那個欄位
@@ -3459,10 +3494,10 @@ window.submitNewPayee = async () => {
       const nameSpan = container.querySelector('.grid-payee-name, .grid-proxy-name');
       
       if (idInput) idInput.value = identifier;
-      if (nameSpan) { 
+      if (nameSpan) {
         const maskedName = (Array.isArray(data) ? data[0]?.masked_name : data?.masked_name) || maskPayeeName(name);
-        nameSpan.innerText = maskedName; 
-        nameSpan.dataset.maskedName = maskedName; 
+        nameSpan.innerText = idInput?.classList.contains('grid-proxy-id') ? `代付人：${maskedName}` : maskedName;
+        nameSpan.dataset.maskedName = maskedName;
       }
     }
   } catch (error) {
@@ -3569,9 +3604,8 @@ window.fetchProxyPayerName = async (inputEl) => {
     nameSpan.innerText = `代付人：${payee.masked_name}`;
     nameSpan.dataset.maskedName = payee.masked_name;
   } else {
-    nameSpan.innerHTML = isFinanceOperator()
-      ? `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal('${identifier}', this)">＋ 新增</button>`
-      : '查無代付人，請確認身分證/統編或請會計建立主檔';
+    const encodedIdentifier = encodeURIComponent(identifier);
+    nameSpan.innerHTML = `查無代付人資料 <button type="button" class="secondary" style="padding:2px 6px; font-size:11px;" onclick="openAddPayeeModal(decodeURIComponent('${encodedIdentifier}'), this)">＋ 新增</button>`;
     delete nameSpan.dataset.maskedName;
   }
 };
@@ -4183,6 +4217,8 @@ function initializeEventsInternal() {
 
   safeListener('txType', 'change', updateTransactionAccountDefaults);
   safeListener('txBankAccount', 'change', updateTransactionAccountDefaults);
+  safeListener('txDebitAccount', 'change', updateTransactionAccountSummary);
+  safeListener('txCreditAccount', 'change', updateTransactionAccountSummary);
 
   safeListener('transactionForm', 'submit', async (e) => { 
     e.preventDefault();
@@ -6708,129 +6744,12 @@ window.rejectVoucher = async (voucherId, stage = 'manager') => {
   }
 };
 
-/**
- * 3a. 開啟「執行付款銷案」的銀行帳戶／會計科目選擇視窗
- * （原本的版本直接讀取只存在於「詳細審核」Modal 裡的 reviewBankAccount 欄位，
- *   從列表直接點擊時該元素根本不存在，所以一定會失敗；改成自帶選單。）
- */
 window.openCloseVoucherModal = async (voucherId) => {
-  // Legacy entry point: keep old bookmarks/buttons on the controlled payment workflow.
   return window.openPaymentQueue(voucherId);
-
-  try {
-    const { data: voucher } = await supabase
-      .from('vouchers')
-      .select('*, voucher_lines(*)')
-      .eq('id', voucherId)
-      .single();
-    if (!voucher) return alert('找不到單據');
-
-    const [banks, accounts] = await Promise.all([
-      fetchBankAccounts(),
-      fetchAccounts()
-    ]);
-    window.__cachedAccounts = accounts;
-    const bankOptionsDisabled = banks.length === 0;
-    const accountOptionsDisabled = accounts.length === 0;
-
-    // 若明細已經有歸帳科目，預設帶入第一筆的科目
-    const existingCode = voucher.voucher_lines?.find(l => l.account_code)?.account_code || '';
-
-    const html = `
-      <div class="modal-backdrop" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
-        <div style="background:white; padding:25px; border-radius:12px; width:90%; max-width:500px; max-height:90vh; overflow:auto;">
-          <h3>執行付款銷案 - ${voucher.voucher_no || ''}</h3>
-          <p><strong>摘要：</strong>${voucher.summary || '-'}</p>
-          <p><strong>總金額：</strong>$${Number(voucher.total_amount).toLocaleString()}</p>
-
-          <label>歸帳會計科目：</label>
-          <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
-            <select id="closeAccountCode" style="flex:1; padding:8px;">
-              <option value="">${accountOptionsDisabled ? '沒有可用的會計科目' : '請選擇歸帳科目...'}</option>
-              ${accounts.map(acc => `
-                <option value="${escapeHtml(acc.code)}" ${acc.code === existingCode ? 'selected' : ''}>${escapeHtml(acc.code)} ${escapeHtml(acc.name)}</option>
-              `).join('')}
-            </select>
-            <button type="button" onclick="suggestAccountCodeAI('${voucherId}', 'closeAccountCode')" style="white-space:nowrap; padding:8px 12px;" ${accountOptionsDisabled ? 'disabled' : ''}>✨ AI建議科目</button>
-          </div>
-          ${accountOptionsDisabled ? '<div class="message error" style="margin:8px 0;">會計科目為空，請確認 accounts 資料與 RLS SELECT policy。</div>' : ''}
-          <div id="aiSuggestExplain_closeAccountCode" class="ai-suggest-box"></div>
-
-          <label>付款銀行帳戶：</label>
-          <select id="closeBankAccountId" style="width:100%; padding:8px; margin:8px 0;">
-            <option value="">${bankOptionsDisabled ? '尚未建立銀行帳戶，請先建立後才能銷案' : '請選擇付款銀行帳戶...'}</option>
-            ${(banks || []).map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('')}
-          </select>
-          ${bankOptionsDisabled ? '<div class="message error" style="margin:8px 0;">沒有可用銀行帳戶，會計不得付款銷案；請先建立銀行帳戶。</div>' : ''}
-
-          <div style="margin-top:20px; text-align:right;">
-            <button onclick="confirmCloseVoucher('${voucherId}')" class="primary-btn" ${bankOptionsDisabled || accountOptionsDisabled ? 'disabled' : ''}>確認付款並銷案</button>
-            <button onclick="this.closest('.modal-backdrop').remove()" style="margin-left:10px;">取消</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop';
-    modal.innerHTML = html;
-    document.body.appendChild(modal);
-  } catch (err) {
-    alert('載入單據失敗：' + err.message);
-  }
 };
 
-/**
- * 3b. 確認執行付款銷案：補上未分類的明細科目後，交給 closeVoucherByAccounting
- * 統一寫入正確的借貸雙分錄、銀行流水、付款紀錄，並把單據狀態轉為 closed。
- */
 window.confirmCloseVoucher = async (voucherId) => {
   return window.openPaymentQueue(voucherId);
-
-  const accountCode = document.getElementById('closeAccountCode')?.value;
-  const bankAccountId = document.getElementById('closeBankAccountId')?.value;
-
-  if (!accountCode) { alert('請選擇歸帳科目'); return; }
-  if (!bankAccountId) { alert('請選擇付款銀行帳戶'); return; }
-
-  try {
-    await ensureAccountingCanCloseVoucher(voucherId);
-
-    // 勾稽核對：明細金額、發票金額、科目有效性（內含警告時的確認對話框）
-    const passedVerification = await confirmCrossVerification(voucherId, accountCode);
-    if (!passedVerification) return;
-    if (!confirm('確定要執行付款並將此單據「銷案」嗎？')) return;
-
-    // 補上還沒被歸類科目的明細列
-    await supabase.from('voucher_lines').update({ account_code: accountCode }).eq('voucher_id', voucherId).is('account_code', null);
-
-    const result = await closeVoucherByAccounting(
-      voucherId,
-      accountCode,
-      bankAccountId,
-      new Date().toISOString().slice(0, 10)
-    );
-    if (!result.success) throw new Error(result.error);
-
-    // 寫入審批歷程
-    const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('voucher_workflow_logs').insert([{
-      voucher_id: voucherId, actor_id: user?.id || state.currentUser?.id, action: 'close',
-      from_status: 'approved', to_status: 'closed', reject_reason: '執行付款銷案',    }]);
-
-    alert('單據已成功付款並銷案！');
-
-    document.querySelector('.modal-backdrop')?.remove();
-    if (typeof renderVoucherWorkflowList === 'function') renderVoucherWorkflowList();
-    if (typeof renderDashboard === 'function') renderDashboard();
-
-    const modal = document.getElementById('voucherDetailModal');
-    if (modal) modal.style.display = 'none';
-
-  } catch (err) {
-    console.error(err);
-    alert(`銷案與付款操作失敗：${err.message}`);
-  }
 };
 
 function getStatusBadgeWithDate(v) {
@@ -7482,15 +7401,7 @@ window.submitFullResubmission = async (e, voucherId) => {
   }
 
   try {
-    // 0. 在 updateVoucher() 之前讀取目前憑證狀態，確保重送歷程的 from_status 是正確的
-    //    （原本在更新後才讀取，此時狀態已被改成 pending_review，導致 from_status 記錄錯誤）
-    const { data: currentVch } = await supabase
-      .from('vouchers')
-      .select('status')
-      .eq('id', voucherId)
-      .single();
-
-    // 1. 透過共用 API 一次完成：更新主檔＋替換明細＋替換發票＋附件（刪除既有/上傳新檔）
+    // 1. 透過共用 API 一次完成：更新主檔＋替換明細＋替換發票＋重送 workflow log＋附件
     const updateResult = await updateVoucher(voucherId, {
       summary: title,
       departmentId: departmentId,
@@ -7509,16 +7420,6 @@ window.submitFullResubmission = async (e, voucherId) => {
     if (!updateResult || !updateResult.success) {
       throw new Error(updateResult?.message || '更新憑證失敗');
     }
-
-    // 2. 寫入工作流程記錄（重送）：from_status 使用更新前的真實狀態
-    await supabase.from('voucher_workflow_logs').insert({
-      voucher_id: voucherId,
-      actor_id: state.currentUser?.id,
-      action: 'submit',
-      from_status: currentVch?.status || 'rejected',
-      to_status: 'pending_review',
-      reject_reason: null
-    });
 
     alert('修改並重送成功！單據已重新送交主管審核。');
     document.getElementById('resubmitModal').style.display = 'none';

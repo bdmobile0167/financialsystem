@@ -1,7 +1,7 @@
-import { supabase } from '../../../scripts/supabaseClient.js';
-import { saveAttachment, deleteAttachment } from './attachments.js';
+﻿import { supabase } from '../../../scripts/supabaseClient.js';
+import { saveAttachment, deleteAttachment, deleteAttachmentFiles } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
-import { VOUCHER_STATUS } from './voucherStatus.js';  // ← 同一資料夾
+import { VOUCHER_STATUS } from './voucherStatus.js';  // ????鞈?憭?
 import { createNotification, createNotificationForMany, getUserIdsByRole } from '../../../scripts/notifications.js';
 
 export async function fetchAccounts() {  let q = supabase.from('accounts').select('*').order('code');  const { data, error } = await q;
@@ -37,7 +37,7 @@ export async function fetchWorkflowLogs(voucherId) {
   return data;
 }
 
-// 1. 修正後的 logWorkflow（避免 state 未定義導致崩潰）
+// 1. 靽格迤敺? logWorkflow嚗??state ?芸?蝢拙??游援瞏堆?
 async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = null) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -62,14 +62,14 @@ async function logWorkflow(voucherId, action, fromStatus, toStatus, reason = nul
     });
 
     if (error) {
-      console.error('寫入 Workflow Log 失敗:', error);
+      console.error('撖怠 Workflow Log 憭望?:', error);
     }
   } catch (err) {
-    console.error('logWorkflow 執行異常:', err);
+    console.error('logWorkflow ?瑁??啣虜:', err);
   }
 }
 
-// 2. 修正後的 createVoucher（完整支援專案、時程、附件名稱、申請人 ID）
+// 2. 靽格迤敺? createVoucher嚗??湔?游?獢?蝔?隞嗅?蝔晞隢犖 ID嚗?
 function normalizeUuidSelection(value) {
   if (!value || value === 'all') return null;
   return value;
@@ -109,10 +109,10 @@ function buildInvoicePayload(lines = []) {
 
 export async function createVoucher(payload) {
   const {
-    txDate, category = '營業', summary, departmentId, currentManagerId,
+    txDate, category = '?平', summary, departmentId, currentManagerId,
     projectId, departmentBudgetId, totalAmount, status = 'pending_review',
     detailLines, invoiceLines, attachmentsMap, rows,
-    voucherType = '发票', manualNumber = '',
+    voucherType = '?巨', manualNumber = '',
     tripStartDate, tripEndDate, applicantId
   } = payload;
 
@@ -120,7 +120,7 @@ export async function createVoucher(payload) {
   const finalApplicantId = applicantId || user?.id;
   const voucherNo = resolveVoucherNumber(voucherType, manualNumber, txDate);
 
-  // 1. 建立主檔（包含專案與時程）
+  // 1. 撱箇?銝餅?嚗??怠?獢???嚗?
   const { data: voucher, error } = await supabase.rpc('create_voucher_with_details', {
     p_voucher: {
       voucher_no: voucherNo,
@@ -144,28 +144,28 @@ export async function createVoucher(payload) {
 
   if (error) throw error;
 
-  // 2. 建立明細行（包含附件檔名記錄）
-  // 3. 建立發票明細（確保多筆發票完整存入）
-  // 4. 上傳實際實體檔案至儲存空間
+  // 2. 撱箇??敦銵???辣瑼?閮?嚗?
+  // 3. 撱箇??潛巨?敦嚗Ⅱ靽?蝑蟡典??游??伐?
+  // 4. 銝撖阡?撖阡?瑼??喳摮征??
   if (rows && attachmentsMap) {
     const attachmentUploads = Array.from(rows).map(async (row, index) => {
       const rowId = row.dataset.rowId;
       const file = attachmentsMap[rowId];
       if (!file) return;
       try { await saveAttachment(voucher.id, file); }
-      catch (err) { console.error(`第 ${rowId} 列附件上傳失敗：`, err); }
+      catch (err) { console.error(`蝚?${rowId} ??隞嗡??喳仃??`, err); }
     });
     await Promise.all(attachmentUploads);
   }
 
-  // 5. 寫入審批歷程
+  // 5. 撖怠撖拇甇瑞?
 
-  // 6. 通知主管有新單待審核
+  // 6. ?銝餌恣??桀?撖拇
   if (currentManagerId) {
     await createNotification(
       currentManagerId,
-      '有新的報支單待審核',
-      `${summary || voucherNo} － 金額 $${Number(totalAmount).toLocaleString()}`,
+      '???臬敺祟??,
+      `${summary || voucherNo} 嚗??? $${Number(totalAmount).toLocaleString()}`,
       voucher.id
     );
   }
@@ -174,22 +174,22 @@ export async function createVoucher(payload) {
 }
 
 export async function managerApprove(voucher) {
-  // 用「原子性條件更新」防止重複點擊：只有目前狀態仍是 pending_review 時才會更新成功，
-  // 若已被處理過（例如使用者連點多次），這裡會傳回空陣列，避免重複觸發後續動作。
+  // ?具?摮扳?隞嗆?啜甇ａ?銴????芣??桀??????pending_review ????唳???
+  // ?亙歇鋡怨???嚗?憒蝙?刻??憭活嚗??ㄐ??征???嚗??銴孛?澆?蝥?雿?
   const { data, error } = await supabase.rpc('approve_voucher_by_manager', {
     p_voucher_id: voucher.id
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
+    throw new Error('甇文???歇霈嚗?賢歇鋡急?????嚗???渡??敺?蝣箄???);
   }
-  // 通知所有會計人員：有單據待歸帳
+  // ????閮犖?∴????甇詨董
   const { data: full } = await supabase.from('vouchers').select('voucher_no, summary, total_amount').eq('id', voucher.id).single();
   const accountingUserIds = await getUserIdsByRole('accounting');
   await createNotificationForMany(
     accountingUserIds,
-    '有報支單待會計審核',
-    `${full?.summary || full?.voucher_no || ''} － 金額 $${Number(full?.total_amount || 0).toLocaleString()}`,
+    '??臬敺?閮祟??,
+    `${full?.summary || full?.voucher_no || ''} 嚗??? $${Number(full?.total_amount || 0).toLocaleString()}`,
     voucher.id
   );
 }
@@ -201,22 +201,22 @@ export async function managerReject(voucher, reason) {
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
+    throw new Error('甇文???歇霈嚗???渡??敺?蝣箄???);
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '您的報支單已被主管退回',
-      `${full.summary || full.voucher_no || ''}${reason ? '：' + reason : ''}`,
+      '?函??望?桀歇鋡思蜓蝞⊿??,
+      `${full.summary || full.voucher_no || ''}${reason ? '嚗? + reason : ''}`,
       voucher.id
     );
   }
 }
 
 export async function accountingApprove(voucher, options = {}) {
-  // 用「原子性條件更新」防止重複點擊／重複呼叫：只有目前狀態仍是 pending_accounting 時才會更新成功。
-  // 這可避免同一張單據因連點多次而重複扣除專案預算、重複寫入歷程與通知。
+  // ?具?摮扳?隞嗆?啜甇ａ?銴??????澆嚗???????pending_accounting ????唳???
+  // ??踹???撘萄?????憭活??銴?文?獢?蝞?銴神?交風蝔????
   const {
     lineAssignments = [],
     accountingAccountId = null,
@@ -233,20 +233,20 @@ export async function accountingApprove(voucher, options = {}) {
   });
   if (error) throw error;
   if (!approvedVoucher) {
-    throw new Error('此單據狀態已變更（可能已被核准或退回），請重新整理頁面後再確認。');
+    throw new Error('甇文???歇霈嚗?賢歇鋡急?????嚗???渡??敺?蝣箄???);
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '您的報支單已核准，待付款',
+      '?函??望?桀歇?詨?嚗?隞狡',
       `${full.summary || full.voucher_no || ''}`,
       voucher.id
     );
   }
 }
 
-// 會計退件 → 直接退回申請人
+// ???隞????湔??隢犖
 export async function accountingReject(voucher, reason) {
   const { data, error } = await supabase.rpc('reject_voucher_by_accounting', {
     p_voucher_id: voucher.id,
@@ -254,14 +254,14 @@ export async function accountingReject(voucher, reason) {
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('此單據狀態已變更，請重新整理頁面後再確認。');
+    throw new Error('甇文???歇霈嚗???渡??敺?蝣箄???);
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '您的報支單已被會計退回',
-      `${full.summary || full.voucher_no || ''}${reason ? '：' + reason : ''}`,
+      '?函??望?桀歇鋡急?閮??,
+      `${full.summary || full.voucher_no || ''}${reason ? '嚗? + reason : ''}`,
       voucher.id
     );
   }
@@ -277,9 +277,9 @@ export async function resubmitVoucher(voucher, { summary, amount }) {
 }
 
 /**
- * 更新憑證（修改主檔、明細行、發票）。
- * 策略：先刪除所有既有明細行/發票，再重新插入。
- * 注意：此函式不處理附件上傳，附件請用 saveAttachment() 獨立處理。
+ * ?湔??嚗耨?嫣蜓瑼?蝝啗??蟡剁???
+ * 蝑嚗??芷????蝝啗?/?潛巨嚗?????
+ * 瘜冽?嚗迨?賢?銝???隞嗡??喉??辣隢 saveAttachment() ?函?????
  */
 export async function updateVoucher(voucherId, payload) {
   const {
@@ -288,12 +288,12 @@ export async function updateVoucher(voucherId, payload) {
     detailLines, invoiceLines,
     voucherType, manualNumber,
     tripStartDate, tripEndDate,
-    // 附件處理（重送／編輯用）
-    newAttachments,        // [] File — 需上傳的新附件
-    deleteAttachmentIds     // [] id — 需刪除的既有附件
+    // ?辣??嚗???蝺刻摩?剁?
+    newAttachments,        // [] File ???銝??辣
+    deleteAttachmentIds     // [] id ????芷???隞?
   } = payload;
 
-  // 1. 更新主檔
+  // 1. ?湔銝餅?
   const updateData = {};
   if (txDate !== undefined) updateData.tx_date = txDate;
   if (category !== undefined) updateData.category = category;
@@ -321,159 +321,56 @@ export async function updateVoucher(voucherId, payload) {
   });
   if (updateError) throw updateError;
 
-  // 2. 更新明細行（刪除舊行 → 插入新行）
-  if (false && detailLines !== undefined) {
-    // 刪除舊明細
-    const { error: deleteLinesError } = await supabase
-      .from('voucher_lines')
-      .delete()
-      .eq('voucher_id', voucherId);
-    if (deleteLinesError) throw deleteLinesError;
-
-    // 插入新明細
-    if (detailLines.length > 0) {
-      const newLines = detailLines.map(l => {
-        const rawCode = l.account_code ?? l.accountCode ?? l.account ?? l.code ?? null;
-        const cleanCode = (rawCode !== null && rawCode !== undefined) ? String(rawCode).trim() : null;
-        return {
-          voucher_id: voucherId,
-          description: l.description,
-          account_code: cleanCode !== '' ? cleanCode : null,
-          amount: l.amount,
-          item_category: l.item_category || null,
-          item_category_note: l.item_category_note || null,
-          receipt_month: l.receipt_month || null,
-          payee_identifier: l.payee_identifier || null,
-          payee_name: l.payee_name || null,
-          is_proxy_payment: l.is_proxy_payment || false,
-          proxy_payer_identifier: l.proxy_payer_identifier || null,
-          proxy_payer_name: l.proxy_payer_name || null
-        };
-      });
-      const { error: insertLinesError } = await supabase.from('voucher_lines').insert(newLines);
-      if (insertLinesError) throw insertLinesError;
-    }
-  }
-
-  // 3. 更新發票明細（刪除舊發票 → 插入新發票）
-  if (false && invoiceLines !== undefined) {
-    const { error: deleteInvError } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('voucher_id', voucherId);
-    if (deleteInvError) throw deleteInvError;
-
-    if (invoiceLines.length > 0) {
-      const newInvoices = invoiceLines.map(i => ({
-        voucher_id: voucherId,
-        invoice_type: i.invoice_type,
-        invoice_number: i.invoice_number || null,
-        amount: i.amount,
-        tax_amount: i.tax_amount || 0
-      }));
-      const { error: insertInvError } = await supabase.from('invoices').insert(newInvoices);
-      if (insertInvError) throw insertInvError;
-    }
-  }
-
-  // 3.5 附件處理：刪除指定附件
+  // 3.5 ?辣??嚗?斗?摰?隞?
   if (deleteAttachmentIds && deleteAttachmentIds.length > 0) {
     for (const attId of deleteAttachmentIds) {
       try {
         await deleteAttachment(attId);
       } catch (err) {
-        console.warn(`刪除附件 ${attId} 失敗（已跳過）:`, err.message);
+        console.warn(`?芷?辣 ${attId} 憭望?嚗歇頝喲?嚗?`, err.message);
       }
     }
   }
 
-  // 3.6 附件處理：上傳新附件
+  // 3.6 ?辣??嚗??單?辣
   if (newAttachments && newAttachments.length > 0) {
     for (const file of newAttachments) {
       try {
         await saveAttachment(voucherId, file);
       } catch (err) {
-        console.error(`新附件上傳失敗（${file?.name || '未知檔案'}）:`, err);
+        console.error(`?圈?隞嗡??喳仃??${file?.name || '?芰瑼?'}嚗?`, err);
       }
     }
   }
 
-  return { success: true, message: '憑證已更新。' };
+  return { success: true, message: 'Voucher updated successfully.' };
 }
 
-/**
- * 刪除憑證（含明細行、發票、附件、付款記錄、workflow logs）。
- * 會一併刪除 Storage 中的附件實體檔案。
- */
 export async function deleteVoucher(voucherId) {
-  // 1. 刪除附件（先取得所有附件紀錄，逐一刪除 Storage 檔案）
-  const { data: attachments } = await supabase
-    .from('voucher_attachments')
-    .select('id, file_path, file_url')
-    .eq('voucher_id', voucherId);
-  if (attachments && attachments.length > 0) {
-    for (const att of attachments) {
-      try {
-        await deleteAttachment(att.id, att.file_path);
-      } catch (err) {
-        console.warn(`刪除附件 ${att.id} 時發生錯誤（已跳過）:`, err.message);
-      }
+  const { data, error } = await supabase.rpc('delete_voucher_cascade', {
+    p_voucher_id: voucherId
+  });
+  if (error) throw error;
+
+  const attachmentPaths = Array.isArray(data?.attachment_paths) ? data.attachment_paths : [];
+  let storageWarning = '';
+  if (attachmentPaths.length) {
+    try {
+      await deleteAttachmentFiles(attachmentPaths);
+    } catch (err) {
+      console.warn('Storage attachment cleanup failed after voucher deletion.', err.message);
+      storageWarning = ' Storage attachment cleanup failed; database records were deleted.';
     }
   }
 
-  // 2. 刪除明細行
-  const { error: delLinesError } = await supabase
-    .from('voucher_lines')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delLinesError) console.warn('刪除 voucher_lines 失敗:', delLinesError.message);
-
-  // 3. 刪除發票
-  const { error: delInvError } = await supabase
-    .from('invoices')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delInvError) console.warn('刪除 invoices 失敗:', delInvError.message);
-
-  // 4. 刪除付款記錄
-  const { error: delPayError } = await supabase
-    .from('voucher_payments')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delPayError) console.warn('刪除 voucher_payments 失敗:', delPayError.message);
-
-  // 5. 刪除 workflow logs
-  const { error: delLogError } = await supabase
-    .from('voucher_workflow_logs')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delLogError) console.warn('刪除 voucher_workflow_logs 失敗:', delLogError.message);
-
-  // 6. 刪除銀行交易紀錄（若有關聯）
-  const { error: delBankTxError } = await supabase
-    .from('bank_transactions')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delBankTxError) console.warn('刪除 bank_transactions 失敗:', delBankTxError.message);
-
-  // 7. 刪除日記帳分錄
-  const { error: delJEError } = await supabase
-    .from('journal_entries')
-    .delete()
-    .eq('voucher_id', voucherId);
-  if (delJEError) console.warn('刪除 journal_entries 失敗:', delJEError.message);
-
-  // 8. 最後刪除憑證主檔
-  const { error: delVoucherError } = await supabase
-    .from('vouchers')
-    .delete()
-    .eq('id', voucherId);
-  if (delVoucherError) throw delVoucherError;
-
-  return { success: true, message: '憑證已徹底刪除（含附件、明細、發票、分錄、付款記錄）。' };
+  return {
+    success: true,
+    message: `Voucher and related database records deleted.${storageWarning}`,
+    result: data
+  };
 }
 
-// 會計執行歸帳並付款銷案
+// ???瑁?甇詨董銝虫?甈暸獢?
 export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
   try {
     const { data: result, error } = await supabase.rpc('close_voucher_by_accounting', {
@@ -486,15 +383,15 @@ export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAcc
 
     return {
       success: true,
-      message: result?.idempotent ? '此單據已完成歸帳銷案' : '歸帳銷案成功'
+      message: result?.idempotent ? '甇文?歇摰?甇詨董?瑟?' : '甇詨董?瑟???'
     };
   } catch (error) {
-    console.error('銷案失敗:', error);
+    console.error('?瑟?憭望?:', error);
     return { success: false, error: error.message };
   }
 }
 
-// 取得使用者的報支單列表
+// ??雿輻???望?桀?銵?
 export async function fetchUserVouchers(userId) {  let q = supabase
     .from('vouchers')
     .select('*, voucher_lines(*), invoices(*)')
@@ -505,7 +402,7 @@ export async function fetchUserVouchers(userId) {  let q = supabase
   return data;
 }
 
-// 取得單一報支單詳細資料
+// ???桐??望?株底蝝啗???
 export async function fetchVoucherDetail(voucherId) {  const { data, error } = await supabase
     .from('vouchers')
     .select('*, voucher_lines(*), invoices(*), voucher_payments(*)')

@@ -76,6 +76,19 @@ export function openAttachment(fileUrl) {
   }
 }
 
+export async function deleteAttachmentFiles(filePaths = []) {
+  const paths = [...new Set((filePaths || []).filter(Boolean))];
+  if (!paths.length) return { success: true, deletedCount: 0 };
+
+  const { error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .remove(paths);
+  if (error) throw new Error('刪除 Storage 檔案失敗：' + error.message);
+
+  return { success: true, deletedCount: paths.length };
+}
+
 /**
  * 刪除指定附件（同時刪除 Storage 實體檔案與資料庫紀錄）。
  * @param {string} attachmentId - voucher_attachments 的 id

@@ -651,6 +651,34 @@ button.danger:hover {
   margin-top: 14px;
 }
 
+.field-hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.transaction-account-summary {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.transaction-account-summary strong,
+.transaction-account-summary span {
+  display: block;
+}
+
+.transaction-account-summary strong {
+  color: var(--text);
+}
+
 .transaction-entry-form .button-row {
   margin-top: 14px;
 }
@@ -669,19 +697,36 @@ button.danger:hover {
 
 .bank-account-card {
   display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) minmax(220px, 1.4fr) minmax(120px, auto) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main balance"
+    "meta actions";
+  gap: 12px 18px;
+  align-items: start;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.bank-account-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.bank-account-meta {
+  grid-area: meta;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
 }
 
 .bank-account-main strong,
 .bank-account-main span,
 .bank-account-meta span {
   display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .bank-account-main span,
@@ -697,15 +742,41 @@ button.danger:hover {
 }
 
 .bank-account-balance {
+  grid-area: balance;
   font-weight: 700;
   color: var(--primary-strong);
   white-space: nowrap;
 }
 
 .bank-account-actions {
+  grid-area: actions;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.payee-history-backdrop {
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.payee-history-modal {
+  width: min(1040px, 100%);
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
+}
+
+.payee-history-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.payee-history-header h3,
+.payee-history-header p {
+  margin-top: 0;
 }
 
 @media (max-width: 900px) {
@@ -715,10 +786,23 @@ button.danger:hover {
 
   .bank-account-card {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "meta"
+      "balance"
+      "actions";
+  }
+
+  .bank-account-meta {
+    grid-template-columns: 1fr;
   }
 
   .bank-account-actions {
     justify-content: flex-start;
+  }
+
+  .payee-history-header {
+    flex-direction: column;
   }
 }
 

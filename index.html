@@ -188,12 +188,14 @@
                   <select id="txDebitAccount" required>
                     <option value="">請選擇借方科目</option>
                   </select>
+                  <div class="field-hint" id="txDebitHint">收入通常借記銀行存款；支出通常借記費用或成本。</div>
                 </div>
                 <div>
                   <label>貸方科目</label>
                   <select id="txCreditAccount" required>
                     <option value="">請選擇貸方科目</option>
                   </select>
+                  <div class="field-hint" id="txCreditHint">收入通常貸記 4xxx 收入；支出通常貸記銀行存款。</div>
                 </div>
                 <div>
                   <label>交易對象</label>
@@ -203,6 +205,9 @@
                   <label>附件</label>
                   <input type="file" id="txAttachment" />
                 </div>
+              </div>
+              <div class="transaction-account-summary" id="txAccountSummary">
+                選擇銀行帳戶與類型後，系統會帶入建議借方／貸方；仍可手動調整。
               </div>
               <label>明細</label>
               <input type="text" id="txDetail" placeholder="例如：0827_營業收入、客戶收款、銀行轉入" required />

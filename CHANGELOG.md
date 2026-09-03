@@ -1,6 +1,30 @@
 # 變更紀錄
 
-## 0.2.70 - 2026-08-31
+## 0.2.73 - 2026-09-03
+
+- Added and directly applied Supabase RPC `delete_voucher_cascade` for voucher deletion, including related voucher lines, invoices, payments, workflow logs, bank transactions, manual transactions, and journal entries.
+- Updated `deleteVoucher()` to call `delete_voucher_cascade` instead of deleting related records in separate frontend steps.
+- Added centralized Storage attachment cleanup after the database delete; Storage failure is reported as a warning instead of leaving database rows half-deleted.
+- Updated Supabase RPC `update_voucher_with_details` so rejected voucher resubmission writes status and workflow log in the same database transaction.
+- Removed the frontend manual workflow-log insert from full resubmission.
+
+## 0.2.72 - 2026-09-03
+
+- 交易入帳表單補借方/貸方說明與即時摘要，收入預設為借記銀行、貸記收入科目，支出預設為借記費用/成本、貸記銀行，仍可手動調整 debit/credit。
+- 一般員工輸入身分證/統編查無付款人時可穩定開啟新增付款人 modal；代付人查無也提供新增入口，但不開放完整付款人主檔名單。
+- 付款人新增 modal 改為只關閉自己的視窗，避免誤關其他 modal；新增成功後正確回填付款人或代付人遮罩姓名。
+- 付款人付款明細 modal 改用不透明專用樣式與固定白色卡片，改善透明看不清楚與按鈕不好點問題。
+- 銀行帳戶卡片排版改為主資訊/餘額/帳號明細/操作分區，長帳號可換行，桌機與手機都不擠壓。
+
+## 0.2.71 - 2026-09-03
+
+- 依使用者指示，Supabase schema/RPC 已直接套用到 project `imlmclalgbfxhhnpsyam`，不再只等待 GitHub migrations。
+- 遠端清理 2 組未核銷、未配對的重複銀行流水，並建立 `bank_statement_transactions_dedupe_key` 唯一索引。
+- 遠端套用 vouchers manager update scope、`profiles.role` `super_admin` constraint、報支新增/修改 RPC、會計審核/付款 RPC、主管審核/重送 RPC。
+- 新增 `20260903090000_restrict_atomic_voucher_rpc_anon_execute.sql`，記錄遠端已收斂 atomic voucher RPC 的 `anon` execute 權限。
+- 驗證遠端：重複銀行流水 0 組、8 支 atomic voucher RPC 存在，皆為 `SECURITY INVOKER`，`authenticated` 可執行、`anon` 不可執行。
+
+## 0.2.70 - 2026-09-03
 
 - 新增 `20260831104000_atomic_voucher_review_payment_rpc.sql`，會計明細歸類、付款人/備註設定與會計核准同一交易完成。
 - 新增 `20260831105000_atomic_manager_review_rpc.sql`，主管核准、主管退件與重送狀態、workflow log 同一交易完成。
@@ -9,10 +33,9 @@
 
 ## 0.2.69 - 2026-08-31
 
-- 新增 `20260831103000_atomic_voucher_details_rpc.sql`，建立 atomic voucher 新增、修改與會計核准 RPC。
+- 新增 `20260831103000_atomic_voucher_details_rpc.sql`，建立 atomic voucher 新增與修改 RPC。
 - 報支新增改走 `create_voucher_with_details`，主檔、明細、發票與送出流程紀錄同一交易完成。
 - 報支修改改走 `update_voucher_with_details`，主檔、明細、發票與部門/專案預算 scope 同步更新。
-- 會計核准改走 `approve_voucher_by_accounting`，核准狀態、預算扣減與 workflow log 同一交易完成。
 
 ## 0.2.68 - 2026-08-31
 
