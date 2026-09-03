@@ -1,4 +1,4 @@
-﻿import { supabase } from '../../../scripts/supabaseClient.js';
+import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment, deleteAttachment, deleteAttachmentFiles } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
 import { VOUCHER_STATUS } from './voucherStatus.js';  // ????鞈?憭?
@@ -164,8 +164,8 @@ export async function createVoucher(payload) {
   if (currentManagerId) {
     await createNotification(
       currentManagerId,
-      '???臬敺祟??,
-      `${summary || voucherNo} 嚗??? $${Number(totalAmount).toLocaleString()}`,
+      '您有一張新的傳票待審核',
+      `${summary || voucherNo}，金額：$${Number(totalAmount).toLocaleString()}`,
       voucher.id
     );
   }
@@ -181,15 +181,15 @@ export async function managerApprove(voucher) {
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('甇文???歇霈嚗?賢歇鋡急?????嚗???渡??敺?蝣箄???);
+    throw new Error('操作失敗：可能已被處理過，請重新整理頁面後再試');
   }
   // ????閮犖?∴????甇詨董
   const { data: full } = await supabase.from('vouchers').select('voucher_no, summary, total_amount').eq('id', voucher.id).single();
   const accountingUserIds = await getUserIdsByRole('accounting');
   await createNotificationForMany(
     accountingUserIds,
-    '??臬敺?閮祟??,
-    `${full?.summary || full?.voucher_no || ''} 嚗??? $${Number(full?.total_amount || 0).toLocaleString()}`,
+    '有新的傳票待會計審核',
+    `${full?.summary || full?.voucher_no || ''}，金額：$${Number(full?.total_amount || 0).toLocaleString()}`,
     voucher.id
   );
 }
@@ -201,14 +201,14 @@ export async function managerReject(voucher, reason) {
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('甇文???歇霈嚗???渡??敺?蝣箄???);
+    throw new Error('操作失敗：可能已被處理過，請重新整理頁面後再試');
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '?函??望?桀歇鋡思蜓蝞⊿??,
-      `${full.summary || full.voucher_no || ''}${reason ? '嚗? + reason : ''}`,
+      '您的傳票已被主管退回',
+      `${full.summary || full.voucher_no || ''}${reason ? '，理由：' + reason : ''}`,
       voucher.id
     );
   }
@@ -233,13 +233,13 @@ export async function accountingApprove(voucher, options = {}) {
   });
   if (error) throw error;
   if (!approvedVoucher) {
-    throw new Error('甇文???歇霈嚗?賢歇鋡急?????嚗???渡??敺?蝣箄???);
+    throw new Error('操作失敗：可能已被處理過，請重新整理頁面後再試');
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '?函??望?桀歇?詨?嚗?隞狡',
+      '您的傳票已審核完成，款項將盡快撥付',
       `${full.summary || full.voucher_no || ''}`,
       voucher.id
     );
@@ -254,14 +254,14 @@ export async function accountingReject(voucher, reason) {
   });
   if (error) throw error;
   if (!data) {
-    throw new Error('甇文???歇霈嚗???渡??敺?蝣箄???);
+    throw new Error('操作失敗：可能已被處理過，請重新整理頁面後再試');
   }
   const { data: full } = await supabase.from('vouchers').select('applicant_id, voucher_no, summary').eq('id', voucher.id).single();
   if (full?.applicant_id) {
     await createNotification(
       full.applicant_id,
-      '?函??望?桀歇鋡急?閮??,
-      `${full.summary || full.voucher_no || ''}${reason ? '嚗? + reason : ''}`,
+      '您的傳票已被會計退回',
+      `${full.summary || full.voucher_no || ''}${reason ? '，理由：' + reason : ''}`,
       voucher.id
     );
   }
