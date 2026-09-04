@@ -1,6 +1,14 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.76`
+目前本機版本：`0.2.77`
+
+## 0.2.77 重點
+
+- 修復 `main.js:5 App bootstrap failed: SyntaxError: Invalid or unexpected token`。
+- 重建報表與會計 fallback 模組內的壞碼字串，避免 `scripts/reports.js`、`src/modules/accounting/*.js` import 失敗。
+- 保留財報/總帳優先使用 `debit_amount_base`、`credit_amount_base`、`amount_base` 的 0.2.76 多幣別地基。
+- 本機 HTTP + headless Chrome 已確認登入頁可載入，未顯示 bootstrap error banner。
+- Production 仍需重新部署 `0.2.77` 並做實際登入、報支、付款與財報驗收。
 
 ## 0.2.76 重點
 
@@ -9,7 +17,7 @@
 - `bank_accounts.currency` 已成為真正幣別 FK，預設 `TWD`。
 - 財報與總帳查詢已改為優先使用 base 金額，TWD 現有數字維持一致。
 - Supabase 遠端 project `imlmclalgbfxhhnpsyam` 已直接套用 `multicurrency_foundation`。
-- Production 仍需重新部署 `0.2.76` 並做 TWD 既有流程與財報驗收；非 TWD 前端開放仍留在後續任務。
+- Production 已由後續 `0.2.77` 接續，仍需重新部署並做 TWD 既有流程與財報驗收；非 TWD 前端開放仍留在後續任務。
 
 ## 0.2.75 重點
 

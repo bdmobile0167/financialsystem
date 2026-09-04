@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 0.2.77 - 2026-09-04
+
+- Fixed `main.js:5 App bootstrap failed: SyntaxError: Invalid or unexpected token`.
+- Rebuilt corrupted `scripts/reports.js` strings so reports can be imported again.
+- Rebuilt corrupted accounting fallback modules: `chartOfAccounts.js`, `journal.js`, `cashflow.js`, and `equity.js`.
+- Preserved the 0.2.76 base amount reporting logic for multi-currency readiness.
+- Verified the local app loads the login page through headless Chrome without the bootstrap error banner.
+
 ## 0.2.76 - 2026-09-04
 
 - Added multi-currency foundation through Supabase migration `20260904112000_multicurrency_foundation.sql`.
