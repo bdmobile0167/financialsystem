@@ -1,5 +1,23 @@
 # 變更紀錄
 
+## 0.2.75 - 2026-09-04
+
+- Added accounting period lock foundation through Supabase migration `20260904101000_accounting_period_locks.sql`.
+- Added `accounting_periods`, close/reopen RPCs, RLS, audit logging, and closed-period mutation guards for vouchers, bank transactions, transactions, and journal entries.
+- Added the settings-page accounting period UI for closing, refreshing, and reopening periods.
+- Added a user-facing closed-period error translation for accounting period operations.
+- Directly applied the Supabase migration to project `imlmclalgbfxhhnpsyam` and verified table, functions, triggers, and anon/authenticated execute grants.
+- Expanded pending ERP-gap tasks for AR, multi-currency, tax, fixed assets, collections, revenue recognition, self-service reporting, and SOD visibility.
+- Kept production deployment manual; production still needs redeploy and end-to-end validation.
+
+## 0.2.74 - 2026-09-04
+
+- Rebuilt corrupted `voucherApi.js`, `attachments.js`, `voucherStatus.js`, and `uiHelpers.js` sections with stable ASCII strings.
+- Removed unreachable legacy payment modal code; `openCloseVoucherModal()` and `confirmCloseVoucher()` now only route to the controlled payment queue.
+- Removed unreachable legacy voucher line/invoice rewrite blocks from `updateVoucher()`.
+- Added runtime label association support and filled static `for` attributes for accessible form controls.
+- Kept deployment manual per user instruction; production still needs redeploy and end-to-end validation.
+
 ## 0.2.73 - 2026-09-03
 
 - Added and directly applied Supabase RPC `delete_voucher_cascade` for voucher deletion, including related voucher lines, invoices, payments, workflow logs, bank transactions, manual transactions, and journal entries.

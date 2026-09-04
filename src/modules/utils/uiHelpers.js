@@ -1,5 +1,46 @@
 import { userHasPermission } from './permissions.js';
 
+export const STATUS_LABELS = {
+  pending_review: '\u5f85\u4e3b\u7ba1\u5be9\u6838',
+  manager_rejected: '\u4e3b\u7ba1\u9000\u56de',
+  pending_accounting: '\u5f85\u6703\u8a08\u6838\u51c6',
+  accounting_rejected: '\u6703\u8a08\u9000\u56de',
+  approved: '\u5f85\u4ed8\u6b3e',
+  closed: '\u5df2\u92b7\u5e33',
+  paid: '\u5df2\u4ed8\u6b3e',
+  voided: '\u5df2\u4f5c\u5ee2',
+  cancelled: '\u5df2\u64a4\u92b7'
+};
+
+export const ROLE_LABELS = {
+  super_admin: '\u8d85\u7d1a\u7ba1\u7406\u54e1',
+  admin: '\u7ba1\u7406\u54e1',
+  accounting: '\u6703\u8a08',
+  manager: '\u4e3b\u7ba1',
+  employee: '\u4e00\u822c\u54e1\u5de5'
+};
+
+const WORKFLOW_STEPS = [
+  { key: 'submit', label: '\u9001\u51fa\u7533\u8acb' },
+  { key: 'manager', label: '\u4e3b\u7ba1\u6838\u51c6' },
+  { key: 'accounting', label: '\u6703\u8a08\u6838\u51c6' },
+  { key: 'closed', label: '\u4ed8\u6b3e\u92b7\u5e33' }
+];
+
+const WORKFLOW_STATE_BY_STATUS = {
+  pending_review: ['done', 'current', 'pending', 'pending'],
+  manager_rejected: ['done', 'rejected', 'pending', 'pending'],
+  pending_accounting: ['done', 'done', 'current', 'pending'],
+  accounting_rejected: ['done', 'done', 'rejected', 'pending'],
+  approved: ['done', 'done', 'done', 'current'],
+  closed: ['done', 'done', 'done', 'done'],
+  paid: ['done', 'done', 'done', 'done'],
+  voided: ['done', 'done', 'done', 'rejected'],
+  cancelled: ['done', 'rejected', 'pending', 'pending']
+};
+
+const actionLocks = new Set();
+
 export function showToast(message, type = 'success') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -11,36 +52,37 @@ export function showToast(message, type = 'success') {
 
   const toast = document.createElement('div');
   toast.className = 'toast-message';
-  toast.style.cssText = `
-    padding: 12px 20px;
-    border-radius: 8px;
-    color: white;
-    font-size: 14px;
-    font-weight: 500;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    animation: slideIn 0.3s ease-out;
-    max-width: 350px;
-  `;
+  toast.style.cssText = [
+    'padding:12px 20px',
+    'border-radius:8px',
+    'color:white',
+    'font-size:14px',
+    'font-weight:500',
+    'box-shadow:0 4px 12px rgba(0,0,0,0.15)',
+    'max-width:350px'
+  ].join(';');
   toast.style.backgroundColor = type === 'error' ? '#ef4444' : (type === 'warning' ? '#f59e0b' : '#10b981');
   toast.textContent = message;
   container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.animation = 'slideOut 0.3s ease-in forwards';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 export function showMessage(text, isError = false) {
-  const el = document.getElementById('loginMessage') || document.getElementById('inviteResultBox') || document.getElementById('forcePasswordMessage');
-  if (!el) {
+  const element = document.getElementById('loginMessage')
+    || document.getElementById('inviteResultBox')
+    || document.getElementById('forcePasswordMessage');
+
+  if (!element) {
     showToast(text, isError ? 'error' : 'success');
     return;
   }
-  el.className = `message ${isError ? 'error' : 'success'}`;
-  el.textContent = text;
-  el.style.display = 'block';
+
+  element.className = `message ${isError ? 'error' : 'success'}`;
+  element.textContent = text;
+  element.style.display = 'block';
 }
+
+export default showMessage;
 
 export function setText(selector, value) {
   const element = document.querySelector(selector);
@@ -48,57 +90,49 @@ export function setText(selector, value) {
 }
 
 export function getBankNickname(bankAccountId, accounts = []) {
-  const account = accounts.find(a => a.id === bankAccountId);
-  return account ? (account.nickname || account.bank_name || account.account_number || '-') : '未指定銀行';
+  const account = (accounts || []).find((item) => item.id === bankAccountId);
+  return account ? (account.nickname || account.bank_name || account.account_number || '-') : 'Unassigned bank';
 }
 
 export function populateBankSelect(selectEl, accounts = []) {
   if (!selectEl) return;
   if (!Array.isArray(accounts) || accounts.length === 0) {
-    selectEl.innerHTML = '<option value="">尚未設定銀行帳戶</option>';
+    selectEl.innerHTML = '<option value="">No bank accounts</option>';
     return;
   }
+
   selectEl.innerHTML = accounts
-    .map(a => `<option value="${a.id}">${a.nickname || a.bank_name || a.account_number || '銀行帳戶'}</option>`)
+    .map((account) => `<option value="${account.id}">${account.nickname || account.bank_name || account.account_number || 'Bank account'}</option>`)
     .join('');
 }
 
 export function maskPersonName(name, identifier) {
   if (!name) return '';
   if (identifier && identifier.length === 8 && !Number.isNaN(Number(identifier))) return name;
-  if (name.length === 2) return name[0] + 'O';
-  if (name.length === 3) return name[0] + 'O' + name[2];
-  if (name.length >= 4) return name[0] + 'O' + name.slice(2);
+  if (name.length === 2) return `${name[0]}O`;
+  if (name.length === 3) return `${name[0]}O${name[2]}`;
+  if (name.length >= 4) return `${name[0]}O${name.slice(2)}`;
   return name;
 }
 
 export function maskIdentifierString(identifier) {
   if (!identifier) return '';
-  if (identifier.length === 8 && !Number.isNaN(Number(identifier))) return identifier;
-  if (identifier.length >= 10) return identifier.substring(0, 4) + '****' + identifier.substring(identifier.length - 3);
-  return identifier;
+  const value = String(identifier);
+  if (value.length === 8 && !Number.isNaN(Number(value))) return value;
+  if (value.length >= 10) return `${value.substring(0, 4)}****${value.substring(value.length - 3)}`;
+  return value;
 }
 
 export function maskPayeeName(name) {
   if (!name) return '';
-  const len = name.length;
-  if (len <= 1) return name;
-  if (len === 2) return name[0] + 'O';
-  return name[0] + 'O'.repeat(len - 2) + name[len - 1];
+  const value = String(name);
+  if (value.length <= 1) return value;
+  if (value.length === 2) return `${value[0]}O`;
+  return `${value[0]}${'O'.repeat(value.length - 2)}${value[value.length - 1]}`;
 }
 
-export const STATUS_LABELS = {
-  pending_review: '待主管審核',
-  manager_rejected: '主管退回',
-  pending_accounting: '待會計審核',
-  accounting_rejected: '會計退回',
-  approved: '已核准，待銷帳',
-  closed: '已銷帳',
-  cancelled: '已取消'
-};
-
 export function getStatusBadge(status) {
-  const label = STATUS_LABELS[status] || status || '未知';
+  const label = STATUS_LABELS[status] || status || 'Unknown';
   const className = {
     pending_review: 'warning',
     pending_accounting: 'warning',
@@ -106,48 +140,36 @@ export function getStatusBadge(status) {
     manager_rejected: 'danger',
     accounting_rejected: 'danger',
     closed: 'secondary',
+    paid: 'success',
+    voided: 'secondary',
     cancelled: 'secondary'
   }[status] || 'secondary';
+
   return `<span class="badge ${className}" style="padding:2px 8px; border-radius:12px; font-size:12px;">${label}</span>`;
 }
 
-export const ROLE_LABELS = {
-  admin: '管理員',
-  super_admin: '超級管理員',
-  accounting: '會計',
-  manager: '主管',
-  employee: '一般使用者'
-};
-
-const WORKFLOW_STEPS = [
-  { key: 'submit', label: '送出申請' },
-  { key: 'manager', label: '主管核准' },
-  { key: 'accounting', label: '會計核准' },
-  { key: 'closed', label: '付款銷帳' }
-];
-
 function getWorkflowStepStates(status) {
-  return {
-    pending_review: ['done', 'current', 'pending', 'pending'],
-    manager_rejected: ['done', 'rejected', 'pending', 'pending'],
-    pending_accounting: ['done', 'done', 'current', 'pending'],
-    accounting_rejected: ['done', 'done', 'rejected', 'pending'],
-    approved: ['done', 'done', 'done', 'current'],
-    closed: ['done', 'done', 'done', 'done']
-  }[status] || ['done', 'pending', 'pending', 'pending'];
+  return WORKFLOW_STATE_BY_STATUS[status] || ['done', 'pending', 'pending', 'pending'];
 }
 
 function getStepStyle(state) {
   switch (state) {
-    case 'done': return 'background:#dcfce7; color:#166534;';
-    case 'current': return 'background:#dbeafe; color:#1d4ed8;';
-    case 'rejected': return 'background:#fee2e2; color:#991b1b;';
-    default: return 'background:#f1f5f9; color:#94a3b8;';
+    case 'done':
+      return 'background:#dcfce7; color:#166534;';
+    case 'current':
+      return 'background:#dbeafe; color:#1d4ed8;';
+    case 'rejected':
+      return 'background:#fee2e2; color:#991b1b;';
+    default:
+      return 'background:#f1f5f9; color:#64748b;';
   }
 }
 
 export function buildApprovalStepperHtml(status) {
-  if (status === 'cancelled') return '<div class="badge secondary" style="padding:6px 12px;">已取消</div>';
+  if (status === 'cancelled') {
+    return '<div class="badge secondary" style="padding:6px 12px;">\u5df2\u64a4\u92b7</div>';
+  }
+
   const stepStates = getWorkflowStepStates(status);
   return `
     <ul class="approval-stepper" style="display:flex; gap:8px; list-style:none; padding:0; margin:12px 0; flex-wrap:wrap;">
@@ -166,11 +188,17 @@ export function buildApprovalStepperHtml(status) {
 }
 
 export function buildMiniStepperDots(status) {
-  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">已取消</span>';
+  if (status === 'cancelled') return '<span class="muted" style="font-size:11px;">\u5df2\u64a4\u92b7</span>';
   const stepStates = getWorkflowStepStates(status);
-  const colorOf = state => state === 'done' ? '#10b981' : (state === 'current' ? '#3b82f6' : (state === 'rejected' ? '#ef4444' : '#cbd5e1'));
-  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="送出申請 / 主管核准 / 會計核准 / 付款銷帳">
-    ${stepStates.map(state => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(state)}; display:inline-block;"></span>`).join('')}
+  const colorOf = (state) => {
+    if (state === 'done') return '#10b981';
+    if (state === 'current') return '#3b82f6';
+    if (state === 'rejected') return '#ef4444';
+    return '#cbd5e1';
+  };
+
+  return `<span style="display:inline-flex; gap:4px; align-items:center;" title="\u9001\u51fa\u7533\u8acb / \u4e3b\u7ba1\u6838\u51c6 / \u6703\u8a08\u6838\u51c6 / \u4ed8\u6b3e\u92b7\u5e33">
+    ${stepStates.map((state) => `<span style="width:8px; height:8px; border-radius:50%; background:${colorOf(state)}; display:inline-block;"></span>`).join('')}
   </span>`;
 }
 
@@ -181,18 +209,18 @@ export function formatTwd(n) {
 export function downloadJsonFile(filename, dataObj) {
   const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }
 
 function setTabVisible(tab, visible) {
-  document.querySelectorAll(`[data-tab="${tab}"]`).forEach(el => {
-    el.style.display = visible ? '' : 'none';
+  document.querySelectorAll(`[data-tab="${tab}"]`).forEach((element) => {
+    element.style.display = visible ? '' : 'none';
   });
 }
 
@@ -226,35 +254,32 @@ export function applyRoleBasedTabVisibility() {
 }
 
 export function safeListener(id, event, handler) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener(event, handler);
+  const element = document.getElementById(id);
+  if (element) element.addEventListener(event, handler);
 }
-
-const actionLocks = new Set();
 
 export async function withActionLock(actionKey, button, asyncFn, options = {}) {
   const key = actionKey || 'default-action';
   if (actionLocks.has(key)) return null;
   actionLocks.add(key);
 
-  const btn = button || null;
-  const originalText = btn ? btn.textContent : '';
-  const loadingText = options.loadingText || '處理中...';
+  const originalText = button ? button.textContent : '';
+  const loadingText = options.loadingText || 'Loading...';
 
-  if (btn) {
-    btn.disabled = true;
-    btn.dataset.processing = '1';
-    if (loadingText) btn.textContent = loadingText;
+  if (button) {
+    button.disabled = true;
+    button.dataset.processing = '1';
+    if (loadingText) button.textContent = loadingText;
   }
 
   try {
     return await asyncFn();
   } finally {
     actionLocks.delete(key);
-    if (btn) {
-      btn.disabled = false;
-      btn.dataset.processing = '0';
-      if (loadingText) btn.textContent = originalText;
+    if (button) {
+      button.disabled = false;
+      button.dataset.processing = '0';
+      if (loadingText) button.textContent = originalText;
     }
   }
 }
@@ -283,4 +308,46 @@ export function toggleSidebar() {
   const sidebarEl = document.getElementById('sidebar');
   if (sidebarEl?.classList.contains('open')) closeSidebar();
   else openSidebar();
+}
+
+function ensureElementId(control, index) {
+  if (control.id) return control.id;
+  const generatedId = `auto-field-${Date.now()}-${index}`;
+  control.id = generatedId;
+  return generatedId;
+}
+
+export function ensureLabelAssociations(root = document) {
+  if (!root?.querySelectorAll) return;
+
+  const labels = root.querySelectorAll('label:not([for])');
+  labels.forEach((label, index) => {
+    const nestedControl = label.querySelector('input, select, textarea');
+    if (nestedControl) {
+      label.setAttribute('for', ensureElementId(nestedControl, index));
+      return;
+    }
+
+    const nextControl = label.nextElementSibling?.matches?.('input, select, textarea')
+      ? label.nextElementSibling
+      : null;
+    if (nextControl) {
+      label.setAttribute('for', ensureElementId(nextControl, index));
+    }
+  });
+}
+
+export function observeLabelAssociations() {
+  ensureLabelAssociations(document);
+
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) ensureLabelAssociations(node);
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+  return observer;
 }

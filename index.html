@@ -13,9 +13,9 @@
       <p class="muted">請輸入電子郵件與密碼進行登入。若本地測試，可使用任意帳號密碼。</p>
       <div id="loginMessage" class="message">登入後即可使用系統功能。</div>
       <form id="loginForm">
-        <label>電子郵件</label>
+        <label for="username">電子郵件</label>
         <input id="username" type="email" placeholder="請輸入電子郵件" autocomplete="username" />
-        <label>密碼</label>
+        <label for="password">密碼</label>
         <input id="password" type="password" placeholder="請輸入密碼" autocomplete="current-password" />
         <button type="submit" class="primary-btn">登入</button>
       </form>
@@ -28,9 +28,9 @@
       <p class="muted">首次登入需要修改預設密碼，才能繼續使用系統。</p>
       <div id="forcePasswordMessage" class="message"></div>
       <form id="forcePasswordForm">
-        <label>新密碼</label>
+        <label for="forceNewPassword">新密碼</label>
               <input id="forceNewPassword" type="password" required minlength="6" autocomplete="new-password" />
-        <label>確認新密碼</label>
+        <label for="forceConfirmPassword">確認新密碼</label>
               <input id="forceConfirmPassword" type="password" required minlength="6" autocomplete="new-password" />
         <button type="submit" style="margin-top: 10px;">確認更新密碼</button>
       </form>
@@ -151,24 +151,24 @@
             <form id="transactionForm" class="transaction-entry-form">
               <div class="form-grid">
                 <div>
-                  <label>日期</label>
+                  <label for="txDate">日期</label>
                   <input type="date" id="txDate" required />
                 </div>
                 <div>
-                  <label>銀行帳戶</label>
+                  <label for="txBankAccount">銀行帳戶</label>
                   <select id="txBankAccount" required>
                     <option value="">請選擇銀行帳戶</option>
                   </select>
                 </div>
                 <div>
-                  <label>類型</label>
+                  <label for="txType">類型</label>
                   <select id="txType" required>
                     <option value="收入">收入</option>
                     <option value="支出">支出</option>
                   </select>
                 </div>
                 <div>
-                  <label>分類</label>
+                  <label for="txCategory">分類</label>
                   <select id="txCategory" required>
                     <option value="營業">營業</option>
                     <option value="投資">投資</option>
@@ -176,42 +176,42 @@
                   </select>
                 </div>
                 <div>
-                  <label>金額</label>
+                  <label for="txAmount">金額</label>
                   <input type="number" id="txAmount" min="1" step="1" required />
                 </div>
                 <div>
-                  <label>交易單號</label>
+                  <label for="txVoucher">交易單號</label>
                   <input type="text" id="txVoucher" placeholder="留空由系統產生" />
                 </div>
                 <div>
-                  <label>借方科目</label>
+                  <label for="txDebitAccount">借方科目</label>
                   <select id="txDebitAccount" required>
                     <option value="">請選擇借方科目</option>
                   </select>
                   <div class="field-hint" id="txDebitHint">收入通常借記銀行存款；支出通常借記費用或成本。</div>
                 </div>
                 <div>
-                  <label>貸方科目</label>
+                  <label for="txCreditAccount">貸方科目</label>
                   <select id="txCreditAccount" required>
                     <option value="">請選擇貸方科目</option>
                   </select>
                   <div class="field-hint" id="txCreditHint">收入通常貸記 4xxx 收入；支出通常貸記銀行存款。</div>
                 </div>
                 <div>
-                  <label>交易對象</label>
+                  <label for="txCustomer">交易對象</label>
                   <input type="text" id="txCustomer" placeholder="客戶、廠商或摘要對象" />
                 </div>
                 <div>
-                  <label>附件</label>
+                  <label for="txAttachment">附件</label>
                   <input type="file" id="txAttachment" />
                 </div>
               </div>
               <div class="transaction-account-summary" id="txAccountSummary">
                 選擇銀行帳戶與類型後，系統會帶入建議借方／貸方；仍可手動調整。
               </div>
-              <label>明細</label>
+              <label for="txDetail">明細</label>
               <input type="text" id="txDetail" placeholder="例如：0827_營業收入、客戶收款、銀行轉入" required />
-              <label>備註</label>
+              <label for="txRemark">備註</label>
               <textarea id="txRemark" rows="2" placeholder="選填"></textarea>
               <div class="button-row">
                 <button type="submit" class="primary-btn">新增交易並入帳</button>
@@ -241,15 +241,15 @@
             <div class="panel">
               <h3>新增銀行帳戶</h3>
               <form id="bankAccountForm">
-                <label>銀行名稱</label>
+                <label for="bankName">銀行名稱</label>
                 <input type="text" id="bankName" placeholder="例如：玉山銀行" required />
-                <label>帳號末幾碼／代號</label>
+                <label for="bankAccountNumber">帳號末幾碼／代號</label>
                 <input type="text" id="bankAccountNumber" placeholder="例如：86187" required />
-                <label>顯示暱稱</label>
+                <label for="bankNickname">顯示暱稱</label>
                 <input type="text" id="bankNickname" placeholder="例如：玉山187" />
-                <label>期初餘額</label>
+                <label for="bankOpeningBalance">期初餘額</label>
                 <input type="number" id="bankOpeningBalance" value="0" />
-                <label>綁定會計科目</label>
+                <label for="bankLedgerAccountId">綁定會計科目</label>
                 <select id="bankLedgerAccountId">
                   <option value="">未綁定</option>
                 </select>
@@ -293,16 +293,16 @@
             <form id="paymentRecipientForm" class="payment-recipient-form">
               <input type="hidden" id="paymentRecipientId" />
               <input type="hidden" id="paymentPayeeId" />
-              <label>收款人／公司名稱<input id="recipientDisplayName" required /></label>
-              <label>身分證／統編<input id="recipientIdentifier" required /></label>
-              <label>銀行名稱<input id="recipientBankName" required /></label>
-              <label>分行<input id="recipientBankBranch" /></label>
-              <label>戶名<input id="recipientAccountName" required /></label>
-              <label>銀行帳號<input id="recipientAccountNumber" required /></label>
-              <label>聯絡人<input id="recipientContactName" /></label>
-              <label>電話<input id="recipientPhone" /></label>
-              <label>Email<input id="recipientEmail" type="email" /></label>
-              <label class="payment-recipient-note">備註<textarea id="recipientNote" rows="2"></textarea></label>
+              <label for="recipientDisplayName">收款人／公司名稱<input id="recipientDisplayName" required /></label>
+              <label for="recipientIdentifier">身分證／統編<input id="recipientIdentifier" required /></label>
+              <label for="recipientBankName">銀行名稱<input id="recipientBankName" required /></label>
+              <label for="recipientBankBranch">分行<input id="recipientBankBranch" /></label>
+              <label for="recipientAccountName">戶名<input id="recipientAccountName" required /></label>
+              <label for="recipientAccountNumber">銀行帳號<input id="recipientAccountNumber" required /></label>
+              <label for="recipientContactName">聯絡人<input id="recipientContactName" /></label>
+              <label for="recipientPhone">電話<input id="recipientPhone" /></label>
+              <label for="recipientEmail">Email<input id="recipientEmail" type="email" /></label>
+              <label for="recipientNote" class="payment-recipient-note">備註<textarea id="recipientNote" rows="2"></textarea></label>
               <div class="button-row payment-recipient-actions">
                 <button type="submit" class="primary-btn">儲存收款人</button>
                 <button id="cancelRecipientEditBtn" type="button" class="secondary">取消編輯</button>
@@ -319,9 +319,9 @@
               </div>
             </div>
             <form id="payrollPaymentForm" class="payment-recipient-form">
-              <label>摘要<input id="payrollSummary" placeholder="例如：11507 薪資" required /></label>
-              <label>付款日期<input id="payrollPaymentDate" type="date" required /></label>
-              <label>出款銀行<select id="payrollBankAccount" required></select></label>
+              <label for="payrollSummary">摘要<input id="payrollSummary" placeholder="例如：11507 薪資" required /></label>
+              <label for="payrollPaymentDate">付款日期<input id="payrollPaymentDate" type="date" required /></label>
+              <label for="payrollBankAccount">出款銀行<select id="payrollBankAccount" required></select></label>
               <div class="button-row payment-recipient-actions">
                 <button type="submit" class="primary-btn">建立薪資付款</button>
               </div>
@@ -343,31 +343,31 @@
                 <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
                 <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                   <div style="flex: 1;">
-                    <label>報支主旨 (必填)：</label>
+                    <label for="vTitle">報支主旨 (必填)：</label>
                     <input type="text" id="vTitle" placeholder="例如：20260720_AI應用計畫_業務費" required style="width: 100%;">
-                    <label>所屬部門</label>
+                    <label for="vDepartment">所屬部門</label>
                     <select id="vDepartment" required></select>
-                    <label>指定審核主管（留空則整個部門的主管都能審）</label>
+                    <label for="vManagerPicker">指定審核主管（留空則整個部門的主管都能審）</label>
                     <select id="vManagerPicker"><option value="">不指定</option></select>
                   </div>
                 </div>
                 <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                   <div style="flex: 1;">
-                    <label>專案：</label>
+                    <label for="vProject">專案：</label>
                     <select id="vProject"><option value="">載入中...</option></select>
                     <p class="muted" style="font-size:12px; margin:4px 0 0;">非專案報支可留空，系統會改用部門年度預算。</p>
                   </div>
                   <div style="flex: 1;">
-                    <label>部門年度預算：</label>
+                    <label for="vDepartmentBudget">部門年度預算：</label>
                     <select id="vDepartmentBudget"><option value="">請先選擇部門</option></select>
                     <p class="muted" style="font-size:12px; margin:4px 0 0;">不選專案時必填。</p>
                   </div>
                   <div style="flex: 1;">
-                    <label>行程起日：</label>
+                    <label for="vTripStart">行程起日：</label>
                     <input type="date" id="vTripStart">
                   </div>
                   <div style="flex: 1;">
-                    <label>行程迄日：</label>
+                    <label for="vTripEnd">行程迄日：</label>
                     <input type="date" id="vTripEnd">
                   </div>
                 </div>
@@ -398,11 +398,11 @@
                   </tfoot>
                 </table>
                 <button type="button" class="secondary" onclick="addExcelRow()">+ 新增一列</button>
-                <label class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px;">
+                <label for="bulkVoucherUpload" class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px;">
                   📎 批次上傳發票/收據（依順序自動分配到各列）
                   <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
                 </label>
-                <label class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;">
+                <label for="aiScanReceiptUpload" class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;">
                   🤖 AI 掃描憑證自動帶入（新增一列並填好資料）
                   <input type="file" id="aiScanReceiptUpload" accept="image/*" style="display:none;">
                 </label>
@@ -458,31 +458,31 @@
               <h3>新增專案</h3>
               <form id="projectForm" class="form-container">
                 <div style="margin-bottom: 12px;">
-                  <label>專案名稱</label>
+                  <label for="projectName">專案名稱</label>
                   <input type="text" id="projectName" placeholder="例如：2026 AI 應用開發案" required style="width: 100%;" />
                 </div>
                 <div style="display: flex; gap: 10px; margin-bottom: 12px;">
                   <div style="flex: 1;">
-                    <label>起始日期</label>
+                    <label for="projectStart">起始日期</label>
                     <input type="date" id="projectStart" style="width: 100%;" />
                   </div>
                   <div style="flex: 1;">
-                    <label>結束日期</label>
+                    <label for="projectEnd">結束日期</label>
                     <input type="date" id="projectEnd" style="width: 100%;" />
                   </div>
                 </div>
                 <div style="margin-bottom: 12px;">
-                  <label>所屬部門</label>
+                  <label for="projectDepartment">所屬部門</label>
                   <select id="projectDepartment" style="width: 100%;"></select>
                 </div>
                 <div id="projectDefaultBankRow" style="margin-bottom: 12px;">
-                  <label>預設出款銀行（選填，僅會計可見）</label>
+                  <label for="projectDefaultBankAccount">預設出款銀行（選填，僅會計可見）</label>
                   <select id="projectDefaultBankAccount" style="width: 100%;">
                     <option value="">不指定，付款時再選</option>
                   </select>
                 </div>
                 <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                  <label style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
+                  <label for="projectTotalBudget" style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
                   <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
                   <input type="number" id="projectTotalBudget" placeholder="例如：500000" required style="width: 100%; font-size: 16px; margin-top: 8px;" />
                 </div>
@@ -493,20 +493,20 @@
                 <h3>部門預算申請</h3>
                 <form id="departmentBudgetForm" class="form-container">
                   <div style="margin-bottom: 12px;">
-                    <label>部門</label>
+                    <label for="departmentBudgetDepartment">部門</label>
                     <select id="departmentBudgetDepartment" required style="width: 100%;"></select>
                   </div>
                   <div style="display: flex; gap: 10px; margin-bottom: 12px;">
                     <div style="flex: 1;">
-                      <label>年度</label>
+                      <label for="departmentBudgetYear">年度</label>
                       <input type="number" id="departmentBudgetYear" min="2020" max="2100" required style="width: 100%;" />
                     </div>
                     <div style="flex: 1;">
-                    <label>申請預算金額</label>
+                    <label for="departmentBudgetAmount">申請預算金額</label>
                     <input type="number" id="departmentBudgetAmount" min="0" required style="width: 100%;" />
                   </div>
                 </div>
-                  <label>申請原因</label>
+                  <label for="departmentBudgetNote">申請原因</label>
                   <textarea id="departmentBudgetNote" rows="2" required style="width: 100%;"></textarea>
                   <fieldset style="margin-top:12px; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
                     <legend style="padding:0 6px; color:#475569; font-size:12px;">預算項目明細</legend>
@@ -555,17 +555,17 @@
               <input type="hidden" id="edit_budget_project_id" />
               <div style="display: flex; gap: 15px; margin-bottom: 15px;">
                 <div style="flex: 1; padding: 10px; background: #f1f5f9; border-radius: 8px;">
-                  <label>目前總預算</label>
+                  <label for="current_budget_val">目前總預算</label>
                   <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: #475569;">$0</div>
                   <input type="hidden" id="current_budget_val" />
                 </div>
                 <div style="flex: 1;">
-                  <label>更新後總預算</label>
+                  <label for="new_budget_val">更新後總預算</label>
                   <input type="number" id="new_budget_val" required style="width: 100%; font-size: 16px;" />
                 </div>
               </div>
               
-              <label>變更原因 (必填，供日後稽核)</label>
+              <label for="budget_change_reason">變更原因 (必填，供日後稽核)</label>
               <input type="text" id="budget_change_reason" placeholder="例如：董事會決議追加行銷預算" required style="width: 100%; margin-bottom: 15px;" />
               
               <div style="display: flex; gap: 10px;">
@@ -602,11 +602,11 @@
 
             <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:14px;">
               <div style="flex:1;">
-                <label>新增成員</label>
+                <label for="pmAddUserSelect">新增成員</label>
                 <select id="pmAddUserSelect" style="width:100%;"></select>
               </div>
               <div style="width:130px;">
-                <label>角色</label>
+                <label for="pmAddUserRole">角色</label>
                 <select id="pmAddUserRole" style="width:100%;">
                   <option value="member">一般成員</option>
                   <option value="owner">專案負責人</option>
@@ -663,7 +663,7 @@
             <p class="muted">上傳銀行 PDF 對帳單，系統會自動解析並存入帳單庫，用於核對，跟報支核銷資料分開。</p>
             <div class="form-grid">
               <div>
-                <label>選擇對應銀行帳戶（系統內）</label>
+                <label for="statementBankAccountId">選擇對應銀行帳戶（系統內）</label>
                 <select id="statementBankAccountId">
                   <option value="">載入中...</option>
                 </select>
@@ -671,7 +671,7 @@
                 <small id="detectedParserText" style="color: #666; display: block; margin-top: 4px;"></small>
               </div>
               <div>
-                <label>PDF 對帳單檔案</label>
+                <label for="statementFileInput">PDF 對帳單檔案</label>
                 <input type="file" id="statementFileInput" accept="application/pdf" />
               </div>
             </div>
@@ -745,11 +745,11 @@
 
             <div class="form-grid no-print">
               <div>
-                <label>報表期間（起）</label>
+                <label for="reportPeriodStart">報表期間（起）</label>
                 <input type="date" id="reportPeriodStart" />
               </div>
               <div>
-                <label>報表期間（迄）</label>
+                <label for="reportPeriodEnd">報表期間（迄）</label>
                 <input type="date" id="reportPeriodEnd" />
               </div>
             </div>
@@ -792,7 +792,7 @@
               <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
                 <div id="trialLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
-                <label class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
+                <label for="includeIfrsAdjustmentsToggle" class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
                   <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
                   顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
                 </label>
@@ -826,19 +826,19 @@
                   <h5>互動式募資缺口模擬器</h5>
                   <div class="fundraise-sim-inputs no-print">
                     <div>
-                      <label>預估未來每月新增費用</label>
+                      <label for="fsExpansionCost">預估未來每月新增費用</label>
                       <input type="number" id="fsExpansionCost" value="150000" />
                     </div>
                     <div>
-                      <label>預估未來每月新增營收</label>
+                      <label for="fsRevenueGrowth">預估未來每月新增營收</label>
                       <input type="number" id="fsRevenueGrowth" value="100000" />
                     </div>
                     <div>
-                      <label>期望資金安全緩衝月數</label>
+                      <label for="fsBufferMonths">期望資金安全緩衝月數</label>
                       <input type="number" id="fsBufferMonths" value="12" />
                     </div>
                     <div>
-                      <label>預估投前估值 (TWD)</label>
+                      <label for="fsPreMoney">預估投前估值 (TWD)</label>
                       <input type="number" id="fsPreMoney" value="30000000" />
                     </div>
                   </div>
@@ -979,7 +979,7 @@
             </div>
             <div class="form-grid" style="margin-bottom:10px;">
               <div>
-                <label>動作類型</label>
+                <label for="auditTrailActionFilter">動作類型</label>
                 <select id="auditTrailActionFilter">
                   <option value="">全部</option>
                   <option value="submit">提交申請</option>
@@ -995,7 +995,7 @@
                 </select>
               </div>
               <div>
-                <label>搜尋（單號／摘要／操作人）</label>
+                <label for="auditTrailSearchInput">搜尋（單號／摘要／操作人）</label>
                 <input type="text" id="auditTrailSearchInput" placeholder="輸入關鍵字搜尋..." />
               </div>
             </div>
@@ -1008,24 +1008,24 @@
             <div class="panel">
               <h3>開通新帳號</h3>
               <form id="inviteUserForm">
-                <label>Email</label>
+                <label for="inviteEmail">Email</label>
                 <input type="email" id="inviteEmail" required />
-                <label>姓名</label>
+                <label for="inviteFullName">姓名</label>
                 <input type="text" id="inviteFullName" required />
-                <label>角色</label>
+                <label for="inviteRole">角色</label>
                 <select id="inviteRole">
                   <option value="employee">一般專員</option>
                   <option value="manager">部門主管</option>
                   <option value="accounting">會計部門</option>
                   <option value="admin">管理員</option>
                 </select>
-                <label>可使用功能（多選）</label>
+                <span class="field-label">可使用功能（多選）</span>
                 <div id="permissionCheckboxes">
                   <!-- 動態產生 checkbox -->
                 </div>
-                <label>部門</label>
+                <label for="inviteDepartment">部門</label>
                 <select id="inviteDepartment"></select>
-                <label>初始密碼（留空使用系統預設）</label>
+                <label for="invitePassword">初始密碼（留空使用系統預設）</label>
                 <input type="text" id="invitePassword" placeholder="留空則自動使用 Bd@1234" />
                 <button type="submit" class="primary-btn" style="margin-top:10px;">開通帳號</button>
               </form>
@@ -1054,9 +1054,32 @@
           <!-- 1. 系統設定 -->
           <div class="panel" id="systemSettingsCard">
             <h3>系統設定</h3>
-            <label>系統名稱</label>
+            <label for="systemName">系統名稱</label>
             <input id="systemName" value="財務管理系統" />
             <button id="saveSettingsBtn" style="margin-top: 10px;" class="secondary">儲存設定</button>
+          </div>
+
+          <div class="panel" id="accountingPeriodsCard" style="margin-top:16px;">
+            <h3>會計期間 / 月結鎖帳</h3>
+            <form id="accountingPeriodForm" class="form-grid">
+              <div>
+                <label for="accountingPeriodStart">期間起日</label>
+                <input type="date" id="accountingPeriodStart" required />
+              </div>
+              <div>
+                <label for="accountingPeriodEnd">期間迄日</label>
+                <input type="date" id="accountingPeriodEnd" required />
+              </div>
+              <div class="full-width">
+                <label for="accountingPeriodNote">備註</label>
+                <input type="text" id="accountingPeriodNote" placeholder="例如：115 年 8 月月結" />
+              </div>
+              <div style="align-self:end;">
+                <button type="submit" class="primary-btn">關帳</button>
+                <button type="button" class="secondary" id="refreshAccountingPeriodsBtn">重新整理</button>
+              </div>
+            </form>
+            <div id="accountingPeriodList" style="margin-top:14px;"></div>
           </div>
 
           <!-- 2. 公司基本資料（可編輯表單） -->
@@ -1066,43 +1089,43 @@
             <form id="companyInfoForm">
               <div class="form-grid">
                 <div>
-                  <label>公司名稱（中文）</label>
+                  <label for="companyNameZh">公司名稱（中文）</label>
                   <input type="text" id="companyNameZh" required />
                 </div>
                 <div>
-                  <label>公司名稱（英文）</label>
+                  <label for="companyNameEn">公司名稱（英文）</label>
                   <input type="text" id="companyNameEn" />
                 </div>
                 <div>
-                  <label>統一編號</label>
+                  <label for="companyTaxId">統一編號</label>
                   <input type="text" id="companyTaxId" required />
                 </div>
                 <div>
-                  <label>公司電話</label>
+                  <label for="companyPhone">公司電話</label>
                   <input type="text" id="companyPhone" />
                 </div>
                 <div class="full-width">
-                  <label>公司地址</label>
+                  <label for="companyAddress">公司地址</label>
                   <input type="text" id="companyAddress" />
                 </div>
                 <div>
-                  <label>代表人姓名</label>
+                  <label for="companyRepresentative">代表人姓名</label>
                   <input type="text" id="companyRepresentative" />
                 </div>
                 <div>
-                  <label>董事人數</label>
+                  <label for="companyBoardCount">董事人數</label>
                   <input type="number" id="companyBoardCount" min="0" />
                 </div>
                 <div>
-                  <label>資本總額</label>
+                  <label for="companyTotalCapital">資本總額</label>
                   <input type="number" id="companyTotalCapital" min="0" />
                 </div>
                 <div>
-                  <label>已投入股本</label>
+                  <label for="companyPaidInCapital">已投入股本</label>
                   <input type="number" id="companyPaidInCapital" readonly />
                 </div>
                 <div>
-                  <label>預定開業日期</label>
+                  <label for="companyOpenDate">預定開業日期</label>
                   <input type="date" id="companyOpenDate" />
                 </div>
               </div>
@@ -1115,11 +1138,11 @@
             <h3>密碼設定</h3>
             <p class="muted">您可以隨時變更您的登入密碼。</p>
             <form id="changePasswordForm">
-              <label>登入帳號</label>
+              <label for="passwordUserEmail">登入帳號</label>
               <input id="passwordUserEmail" type="email" readonly />
-              <label>新密碼</label>
+              <label for="newPassword">新密碼</label>
               <input id="newPassword" type="password" placeholder="輸入新密碼" required minlength="6" autocomplete="new-password" />
-              <label>確認密碼</label>
+              <label for="confirmPassword">確認密碼</label>
               <input id="confirmPassword" type="password" placeholder="再次輸入新密碼" required minlength="6" autocomplete="new-password" />
               <button type="submit" class="secondary" style="margin-top: 10px;">儲存密碼</button>
             </form>
@@ -1131,15 +1154,15 @@
             <form id="accountManagementForm" class="form-grid">
               <input type="hidden" id="accountManagementId" />
               <div>
-                <label>科目代碼</label>
+                <label for="accountManagementCode">科目代碼</label>
                 <input type="text" id="accountManagementCode" placeholder="例如 6110" required />
               </div>
               <div>
-                <label>科目名稱</label>
+                <label for="accountManagementName">科目名稱</label>
                 <input type="text" id="accountManagementName" placeholder="例如 差旅費" required />
               </div>
               <div>
-                <label>科目類型</label>
+                <label for="accountManagementType">科目類型</label>
                 <select id="accountManagementType" required>
                   <option value="asset">資產</option>
                   <option value="liability">負債</option>
@@ -1172,15 +1195,15 @@
       <h2>編輯銀行帳戶</h2>
       <form id="editBankForm" onsubmit="event.preventDefault(); saveBankEdit();">
         <input type="hidden" id="edit_bank_id" />
-        <label>銀行名稱</label>
+        <label for="edit_bank_name">銀行名稱</label>
         <input type="text" id="edit_bank_name" required />
-        <label>帳戶名稱 (戶名)</label>
+        <label for="edit_account_name">帳戶名稱 (戶名)</label>
         <input type="text" id="edit_account_name" />
-        <label>帳號</label>
+        <label for="edit_account_number">帳號</label>
         <input type="text" id="edit_account_number" required />
-        <label>分行</label>
+        <label for="edit_branch">分行</label>
         <input type="text" id="edit_branch" />
-        <label>幣別</label>
+        <label for="edit_currency">幣別</label>
         <input type="text" id="edit_currency" value="TWD" />
         
         <div style="display: flex; gap: 10px; margin-top: 15px;">

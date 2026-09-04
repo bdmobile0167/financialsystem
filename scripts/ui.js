@@ -38,6 +38,7 @@ import {
   applyRoleBasedTabVisibility, 
   safeListener, 
   withActionLock,
+  observeLabelAssociations,
   closeSidebar, 
   openSidebar, 
   toggleSidebar,
@@ -84,6 +85,8 @@ async function initPage() {
       if (typeof fillCompanyInfoForm === 'function') fillCompanyInfoForm();
       if (typeof renderBusinessData === 'function') renderBusinessData();
     }
+
+    observeLabelAssociations();
 
     // 6. 一律繼續 app 初始化流程（載入 state、綁定事件、顯示主畫面或登入畫面）
     //    注意：即使未登入，initialize() 內也會綁定 loginForm 事件，讓使用者可以登入。
@@ -139,21 +142,22 @@ async function renderAdminUserTable() {
           </div>
         </div>
         <div class="admin-account-fields">
-          <label>姓名
+          <label for="adminUserName-${u.id}">姓名
           <input
+            id="adminUserName-${u.id}"
             type="text"
             value="${escapeHtml(u.full_name || '')}"
             placeholder="姓名"
             onchange="updateUserProfile('${u.id}', 'full_name', this.value)"
           />
           </label>
-          <label>角色
-          <select onchange="updateUserProfile('${u.id}', 'role', this.value)">
+          <label for="adminUserRole-${u.id}">角色
+          <select id="adminUserRole-${u.id}" onchange="updateUserProfile('${u.id}', 'role', this.value)">
             ${Object.entries(ROLE_LABELS).map(([val, label]) => `<option value="${val}" ${u.role === val ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
           </label>
-          <label>部門
-          <select onchange="updateUserProfile('${u.id}', 'department_id', this.value)">
+          <label for="adminUserDepartment-${u.id}">部門
+          <select id="adminUserDepartment-${u.id}" onchange="updateUserProfile('${u.id}', 'department_id', this.value)">
             <option value="">未設定</option>
             ${depts.map(d => `<option value="${d.id}" ${u.department_id === d.id ? 'selected' : ''}>${d.display_name || d.name}</option>`).join('')}
           </select>
@@ -162,8 +166,8 @@ async function renderAdminUserTable() {
         <fieldset class="admin-permission-list">
           <legend>可使用功能</legend>
           ${permissions.map(([key, label]) => `
-            <label class="permission-option">
-              <input type="checkbox" ${effectivePermissions[key] ? 'checked' : ''}
+            <label for="adminUserPermission-${u.id}-${key}" class="permission-option">
+              <input id="adminUserPermission-${u.id}-${key}" type="checkbox" ${effectivePermissions[key] ? 'checked' : ''}
                 onchange="toggleUserPermission('${u.id}', '${key}')" />
               <span>${label}</span>
             </label>
@@ -311,7 +315,7 @@ async function renderUserManagementPanel() {
           <form onsubmit="handleCreateUserSubmit(event)" class="p-6 space-y-4 text-xs">
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block font-semibold text-slate-700 mb-1">同仁姓名 *</label>
+                <label for="newUserName" class="block font-semibold text-slate-700 mb-1">同仁姓名 *</label>
                 <input
                   type="text"
                   id="newUserName"
@@ -321,7 +325,7 @@ async function renderUserManagementPanel() {
                 />
               </div>
               <div>
-                <label class="block font-semibold text-slate-700 mb-1">員工編號 (工號)</label>
+                <label for="newUserEmpId" class="block font-semibold text-slate-700 mb-1">員工編號 (工號)</label>
                 <input
                   type="text"
                   id="newUserEmpId"
@@ -332,7 +336,7 @@ async function renderUserManagementPanel() {
             </div>
 
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">電子郵件 (登入帳號) *</label>
+              <label for="newUserEmail" class="block font-semibold text-slate-700 mb-1">電子郵件 (登入帳號) *</label>
               <input
                 type="email"
                 id="newUserEmail"
@@ -344,7 +348,7 @@ async function renderUserManagementPanel() {
 
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block font-semibold text-slate-700 mb-1">系統角色權限 *</label>
+                <label for="newUserRole" class="block font-semibold text-slate-700 mb-1">系統角色權限 *</label>
                 <select
                   id="newUserRole"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer"
@@ -357,7 +361,7 @@ async function renderUserManagementPanel() {
               </div>
 
               <div>
-                <label class="block font-semibold text-slate-700 mb-1">所屬部門</label>
+                <label for="newUserDepartment" class="block font-semibold text-slate-700 mb-1">所屬部門</label>
                 <select
                   id="newUserDepartment"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer"
@@ -369,7 +373,7 @@ async function renderUserManagementPanel() {
             </div>
 
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">預設初始密碼 *</label>
+              <label for="newUserPassword" class="block font-semibold text-slate-700 mb-1">預設初始密碼 *</label>
               <input
                 type="text"
                 id="newUserPassword"
@@ -1999,15 +2003,15 @@ window.openPaymentEditor = async (voucherId) => {
         <div class="payment-recipient-change">
           <button type="button" id="paymentRecipientChangeToggle" class="secondary" onclick="togglePaymentRecipientChange()">更換本筆付款人</button>
           <div id="paymentRecipientChangePanel" hidden>
-            <label>搜尋收款人／帳號<input id="paymentRecipientSearch" type="search" placeholder="輸入姓名、身分證/統編、銀行或帳號" oninput="filterPaymentRecipientOptions()"></label>
-            <label>更換收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()">${renderPaymentRecipientSelectOptions(selectableRecipients, selectedRecipientId)}</select></label>
+            <label for="paymentRecipientSearch">搜尋收款人／帳號<input id="paymentRecipientSearch" type="search" placeholder="輸入姓名、身分證/統編、銀行或帳號" oninput="filterPaymentRecipientOptions()"></label>
+            <label for="paymentEditorRecipient">更換收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()">${renderPaymentRecipientSelectOptions(selectableRecipients, selectedRecipientId)}</select></label>
             <p class="muted">若收款人或帳號錯誤，這裡只更換本筆付款人；付款人主檔請到「所有付款人」維護。</p>
           </div>
         </div>
         ${renderPaymentAccountingSummary(voucher)}
-        <label>公司付款銀行<select id="paymentEditorBank"><option value="">請選擇公司實際出款帳戶</option>${banks.map(item => `<option value="${item.id}" ${item.id === selectedBankId ? 'selected' : ''}>${escapeHtml(item.nickname || item.bank_name)} (${escapeHtml(item.account_number)})</option>`).join('')}</select></label>
-        <label>付款日期<input id="paymentEditorDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
-        <label>會計備註<textarea id="paymentEditorNote" rows="3">${escapeHtml(voucher.accounting_note || '')}</textarea></label>
+        <label for="paymentEditorBank">公司付款銀行<select id="paymentEditorBank"><option value="">請選擇公司實際出款帳戶</option>${banks.map(item => `<option value="${item.id}" ${item.id === selectedBankId ? 'selected' : ''}>${escapeHtml(item.nickname || item.bank_name)} (${escapeHtml(item.account_number)})</option>`).join('')}</select></label>
+        <label for="paymentEditorDate">付款日期<input id="paymentEditorDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+        <label for="paymentEditorNote">會計備註<textarea id="paymentEditorNote" rows="3">${escapeHtml(voucher.accounting_note || '')}</textarea></label>
         <div class="button-row">
           <button type="button" class="secondary" onclick="savePaymentDraft('${voucher.id}')">儲存修改</button>
           <button type="button" class="primary-btn" onclick="confirmPaymentFromList('${voucher.id}')">確認已付款</button>
@@ -2429,15 +2433,15 @@ async function openIfrsAdjustmentModal() {
       <h3 style="margin-top:0;">新增 IFRS 調整分錄</h3>
       <div class="form-grid">
         <div>
-          <label>準則依據</label>
+          <label for="adjStandard">準則依據</label>
           <input type="text" id="adjStandard" placeholder="例：IFRS 16 租賃準則" />
         </div>
         <div>
-          <label>調整分錄日期</label>
+          <label for="adjEntryDate">調整分錄日期</label>
           <input type="date" id="adjEntryDate" value="${new Date().toISOString().slice(0, 10)}" />
         </div>
       </div>
-      <label style="margin-top:10px; display:block;">調整原因說明</label>
+      <label for="adjReason" style="margin-top:10px; display:block;">調整原因說明</label>
       <textarea id="adjReason" style="width:100%; height:60px; padding:8px;" placeholder="說明本次調整依據與原因..."></textarea>
 
       <h4 style="margin-top:18px; margin-bottom:8px;">分錄明細</h4>
@@ -2901,10 +2905,136 @@ function updateSettings() {
     if (canEditCompany) renderAccountManagement();
   }
 
+  const accountingPeriodsCard = document.getElementById('accountingPeriodsCard');
+  if (accountingPeriodsCard) {
+    accountingPeriodsCard.style.display = isFinanceOperator() ? '' : 'none';
+    if (isFinanceOperator()) renderAccountingPeriods();
+  }
+
   ['systemSettingsCard'].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.style.display = canEditCompany ? '' : 'none';
   });
+}
+
+function formatPeriodStatus(status) {
+  return status === 'closed' ? '已關帳' : '開放';
+}
+
+function formatAccountingPeriodError(error) {
+  const message = error?.message || String(error || '');
+  const closedMatch = message.match(/Accounting period is closed for date ([0-9-]+)/);
+  if (closedMatch) return `日期 ${closedMatch[1]} 所屬會計期間已關帳，不能異動財務資料。`;
+  return message || '會計期間操作失敗。';
+}
+
+async function renderAccountingPeriods() {
+  const list = document.getElementById('accountingPeriodList');
+  if (!list || !isFinanceOperator()) return;
+
+  list.innerHTML = '<p class="muted">載入會計期間...</p>';
+
+  try {
+    const { data, error } = await supabase
+      .from('accounting_periods')
+      .select('id, period_start, period_end, status, closed_at, reopened_at, note')
+      .order('period_start', { ascending: false })
+      .limit(24);
+
+    if (error) throw error;
+
+    const rows = data || [];
+    if (!rows.length) {
+      list.innerHTML = '<p class="muted">尚未建立會計期間。</p>';
+      return;
+    }
+
+    list.innerHTML = `
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>期間</th>
+            <th>狀態</th>
+            <th>備註</th>
+            <th>最後異動</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(period => `
+            <tr>
+              <td>${escapeHtml(period.period_start)} ~ ${escapeHtml(period.period_end)}</td>
+              <td><span class="badge ${period.status === 'closed' ? 'done' : 'wait'}">${formatPeriodStatus(period.status)}</span></td>
+              <td>${escapeHtml(period.note || '-')}</td>
+              <td>${escapeHtml(period.reopened_at || period.closed_at || '-')}</td>
+              <td>
+                ${period.status === 'closed'
+                  ? `<button type="button" class="secondary reopen-accounting-period-btn" data-id="${period.id}">重開</button>`
+                  : '<span class="muted">可異動</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error) {
+    console.error('讀取會計期間失敗:', error);
+    list.innerHTML = `<p class="muted">讀取失敗：${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function closeAccountingPeriodFromForm(event) {
+  event.preventDefault();
+  if (!isFinanceOperator()) return showMessage('僅會計與管理員可關帳。', true);
+
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const periodStart = document.getElementById('accountingPeriodStart')?.value;
+  const periodEnd = document.getElementById('accountingPeriodEnd')?.value;
+  const note = document.getElementById('accountingPeriodNote')?.value.trim() || null;
+
+  if (!periodStart || !periodEnd) return showMessage('請填寫會計期間起迄日。', true);
+  if (periodStart > periodEnd) return showMessage('期間起日不可晚於迄日。', true);
+  if (!confirm(`確定要關帳 ${periodStart} ~ ${periodEnd}？關帳後該期間財務資料不可異動。`)) return;
+
+  try {
+    await withActionLock('accounting-period:close', submitButton, async () => {
+      const { error } = await supabase.rpc('close_accounting_period', {
+        p_period_start: periodStart,
+        p_period_end: periodEnd,
+        p_note: note
+      });
+      if (error) throw error;
+      form.reset();
+      showMessage('會計期間已關帳。');
+      await renderAccountingPeriods();
+    }, { loadingText: '關帳中...' });
+  } catch (error) {
+    console.error('關帳失敗:', error);
+    showMessage('關帳失敗：' + formatAccountingPeriodError(error), true);
+  }
+}
+
+async function reopenAccountingPeriod(periodId, button) {
+  if (!isFinanceOperator()) return showMessage('僅會計與管理員可重開期間。', true);
+  const note = prompt('請輸入重開原因：');
+  if (note === null) return;
+  if (!note.trim()) return showMessage('重開期間需要填寫原因。', true);
+
+  try {
+    await withActionLock(`accounting-period:reopen:${periodId}`, button, async () => {
+      const { error } = await supabase.rpc('reopen_accounting_period', {
+        p_period_id: periodId,
+        p_note: note.trim()
+      });
+      if (error) throw error;
+      showMessage('會計期間已重開。');
+      await renderAccountingPeriods();
+    }, { loadingText: '重開中...' });
+  } catch (error) {
+    console.error('重開會計期間失敗:', error);
+    showMessage('重開會計期間失敗：' + formatAccountingPeriodError(error), true);
+  }
 }
 
 async function renderAccountManagement() {
@@ -3392,36 +3522,36 @@ window.openAddPayeeModal = (prefillIdentifier, triggerBtn) => {
         <h3 style="margin-top:0;">新增付款人</h3>
         <p class="muted">只會新增這一筆身分證/統編對應的付款人；一般員工仍不能查看完整付款人名單。</p>
         
-        <label>身分證／統一編號</label>
+        <label for="newPayeeIdentifier">身分證／統一編號</label>
         <input type="text" id="newPayeeIdentifier" value="${escapeHtml(prefillIdentifier || '')}" style="width:100%; padding:6px; margin-bottom:10px;">
         
-        <label>姓名／公司名稱</label>
+        <label for="newPayeeName">姓名／公司名稱</label>
         <input type="text" id="newPayeeName" style="width:100%; padding:6px; margin-bottom:10px;" required>
         
-        <label>類型</label>
+        <label for="newPayeeType">類型</label>
         <select id="newPayeeType" style="width:100%; padding:6px; margin-bottom:10px;">
           <option value="individual">個人</option>
           <option value="company">公司／廠商</option>
         </select>
         
-        <label>Email</label>
+        <label for="newPayeeEmail">Email</label>
         <input type="email" id="newPayeeEmail" style="width:100%; padding:6px; margin-bottom:10px;">
         
-        <label>電話</label>
+        <label for="newPayeePhone">電話</label>
         <input type="text" id="newPayeePhone" style="width:100%; padding:6px; margin-bottom:10px;">
         
-        <label>地址</label>
+        <label for="newPayeeAddress">地址</label>
         <input type="text" id="newPayeeAddress" style="width:100%; padding:6px; margin-bottom:10px;">
         
         <div style="background:#f9fafb; padding:12px; border-radius:6px; margin-bottom:14px; border:1px solid #e5e7eb;">
-          <label style="font-weight:600; color:#374151;">銀行名稱（選填）</label>
+          <label for="newPayeeBankName" style="font-weight:600; color:#374151;">銀行名稱（選填）</label>
           <input type="text" id="newPayeeBankName" placeholder="例如：中國信託、玉山銀行" style="width:100%; padding:6px; margin-bottom:10px;">
 
-          <label style="font-weight:600; color:#374151;">金融機構代號（選填，共7碼）</label>
+          <label for="newPayeeBankCode" style="font-weight:600; color:#374151;">金融機構代號（選填，共7碼）</label>
           <div style="font-size:12px; color:#6b7280; margin-bottom:4px;">前3碼總行代號 + 後4碼分支代號（例如中國信託營業部：8220016）</div>
           <input type="text" id="newPayeeBankCode" placeholder="請輸入7碼數字" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,'')" style="width:100%; padding:6px; margin-bottom:10px;">
           
-          <label style="font-weight:600; color:#374151;">銀行帳號（選填）</label>
+          <label for="newPayeeBankAccount" style="font-weight:600; color:#374151;">銀行帳號（選填）</label>
           <input type="text" id="newPayeeBankAccount" placeholder="請輸入銀行帳號" oninput="this.value=this.value.replace(/[^0-9-]/g,'')" style="width:100%; padding:6px;">
         </div>
         
@@ -3546,8 +3676,8 @@ window.addExcelRow = (prefillFile = null) => {
     <td style="padding:8px; border:1px solid #ddd;">
       <input type="text" class="grid-payee-id" placeholder="身分證／統編" style="width:96%; padding:4px;" oninput="queuePayeeLookup(this)" onblur="fetchPayeeName(this)">
       <span class="grid-payee-name" style="font-size:12px; color:#666; display:block;"></span>
-      <label style="font-size:11px; display:block; margin-top:4px;">
-        <input type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
+      <label for="${rowId}-proxy-check" style="font-size:11px; display:block; margin-top:4px;">
+        <input id="${rowId}-proxy-check" type="checkbox" class="grid-proxy-check" onchange="toggleProxyPayer(this)"> 已由他人代付
       </label>
       <input type="text" class="grid-proxy-id" placeholder="代付人身分證/統編" style="display:none; width:96%; padding:4px; margin-top:4px;" oninput="queuePayeeLookup(this)" onblur="fetchProxyPayerName(this)">
       <span class="grid-proxy-name" style="font-size:12px; color:#666; display:block;"></span>
@@ -3928,6 +4058,14 @@ function initializeEventsInternal() {
 
   safeListener('auditTrailSearchInput', 'input', () => renderAuditTrail());
   safeListener('auditTrailActionFilter', 'change', () => renderAuditTrail());
+  safeListener('accountingPeriodForm', 'submit', closeAccountingPeriodFromForm);
+  safeListener('refreshAccountingPeriodsBtn', 'click', () => renderAccountingPeriods());
+  safeListener('accountingPeriodList', 'click', (event) => {
+    const reopenBtn = event.target.closest('.reopen-accounting-period-btn');
+    if (!reopenBtn) return;
+    reopenAccountingPeriod(reopenBtn.dataset.id, reopenBtn)
+      .catch(error => showMessage('重開會計期間失敗：' + error.message, true));
+  });
 
   safeListener('voucherSearchInput', 'input', renderVoucherCenter);
   safeListener('voucherProjectFilter', 'change', renderVoucherCenter);
@@ -5476,16 +5614,16 @@ async function renderProjectList() {
           </div>
 
           <div style="margin: 10px 0 6px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:13px;">
-            <label style="display:flex; align-items:center; gap:6px; margin:0;">預算
+            <label for="edit-budget-${p.id}" style="display:flex; align-items:center; gap:6px; margin:0;">預算
               <input type="number" id="edit-budget-${p.id}" value="${totalBudget}" style="width:110px;" oninput="calcRemainingPreview('${p.id}', ${usedBudget})">
             </label>
-            <label style="display:flex; align-items:center; gap:6px; margin:0;">部門
+            <label for="edit-dept-${p.id}" style="display:flex; align-items:center; gap:6px; margin:0;">部門
               <select id="edit-dept-${p.id}">
                 <option value="">無部門</option>
                 ${deptOptions}
               </select>
             </label>
-            ${showBankControls ? `<label style="display:flex; align-items:center; gap:6px; margin:0;">預設出款銀行
+            ${showBankControls ? `<label for="edit-bank-${p.id}" style="display:flex; align-items:center; gap:6px; margin:0;">預設出款銀行
               <select id="edit-bank-${p.id}">
                 <option value="">付款時再選</option>
                 ${bankOptions}
@@ -6022,7 +6160,7 @@ function renderPermissionCheckboxes() {
   if (!container) return;
   const defaults = getDefaultPermissions(document.getElementById('inviteRole')?.value || 'employee');
   container.innerHTML = permissions.map(([key, label]) => `
-    <label class="permission-option"><input type="checkbox" value="${key}" ${defaults[key] ? 'checked' : ''}> ${label}</label>
+    <label for="invitePermission-${key}" class="permission-option"><input id="invitePermission-${key}" type="checkbox" value="${key}" ${defaults[key] ? 'checked' : ''}> ${label}</label>
   `).join('');
 }
 
@@ -6521,14 +6659,14 @@ window.openAccountingReviewModal = async (voucherId) => {
           <h4 style="margin-top:20px;">歸帳設定</h4>
           ${accountOptionsDisabled ? '<div class="message error" style="margin:8px 0;">會計科目為空，請確認 accounts 資料與 RLS SELECT policy。</div>' : ''}
 
-          <label>收款人（可於付款前補充或變更）：</label>
+          <label for="reviewPaymentRecipient">收款人（可於付款前補充或變更）：</label>
           <select id="reviewPaymentRecipient" style="width:100%; padding:8px; margin:8px 0;">
             <option value="">尚未指定收款人</option>
             ${recipients.filter(item => item.active).map(item => `<option value="${item.id}">${escapeHtml(item.display_name)}｜${escapeHtml(item.bank_name)} ${escapeHtml(item.account_number)}</option>`).join('')}
           </select>
           <p class="muted">會計核准不代表已付款，也不會產生日記帳；付款銀行會在付款清單中指定。</p>
 
-          <label>備註：</label>
+          <label for="reviewNote">備註：</label>
           <textarea id="reviewNote" style="width:100%; height:80px; padding:8px;"></textarea>
 
           <div style="margin-top:20px; text-align:right;">
@@ -7084,15 +7222,15 @@ window.openResubmitModal = async (voucherId) => {
             <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
             <div style="display: flex; gap: 15px; margin-bottom: 10px;">
               <div style="flex: 1;">
-                <label>報支主旨 (必填)：</label>
+                <label for="resub-vTitle">報支主旨 (必填)：</label>
                 <input type="text" id="resub-vTitle" value="${vch.summary || ''}" required style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
                 
-                <label style="margin-top:8px; display:block;">所屬部門：</label>
+                <label for="resub-vDepartment" style="margin-top:8px; display:block;">所屬部門：</label>
                 <select id="resub-vDepartment" required onchange="loadResubManagers(this.value)" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
                   ${(depts || []).map(d => `<option value="${d.id}" ${d.id === vch.department_id ? 'selected' : ''}>${d.display_name || d.name}</option>`).join('')}
                 </select>
 
-                <label style="margin-top:8px; display:block;">指定審核主管（留空則整個部門的主管都能審）：</label>
+                <label for="resub-vManagerPicker" style="margin-top:8px; display:block;">指定審核主管（留空則整個部門的主管都能審）：</label>
                 <select id="resub-vManagerPicker" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
                   <option value="">不指定（整個部門主管都能審）</option>
                 </select>
@@ -7101,18 +7239,18 @@ window.openResubmitModal = async (voucherId) => {
 
             <div style="display: flex; gap: 15px; margin-bottom: 10px;">
               <div style="flex: 1;">
-                <label>專案：</label>
+                <label for="resub-vProject">專案：</label>
                 <select id="resub-vProject" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
                   <option value="">無專案</option>
                   ${(projectsData || []).map(p => `<option value="${p.id}" ${p.id === vch.project_id ? 'selected' : ''}>${p.project_code ? p.project_code + ' - ' : ''}${p.name}</option>`).join('')}
                 </select>
               </div>
               <div style="flex: 1;">
-                <label>行程起日：</label>
+                <label for="resub-vTripStart">行程起日：</label>
                 <input type="date" id="resub-vTripStart" value="${vch.trip_start_date || ''}" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
               </div>
               <div style="flex: 1;">
-                <label>行程迄日：</label>
+                <label for="resub-vTripEnd">行程迄日：</label>
                 <input type="date" id="resub-vTripEnd" value="${vch.trip_end_date || ''}" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
               </div>
             </div>
