@@ -1,6 +1,15 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.75`
+目前本機版本：`0.2.76`
+
+## 0.2.76 重點
+
+- 新增多幣別資料庫地基：`currencies`、`exchange_rates`、`get_exchange_rate()`。
+- `journal_entries`、`bank_transactions`、`transactions`、`vouchers` 已新增 `currency`、`exchange_rate` 與 base 金額欄位。
+- `bank_accounts.currency` 已成為真正幣別 FK，預設 `TWD`。
+- 財報與總帳查詢已改為優先使用 base 金額，TWD 現有數字維持一致。
+- Supabase 遠端 project `imlmclalgbfxhhnpsyam` 已直接套用 `multicurrency_foundation`。
+- Production 仍需重新部署 `0.2.76` 並做 TWD 既有流程與財報驗收；非 TWD 前端開放仍留在後續任務。
 
 ## 0.2.75 重點
 
@@ -9,7 +18,7 @@
 - 已關帳期間會擋 `journal_entries`、`bank_transactions`、`transactions`、`vouchers` 的新增、修改與刪除。
 - 設定頁新增「會計期間 / 月結鎖帳」管理畫面，可關帳、重整期間清單與重開期間。
 - Oracle 財務管理能力缺口已拆入 pending：AR、多幣別、稅務、固定資產、催收、收益認列、自助報表與 SOD 儀表板。
-- Production 仍需重新部署 `0.2.75` 並做實際登入、報支、付款、收入、財報與月結鎖帳驗收。
+- Production 已由後續 `0.2.76` 接續，仍需重新部署並做實際登入、報支、付款、收入、財報與月結鎖帳驗收。
 
 ## 0.2.74 重點
 
@@ -17,7 +26,7 @@
 - 清除 `openCloseVoucherModal` / `confirmCloseVoucher` 內已不可達的舊付款流程，保留正式付款 queue。
 - 清除 `updateVoucher()` 內不可達的舊明細/發票 rewrite block，單據修改只走 Supabase RPC。
 - 靜態表單 label 已補 `for`，並新增 runtime label association observer，動態 modal 也會自動補關聯。
-- Production 已由後續 `0.2.75` 接續，仍需重新部署並做實際登入、報支、刪除單據、退件重送、付款、財報驗收。
+- Production 已由後續 `0.2.76` 接續，仍需重新部署並做實際登入、報支、刪除單據、退件重送、付款、財報驗收。
 
 ## 0.2.73 重點
 
@@ -25,7 +34,7 @@
 - `deleteVoucher()` 已改呼叫 RPC；Storage 附件檔案刪除失敗會回報警示，但不會留下資料庫半刪狀態。
 - `update_voucher_with_details` 已直接更新到 Supabase：退件後重送時，主檔/明細/發票/status/workflow log 同一交易完成。
 - 重送流程不再由前端另外手動 insert workflow log，避免狀態更新成功但紀錄失敗。
-- Production 已由後續 `0.2.75` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
+- Production 已由後續 `0.2.76` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
 
 ## 0.2.72 重點
 
@@ -33,7 +42,7 @@
 - 一般員工輸入身分證/統編查無付款人時，可以新增該付款人；仍不開放完整付款人名單。
 - 付款人明細 modal 改為不透明白色卡片，可清楚查看付款紀錄並點擊查看單據。
 - 銀行帳戶卡片排版調整，長帳號與綁定科目不再擠壓。
-- Production 已由後續 `0.2.75` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
+- Production 已由後續 `0.2.76` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
 
 ## 0.2.71 重點
 
@@ -41,7 +50,7 @@
 - 已清理 2 組未核銷、未配對的重複銀行流水，並建立 `bank_statement_transactions_dedupe_key` 唯一索引。
 - 已套用 vouchers manager update scope、`profiles.role` `super_admin` constraint，以及報支/會計/付款/主管 atomic RPC。
 - 已收斂 atomic voucher RPC 權限：`authenticated` 可執行，`anon` 不可執行。
-- Production 已由後續 `0.2.75` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
+- Production 已由後續 `0.2.76` 接續，仍需重新部署並做實際登入、報支、付款、財報驗收。
 
 ## 0.2.70 重點
 
@@ -66,7 +75,7 @@
 - 已修正銀行 PDF 解析 parser key 壞碼，`玉山187` 與 `兆豐` 系列 bankCode 不會再因檔案編碼損壞被判定不支援。
 - 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.75`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.76`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -74,7 +83,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 已查到 `0.2.62` `READY`，`0.2.75` 仍需由使用者推送/部署後驗收。
+- Vercel production 已查到 `0.2.62` `READY`，`0.2.76` 仍需由使用者推送/部署後驗收。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - 獨立收入管理、應收帳款與發票收入流程已列為 `TASK-017` 後續功能。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。

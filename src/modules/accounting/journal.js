@@ -1,7 +1,15 @@
-import { loadChartOfAccounts } from './chartOfAccounts.js';
-import { runAccountingPipeline } from './index.js'; // 供 catch 降級使用
-// 請根據您專案實際的路徑引入 supabase (例如以下路徑)
+﻿import { loadChartOfAccounts } from './chartOfAccounts.js';
+import { runAccountingPipeline } from './index.js'; // 靘?catch ??雿輻
+// 隢?撠?撖阡??楝敺???supabase (靘?隞乩?頝臬?)
 import { supabase } from '../../../scripts/supabaseClient.js';
+
+function debitBase(entry) {
+  return Number(entry?.debit_amount_base ?? entry?.debit_amount ?? 0);
+}
+
+function creditBase(entry) {
+  return Number(entry?.credit_amount_base ?? entry?.credit_amount ?? 0);
+}
 
 function resolveAccounts(accounts, category, type) {
   const bank = accounts.find(a => a.code === '1102');
@@ -10,23 +18,23 @@ function resolveAccounts(accounts, category, type) {
   const fixedAsset = accounts.find(a => a.code === '1601');
   const capital = accounts.find(a => a.code === '3110');
 
-  if (category === '投資') {
-    return type === '支出'
-      ? { debit: fixedAsset, credit: bank }   // 買設備/資產
-      : { debit: bank, credit: fixedAsset };  // 處分資產
+  if (category === '??') {
+    return type === '?臬'
+      ? { debit: fixedAsset, credit: bank }   // 鞎瑁身??鞈
+      : { debit: bank, credit: fixedAsset };  // ??鞈
   }
-  if (category === '融資') {
-    return type === '支出'
-      ? { debit: capital, credit: bank }   // 還款 / 分配股利 / 減資
-      : { debit: bank, credit: capital };  // 股東入資 / 借款
+  if (category === '??') {
+    return type === '?臬'
+      ? { debit: capital, credit: bank }   // ?狡 / ???∪ / 皜?
+      : { debit: bank, credit: capital };  // ?⊥?亥? / ?狡
   }
-  // 預設：營業活動
-  return type === '支出'
+  // ?身嚗?璆剜暑??
+  return type === '?臬'
     ? { debit: expense, credit: bank }
     : { debit: bank, credit: revenue };
 }
 
-// 請將這個遺失的函式補回 journal.js 檔案中
+// 隢??憭梁??賢?鋆? journal.js 瑼?銝?
 export function buildJournalEntries(transactions = []) {
   const accounts = loadChartOfAccounts();
   return transactions.map(tx => {
@@ -34,7 +42,7 @@ export function buildJournalEntries(transactions = []) {
     
     return {
       date: tx.date || '-',
-      memo: tx.desc || tx.summary || '未註明',
+      memo: tx.desc || tx.summary || '?芾酉??,
       bank: tx.bank || '-',
       debitAccountCode: debit ? debit.code : '-',
       debitAccountName: debit ? debit.name : '-',
@@ -43,7 +51,7 @@ export function buildJournalEntries(transactions = []) {
       creditAccountName: credit ? credit.name : '-',
       creditAmount: Number(tx.amount || 0),
       voucher: tx.id || '-',
-      status: '已入帳'
+      status: '撌脣撣?
     };
   });
 }
@@ -62,17 +70,17 @@ export async function buildJournal(transactions = []) {
 
     return journalEntries.map(entry => ({
       date: entry.entry_date,
-      summary: entry.memo || '未註明',
+      summary: entry.memo || '?芾酉??,
       bank: '-',
       debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
-      debitAmount: Number(entry.debit_amount || 0),
+      debitAmount: debitBase(entry),
       creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
-      creditAmount: Number(entry.credit_amount || 0),
+      creditAmount: creditBase(entry),
       voucher: entry.transaction_id || '-',
-      status: '已入帳'
+      status: '撌脣撣?
     }));
   } catch (err) {
-    console.warn('從 journal_entries 讀取失敗，降級使用本地計算:', err.message);
+    console.warn('敺?journal_entries 霈?仃????雿輻?砍閮?:', err.message);
     const { journalEntries: localEntries } = runAccountingPipeline(transactions);
     return localEntries.map(entry => ({
       date: entry.date, summary: entry.memo, bank: entry.bank,

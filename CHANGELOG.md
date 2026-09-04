@@ -1,5 +1,16 @@
 # 變更紀錄
 
+## 0.2.76 - 2026-09-04
+
+- Added multi-currency foundation through Supabase migration `20260904112000_multicurrency_foundation.sql`.
+- Added `currencies`, `exchange_rates`, `get_exchange_rate()`, and seeded TWD/USD/JPY/CNY/EUR.
+- Added currency/exchange-rate/base amount columns to bank accounts, journal entries, bank transactions, transactions, and vouchers.
+- Added `source_type` and `source_id` on journal entries for future AR, FX revaluation, and subledger traceability.
+- Added source tracking trigger for journal entries so voucher/manual sources are inferred consistently.
+- Restricted direct execute privileges on the journal source tracking trigger function.
+- Updated reports and ledger queries to prefer base amounts with legacy fallbacks.
+- Directly applied the Supabase migration to project `imlmclalgbfxhhnpsyam` and verified TWD base amount parity.
+
 ## 0.2.75 - 2026-09-04
 
 - Added accounting period lock foundation through Supabase migration `20260904101000_accounting_period_locks.sql`.

@@ -1,4 +1,4 @@
-import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
+﻿import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
 import { getCompanyInfo } from './companyContext.js';
 
@@ -53,6 +53,18 @@ function buildJournalEntriesQuery(selectColumns, startDate, endDate, selectOptio
   );
 }
 
+function debitBase(entry) {
+  return Number(entry?.debit_amount_base ?? entry?.debit_amount ?? 0);
+}
+
+function creditBase(entry) {
+  return Number(entry?.credit_amount_base ?? entry?.credit_amount ?? 0);
+}
+
+function amountBase(row) {
+  return Number(row?.amount_base ?? row?.amount ?? 0);
+}
+
 function buildJournalViewQuery(startDate, endDate) {
   return buildJournalEntriesQuery(`
       id,
@@ -60,6 +72,10 @@ function buildJournalViewQuery(startDate, endDate) {
       memo,
       debit_amount,
       credit_amount,
+      debit_amount_base,
+      credit_amount_base,
+      currency,
+      exchange_rate,
       voucher_id,
       debit_account:accounts!journal_entries_debit_account_id_fkey(code, name),
       credit_account:accounts!journal_entries_credit_account_id_fkey(code, name),
@@ -69,8 +85,8 @@ function buildJournalViewQuery(startDate, endDate) {
 }
 
 export function summarizeTransactions(transactions) {
-  const revenue = transactions.filter(t => t.type === '收入').reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const expense = transactions.filter(t => t.type === '支出').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const revenue = transactions.filter(t => t.type === '?嗅').reduce((sum, t) => sum + amountBase(t), 0);
+  const expense = transactions.filter(t => t.type === '?臬').reduce((sum, t) => sum + amountBase(t), 0);
   const netProfit = revenue - expense;
   return { revenue, expense, netProfit };
 }
@@ -91,8 +107,8 @@ async function fetchSupabaseTrialBalance(startDate, endDate) {
   accounts.forEach(acc => { ledger[acc.id] = { account: acc, debitTotal: 0, creditTotal: 0 }; });
 
   entries.forEach(entry => {
-    if (ledger[entry.debit_account_id]) ledger[entry.debit_account_id].debitTotal += Number(entry.debit_amount || 0);
-    if (ledger[entry.credit_account_id]) ledger[entry.credit_account_id].creditTotal += Number(entry.credit_amount || 0);
+    if (ledger[entry.debit_account_id]) ledger[entry.debit_account_id].debitTotal += debitBase(entry);
+    if (ledger[entry.credit_account_id]) ledger[entry.credit_account_id].creditTotal += creditBase(entry);
   });
 
   // Registered capital is company metadata. Only paid-in contributions belong
@@ -128,8 +144,8 @@ async function fetchSupabaseTrialBalance(startDate, endDate) {
   return { rows };
 }
 
-// 💡 與 fetchSupabaseTrialBalance 相同，但同時回傳 code -> account_id 對照表，
-// 供 buildTrialBalance 合併「平行帳簿 IFRS 調整分錄」時查找對應科目使用。
+// ? ??fetchSupabaseTrialBalance ?詨?嚗???? code -> account_id 撠銵剁?
+// 靘?buildTrialBalance ?蔥?像銵董蝪?IFRS 隤踵?????交撠?蝘雿輻??
 async function fetchSupabaseTrialBalanceWithIds(startDate, endDate) {
   const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
   const { data: accounts, error } = await supabase.from('accounts').select('id, code');
@@ -149,28 +165,28 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
       }
     );
 
-    // 💡 修復重複出現問題：利用 Map 以 id 作為 key 進行去重
+    // ? 靽桀儔???箇??嚗??Map 隞?id 雿 key ?脰??駁?
     const uniqueEntries = Array.from(new Map(journalEntries.map(e => [e.id, e])).values());
 
     return uniqueEntries.map(entry => {
-      // 💡 修復憑證號碼顯示：優先讀取關聯表 vouchers 的 voucher_no，沒有則顯示 id 或 '-'
+      // ? 靽桀儔???Ⅳ憿舐內嚗?????航” vouchers ??voucher_no嚗???憿舐內 id ??'-'
       const displayVoucher = entry.vouchers?.voucher_no || entry.voucher_id || '-';
 
       return {
         id: entry.id,
         date: entry.entry_date,
-        summary: entry.memo || '未註明',
+        summary: entry.memo || '?芾酉??,
         bank: '-',
         debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
-        debitAmount: Number(entry.debit_amount || 0),
+        debitAmount: debitBase(entry),
         creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
-        creditAmount: Number(entry.credit_amount || 0),
+        creditAmount: creditBase(entry),
         voucher: displayVoucher,
-        status: '已入帳'
+        status: '撌脣撣?
       };
     });
   } catch (err) {
-    console.warn('日記帳讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    console.warn('?亥?撣唾???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
     const { journalEntries: localEntries } = runAccountingPipeline(transactions);
     return localEntries.map(entry => ({
       date: entry.date, summary: entry.memo, bank: entry.bank,
@@ -185,7 +201,7 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
-    // 依會計代碼開頭自動歸類：4開頭為營業收入，5/6開頭為營業費用
+    // 靘?閮誨蝣潮??剛?飛憿?4??箇?璆剜?伐?5/6??箇?璆剛祥??
     const revenueRows = rows.filter(r => r.code.startsWith('4'));
     const expenseRows = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6'));
 
@@ -197,12 +213,12 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
       type: 'structured',
       sections: [
         {
-          title: '一、營業收入',
+          title: '銝??璆剜??,
           items: revenueRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]),
           subtotal: totalRevenue
         },
         {
-          title: '二、營業費用',
+          title: '鈭?璆剛祥??,
           items: expenseRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]),
           subtotal: totalExpense
         }
@@ -210,7 +226,7 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
       netProfit
     };
   } catch (err) {
-    console.warn('損益表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    console.warn('??銵刻???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
     const { trialBalance } = runAccountingPipeline(transactions);
     const revenueRows = trialBalance.rows.filter(r => r.code.startsWith('4'));
     const expenseRows = trialBalance.rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6'));
@@ -221,8 +237,8 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
     return {
       type: 'structured',
       sections: [
-        { title: '一、營業收入', items: revenueRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: totalRevenue },
-        { title: '二、營業費用', items: expenseRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: totalExpense }
+        { title: '銝??璆剜??, items: revenueRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: totalRevenue },
+        { title: '鈭?璆剛祥??, items: expenseRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: totalExpense }
       ],
       netProfit
     };
@@ -232,24 +248,24 @@ export async function buildIncomeStatement(transactions, startDate = null, endDa
 export async function buildBalanceSheet(transactions, startDate = null, endDate = null) {
   try {    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
-    // 1. 抓取真實銀行帳戶餘額 (僅供對帳顯示用，不參與報表平衡計算)
-    // 注意：bank_accounts.balance 是資料庫的 GENERATED 欄位（恆等於 opening_balance），
-    // 無法反映任何一筆銀行流水，因此改用「期初餘額 + 銀行流水收支」動態計算真實餘額
+    // 1. ???祕?銵董?園?憿?(??撠董憿舐內?剁?銝??銵典像銵∟?蝞?
+    // 瘜冽?嚗ank_accounts.balance ?航??澈??GENERATED 甈?嚗?蝑 opening_balance嚗?
+    // ?⊥???隞颱?銝蝑?銵?瘞湛??迨?寧????憿?+ ?銵?瘞湔?胯???蝞?撖阡?憿?
     const { data: banks } = await supabase.from('bank_accounts').select('id, opening_balance');
-    const { data: bankTxs } = await supabase.from('bank_transactions').select('bank_account_id, type, amount');
+    const { data: bankTxs } = await supabase.from('bank_transactions').select('bank_account_id, type, amount, amount_base');
     const realBankBalance = (banks || []).reduce((sum, b) => {
       const txs = (bankTxs || []).filter(t => t.bank_account_id === b.id);
-      const net = txs.reduce((s, t) => s + (t.type === '支出' ? -Number(t.amount || 0) : Number(t.amount || 0)), 0);
+      const net = txs.reduce((s, t) => s + (t.type === '?臬' ? -amountBase(t) : amountBase(t)), 0);
       return sum + Number(b.opening_balance || 0) + net;
     }, 0);
 
-    // 2. 依資產負債表代碼規範進行階層篩選
+    // 2. 靘??Ｚ??菔”隞?Ⅳ閬??脰??惜蝭拚
     const currentAssetsRows = rows.filter(r => r.code.startsWith('1') && !r.code.startsWith('15') && !r.code.startsWith('16'));
     const nonCurrentAssetsRows = rows.filter(r => r.code.startsWith('15') || r.code.startsWith('16'));
     const currentLiabilitiesRows = rows.filter(r => r.code.startsWith('2'));
     const equityRows = rows.filter(r => r.code.startsWith('3'));
 
-    // 💡 嚴謹的 ERP 系統作法：總資產必須嚴格使用「試算表 (分錄)」的金額加總，確保借貸平衡
+    // ? ?渲牲??ERP 蝟餌絞雿?嚗蜇鞈敹??湔雿輻?岫蝞” (??)?????蜇嚗Ⅱ靽硫撟唾﹛
     const currentAssetsTotal = currentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const nonCurrentAssetsTotal = nonCurrentAssetsRows.reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const totalAssets = currentAssetsTotal + nonCurrentAssetsTotal;
@@ -257,7 +273,7 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
     const currentLiabilitiesTotal = currentLiabilitiesRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
     const capitalTotal = equityRows.reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
 
-    // 計算本期淨利以併入保留盈餘 (動態抓取 4, 5, 6 開頭)
+    // 閮??祆?瘛典隞乩蔥?乩???擗?(???? 4, 5, 6 ?)
     const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
     const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const netProfit = totalRevenue - totalExpense;
@@ -269,35 +285,35 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
       type: 'structured',
       sections: [
         {
-          title: '資產 (Assets)',
+          title: '鞈 (Assets)',
           subsections: [
             { 
-              title: '流動資產', 
+              title: '瘚?鞈', 
               items: currentAssetsRows.map(r => {
                 if (r.code === '1102') {
-                  // 畫面上同時顯示帳面餘額與真實餘額，方便會計抓漏
+                  // ?恍銝??＊蝷箏董?ａ?憿??祕擗?嚗靘踵?閮?瞍?
                   const ledgerBalance = r.debitTotal - r.creditTotal;
                   const discrepancy = realBankBalance - ledgerBalance;
-                  const note = discrepancy !== 0 ? ` (網銀實際: $${realBankBalance.toLocaleString()} / 差額: $${discrepancy.toLocaleString()})` : '';
+                  const note = discrepancy !== 0 ? ` (蝬脤?撖阡?: $${realBankBalance.toLocaleString()} / 撌桅?: $${discrepancy.toLocaleString()})` : '';
                   return [`${r.name}${note}`, ledgerBalance, r.code];
                 }
                 return [r.name, r.debitTotal - r.creditTotal, r.code];
               }), 
               subtotal: currentAssetsTotal 
             },
-            { title: '非流動資產', items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
+            { title: '??????, items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
           ],
           total: totalAssets
         },
         {
-          title: '負債及權益 (Liabilities & Equity)',
+          title: '鞎????(Liabilities & Equity)',
           subsections: [
-            { title: '流動負債', items: currentLiabilitiesRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: currentLiabilitiesTotal },
+            { title: '瘚?鞎', items: currentLiabilitiesRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: currentLiabilitiesTotal },
             { 
-              title: '權益', 
+              title: '甈?', 
               items: [
                 ...equityRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]),
-                ['本期淨利（保留盈餘）', netProfit, '3310']
+                ['?祆?瘛典嚗???擗?', netProfit, '3310']
               ], 
               subtotal: totalEquity 
             }
@@ -307,8 +323,8 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
       ]
     };
   } catch (err) {
-    console.warn('資產負債表讀取 Supabase 失敗，降級使用本地計算:', err.message);
-    // 降級邏輯也保持會計平衡
+    console.warn('鞈鞎銵刻???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
+    // ???摩銋???閮像銵?
     const { trialBalance } = runAccountingPipeline(transactions);
     
     const revenueRows = trialBalance.rows.filter(r => r.code.startsWith('4'));
@@ -327,18 +343,18 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
       type: 'structured',
       sections: [
         {
-          title: '資產 (Assets)',
+          title: '鞈 (Assets)',
           subsections: [
-            { title: '流動資產', items: [['現金及銀行存款', Math.max(0, cash), '1102']], subtotal: Math.max(0, cash) },
-            { title: '非流動資產', items: [], subtotal: 0 }
+            { title: '瘚?鞈', items: [['?暸???銵?甈?, Math.max(0, cash), '1102']], subtotal: Math.max(0, cash) },
+            { title: '??????, items: [], subtotal: 0 }
           ],
           total: Math.max(0, cash)
         },
         {
-          title: '負債及權益 (Liabilities & Equity)',
+          title: '鞎????(Liabilities & Equity)',
           subsections: [
-            { title: '流動負債', items: [], subtotal: 0 },
-            { title: '權益', items: [['股本', capital, '3110'], ['本期淨利', netProfit, '3310']], subtotal: capital + netProfit }
+            { title: '瘚?鞎', items: [], subtotal: 0 },
+            { title: '甈?', items: [['?⊥', capital, '3110'], ['?祆?瘛典', netProfit, '3310']], subtotal: capital + netProfit }
           ],
           total: capital + netProfit
         }
@@ -348,43 +364,43 @@ export async function buildBalanceSheet(transactions, startDate = null, endDate 
 }
 
 export async function buildCashflowStatement(transactions, startDate = null, endDate = null) {
-  try {    // 💡 修正：改用 maybeSingle() 取代 single()。
-    // 當 RLS 或權限使查詢回傳 0 筆時，single() 會回傳 HTTP 406 Not Acceptable，
-    // maybeSingle() 則回傳 { data: null }，避免不必要的錯誤並平滑降級為本地計算。
+  try {    // ? 靽格迤嚗??maybeSingle() ?誨 single()??
+    // ??RLS ???蝙?亥岷? 0 蝑?嚗ingle() ????HTTP 406 Not Acceptable嚗?
+    // maybeSingle() ????{ data: null }嚗??敹??隤支蒂撟單????箸?啗?蝞?
     let accountQuery = supabase.from('accounts').select('id').eq('code', '1102');    const { data: bankAccount, error: bankErr } = await accountQuery.maybeSingle();
-    if (bankErr || !bankAccount) throw new Error('找不到銀行存款科目');
+    if (bankErr || !bankAccount) throw new Error('?曆??圈?銵?甈曄???);
 
     let query = supabase
       .from('journal_entries')
-      .select('debit_account_id, credit_account_id, debit_amount, credit_amount, voucher_id, vouchers(category)')
+      .select('debit_account_id, credit_account_id, debit_amount, credit_amount, debit_amount_base, credit_amount_base, voucher_id, vouchers(category)')
       .not('voucher_id', 'is', null);    if (startDate) query = query.gte('entry_date', startDate);
     if (endDate) query = query.lte('entry_date', endDate);
     const { data: entries, error } = await query;
     if (error) throw error;
 
-    const totals = { 營業: 0, 投資: 0, 融資: 0 };
+    const totals = { ?平: 0, ??: 0, ??: 0 };
     entries.forEach(entry => {
-      const category = entry.vouchers?.category || '營業';
+      const category = entry.vouchers?.category || '?平';
       if (!(category in totals)) totals[category] = 0;
-      if (entry.debit_account_id === bankAccount.id) totals[category] += Number(entry.debit_amount || 0);
-      if (entry.credit_account_id === bankAccount.id) totals[category] -= Number(entry.credit_amount || 0);
+      if (entry.debit_account_id === bankAccount.id) totals[category] += debitBase(entry);
+      if (entry.credit_account_id === bankAccount.id) totals[category] -= creditBase(entry);
     });
 
-    const net = totals['營業'] + totals['投資'] + totals['融資'];
+    const net = totals['?平'] + totals['??'] + totals['??'];
     return [
-      ['營業活動現金流量', totals['營業']],
-      ['投資活動現金流量', totals['投資']],
-      ['融資活動現金流量', totals['融資']],
-      ['淨現金增加額', net]
+      ['?平瘣餃??暸?瘚?', totals['?平']],
+      ['??瘣餃??暸?瘚?', totals['??']],
+      ['??瘣餃??暸?瘚?', totals['??']],
+      ['瘛函????', net]
     ];
   } catch (err) {
-    console.warn('現金流量表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    console.warn('?暸?瘚?銵刻???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
     const { operating, investing, financing, net } = buildCashFlowByActivity(transactions);
     return [
-      ['營業活動現金流量', operating],
-      ['投資活動現金流量', investing],
-      ['融資活動現金流量', financing],
-      ['淨現金增加額', net]
+      ['?平瘣餃??暸?瘚?', operating],
+      ['??瘣餃??暸?瘚?', investing],
+      ['??瘣餃??暸?瘚?', financing],
+      ['瘛函????', net]
     ];
   }
 }
@@ -393,12 +409,12 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
     
-    // 💡 修正：改為動態抓取所有收入 (4開頭) 與費用 (5、6開頭) 科目，與損益表保持一致
+    // ? 靽格迤嚗?箏????????(4?) ?祥??(5???) 蝘嚗???銵其?????
     const totalRevenue = rows.filter(r => r.code.startsWith('4')).reduce((sum, r) => sum + (r.creditTotal - r.debitTotal), 0);
     const totalExpense = rows.filter(r => r.code.startsWith('5') || r.code.startsWith('6')).reduce((sum, r) => sum + (r.debitTotal - r.creditTotal), 0);
     const retainedEarnings = totalRevenue - totalExpense;
 
-    // 抓取股本變動 (這裡假設所有 31 開頭的都是股本相關，或者保留原來的 3110)
+    // ???⊥霈? (?ㄐ?身???31 ???航?祉??????靘? 3110)
     const capitalRow = rows.find(r => r.code === '3110');
     const capitalChange = capitalRow ? capitalRow.creditTotal - capitalRow.debitTotal : 0;
 
@@ -413,31 +429,31 @@ export async function buildEquityStatement(transactions, startDate = null, endDa
     const endingEquity = openingCapital + capitalChange + retainedEarnings;
 
     return [
-      ['期初股本', openingCapital],
-      ['本期新增股本（募資/借款）', capitalChange],
-      ['本期損益（保留盈餘）', retainedEarnings],
-      ['期末權益合計', endingEquity]
+      ['???⊥', openingCapital],
+      ['?祆??啣??⊥嚗?鞈??狡嚗?, capitalChange],
+      ['?祆???嚗???擗?', retainedEarnings],
+      ['?甈???', endingEquity]
     ];
   } catch (err) {
-    console.warn('權益變動表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    console.warn('甈?霈?銵刻???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
     const { openingCapital, capitalChange, retainedEarnings, endingEquity } = buildEquityAnalysis(transactions);
     return [
-      ['期初股本', openingCapital],
-      ['本期新增股本（募資/借款）', capitalChange],
-      ['本期損益（保留盈餘）', retainedEarnings],
-      ['期末權益合計', endingEquity]
+      ['???⊥', openingCapital],
+      ['?祆??啣??⊥嚗?鞈??狡嚗?, capitalChange],
+      ['?祆???嚗???擗?', retainedEarnings],
+      ['?甈???', endingEquity]
     ];
   }
 }
 
 /**
- * 💡 新增：檢查銀行餘額是否足夠支付專案預算
- * @param {number} projectCost - 即將發生的專案預算或支出
+ * ? ?啣?嚗炎?仿?銵?憿?西雲憭隞?獢?蝞?
+ * @param {number} projectCost - ?喳??潛???獢?蝞??臬
  * @returns {object} { isSufficient: boolean, currentCash: number, shortage: number, message: string }
  */
 export async function checkBudgetSufficiency(projectCost = 0) {
   try {
-    // 取得當前總資產(試算表)，只抓銀行存款 '1102'
+    // ???嗅?蝮質???閰衣?銵?嚗??銵?甈?'1102'
     const { rows } = await fetchSupabaseTrialBalance();
     const bankRow = rows.find(r => r.code === '1102');
     const currentCash = bankRow ? bankRow.debitTotal - bankRow.creditTotal : 0;
@@ -451,24 +467,22 @@ export async function checkBudgetSufficiency(projectCost = 0) {
       projectCost,
       shortage,
       message: isSufficient 
-        ? `資金充足 (目前銀行餘額: $${currentCash.toLocaleString()})，足以支付本次專案。`
-        : `⚠️ 資金預警：銀行餘額不足以支付專案！尚缺 $${shortage.toLocaleString()}，請考慮排程募資或跟催應收帳款。`
+        ? `鞈??雲 (?桀??銵?憿? $${currentCash.toLocaleString()})嚗雲隞交隞甈∪?獢
+        : `?? 鞈??郎嚗?銵?憿?頞喃誑?臭?撠?嚗?蝻?$${shortage.toLocaleString()}嚗?????????祆??嗅董甈整
     };
   } catch (error) {
-    console.error('預算檢查失敗:', error);
+    console.error('??瑼Ｘ憭望?:', error);
     return { 
       isSufficient: false, 
       error: true, 
-      message: '無法取得目前銀行餘額以進行評估' 
+      message: '?⊥????桀??銵?憿誑?脰?閰摯' 
     };
   }
 }
 
 /**
- * 💡 新增：試算表（Trial Balance）— 依科目列出借方/貸方合計與餘額。
- * includeAdjustments=true 時，會將「平行帳簿」中已核准的 IFRS 調整分錄一併加總，
- * 呈現「Local GAAP 原始總帳 + IFRS 調整分錄層」合併後的數字。
- */
+ * ? ?啣?嚗岫蝞”嚗rial Balance嚗?靘??桀??箏/鞎豢????憿? * includeAdjustments=true ?????像銵董蝪踴葉撌脫?? IFRS 隤踵??銝雿萄?蝮踝?
+ * ??ocal GAAP ??蝮賢董 + IFRS 隤踵??撅扎?雿萄??摮? */
 export async function buildTrialBalance(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
   let adjustmentTotals = {};
   if (includeAdjustments) {
@@ -476,7 +490,7 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
       const { fetchApprovedAdjustmentTotals } = await import('../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js');
       adjustmentTotals = await fetchApprovedAdjustmentTotals(startDate, endDate);
     } catch (err) {
-      console.warn('讀取 IFRS 調整分錄失敗，僅顯示原始總帳數字:', err.message);
+      console.warn('霈??IFRS 隤踵??憭望?嚗?憿舐內??蝮賢董?詨?:', err.message);
     }
   }
 
@@ -496,9 +510,9 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
       type: 'structured',
       sections: [
         {
-          title: includeAdjustments ? '會計科目餘額明細（已含 IFRS 調整分錄）' : '會計科目餘額明細',
+          title: includeAdjustments ? '??蝘擗??敦嚗歇??IFRS 隤踵??嚗? : '??蝘擗??敦',
           items: sorted.map(r => [
-            `${r.name}（借:${Number(r.debitTotal || 0).toLocaleString()} / 貸:${Number(r.creditTotal || 0).toLocaleString()}）`,
+            `${r.name}嚗?${Number(r.debitTotal || 0).toLocaleString()} / 鞎?${Number(r.creditTotal || 0).toLocaleString()}嚗,
             Number(r.debitTotal || 0) - Number(r.creditTotal || 0),
             r.code
           ]),
@@ -509,7 +523,7 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
       trialBalanceCheck: { totalDebit, totalCredit, balanced: totalDebit === totalCredit }
     };
   } catch (err) {
-    console.warn('試算表讀取 Supabase 失敗，降級使用本地計算:', err.message);
+    console.warn('閰衣?銵刻???Supabase 憭望?嚗?蝝蝙?冽?啗?蝞?', err.message);
     const { trialBalance } = runAccountingPipeline(transactions);
     const sorted = [...trialBalance.rows].sort((a, b) => String(a.code).localeCompare(String(b.code)));
     const totalDebit = sorted.reduce((sum, r) => sum + Number(r.debitTotal || 0), 0);
@@ -518,9 +532,9 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
       type: 'structured',
       sections: [
         {
-          title: '會計科目餘額明細',
+          title: '??蝘擗??敦',
           items: sorted.map(r => [
-            `${r.name}（借:${Number(r.debitTotal || 0).toLocaleString()} / 貸:${Number(r.creditTotal || 0).toLocaleString()}）`,
+            `${r.name}嚗?${Number(r.debitTotal || 0).toLocaleString()} / 鞎?${Number(r.creditTotal || 0).toLocaleString()}嚗,
             Number(r.debitTotal || 0) - Number(r.creditTotal || 0),
             r.code
           ]),
@@ -533,9 +547,7 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
 }
 
 /**
- * 💡 新增：募資精算快照 — 提供「股東權益與募資缺口模擬器」所需的基礎數字
- * （股本、保留盈餘、股東權益總額、現金水位、月均營收與月均費用）。
- */
+ * ? ?啣?嚗?鞈移蝞翰????????望?????蝻箏璅⊥?具???蝷摮? * 嚗?研???擗?望??蜇憿?偌雿????嗉???鞎餌嚗? */
 export async function buildFundraisingSnapshot(transactions = [], startDate = null, endDate = null) {
   try {
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
@@ -547,14 +559,13 @@ export async function buildFundraisingSnapshot(transactions = [], startDate = nu
     const cashRow = rows.find(r => r.code === '1102');
     const cashBalance = cashRow ? cashRow.debitTotal - cashRow.creditTotal : 0;
 
-    // 依有交易紀錄涵蓋的月份數，估算月均營收／費用
-    const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;
+    // 靘?鈭斗?蝝?項???遢?賂?隡啁????嚗祥??    const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;
     const monthlyRevenue = totalRevenue / months;
     const monthlyExpense = totalExpense / months;
 
     return { paidInCapital, retainedEarnings, totalEquity, cashBalance, monthlyRevenue, monthlyExpense, months };
   } catch (err) {
-    console.warn('募資精算資料讀取失敗，降級使用本地計算:', err.message);
+    console.warn('??蝎曄?鞈?霈?仃????雿輻?砍閮?:', err.message);
     const analysis = buildEquityAnalysis(transactions);
     const months = new Set((transactions || []).map(t => (t.date || '').slice(0, 7))).size || 1;
     const monthlyExpense = analysis.cashRunwayMonths ? analysis.cashBalance / analysis.cashRunwayMonths : 0;
@@ -571,9 +582,7 @@ export async function buildFundraisingSnapshot(transactions = [], startDate = nu
 }
 
 /**
- * 依科目代碼取得目前餘額（debitTotal - creditTotal），供財報附註等需要
- * 帶入真實數字但不需要完整試算表格式的場景使用。
- */
+ * 靘??桐誨蝣澆?敺??憿?debitTotal - creditTotal嚗?靘瓷?梢?閮餌??閬? * 撣嗅?祕?詨?雿??閬??渲岫蝞”?澆???臭蝙?具? */
 export async function fetchAccountBalancesByCode(codes = [], startDate = null, endDate = null) {
   try {
     const { rows } = await fetchSupabaseTrialBalanceWithIds(startDate, endDate);
@@ -583,7 +592,7 @@ export async function fetchAccountBalancesByCode(codes = [], startDate = null, e
     codes.forEach(c => { result[c] = map[c] || 0; });
     return result;
   } catch (err) {
-    console.warn('讀取科目餘額失敗:', err.message);
+    console.warn('霈???桅?憿仃??', err.message);
     const zero = {};
     codes.forEach(c => { zero[c] = 0; });
     return zero;
@@ -621,22 +630,22 @@ export async function buildBalanceSheetLedgerOnly(transactions, startDate = null
       type: 'structured',
       sections: [
         {
-          title: '資產 (Assets)',
+          title: '鞈 (Assets)',
           subsections: [
-            { title: '流動資產', items: currentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: currentAssetsTotal },
-            { title: '非流動資產', items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
+            { title: '瘚?鞈', items: currentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: currentAssetsTotal },
+            { title: '??????, items: nonCurrentAssetsRows.map(r => [r.name, r.debitTotal - r.creditTotal, r.code]), subtotal: nonCurrentAssetsTotal }
           ],
           total: totalAssets
         },
         {
-          title: '負債及權益 (Liabilities & Equity)',
+          title: '鞎????(Liabilities & Equity)',
           subsections: [
-            { title: '流動負債', items: currentLiabilitiesRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: currentLiabilitiesTotal },
+            { title: '瘚?鞎', items: currentLiabilitiesRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]), subtotal: currentLiabilitiesTotal },
             {
-              title: '權益',
+              title: '甈?',
               items: [
                 ...equityRows.map(r => [r.name, r.creditTotal - r.debitTotal, r.code]),
-                ['本期損益', netProfit, '3310']
+                ['?祆???', netProfit, '3310']
               ],
               subtotal: totalEquity
             }
@@ -671,7 +680,7 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
 
   let txQuery = supabase
     .from('bank_transactions')
-    .select('bank_account_id, tx_date, type, amount');
+    .select('bank_account_id, tx_date, type, amount, amount_base, balance_after_base');
   if (startDate) txQuery = txQuery.gte('tx_date', startDate);
   if (endDate) txQuery = txQuery.lte('tx_date', endDate);
   const txResult = await txQuery;
@@ -687,14 +696,14 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
   const rowsOut = accounts.map(bank => {
     const linkedAccountId = bank.ledger_account_id || bank.accounting_account_id || null;
     const actualBalance = Number(bank.opening_balance || 0) + (txsByBankId.get(bank.id) || []).reduce((sum, tx) => {
-      const amount = Number(tx.amount || 0);
-      return tx.type === '支出' ? sum - amount : sum + amount;
+      const amount = amountBase(tx);
+      return tx.type === '?臬' ? sum - amount : sum + amount;
     }, 0);
     const ledgerBalance = linkedAccountId ? Number(ledgerByAccountId.get(linkedAccountId) || 0) : null;
     const difference = ledgerBalance == null ? null : actualBalance - ledgerBalance;
     return {
       bankAccountId: bank.id,
-      label: bank.nickname || `${bank.bank_name || '未命名銀行'} ${bank.account_number || ''}`.trim(),
+      label: bank.nickname || `${bank.bank_name || '?芸??銵?} ${bank.account_number || ''}`.trim(),
       linkedAccountId,
       linkedAccountCode: linkedAccountId ? accountById.get(linkedAccountId)?.code || null : null,
       actualBalance,
@@ -731,36 +740,36 @@ export async function buildCashflowStatementByLinkedBanks(transactions, startDat
 
     if (linkedBankAccountIds.length === 0) {
       return [
-        ['營業活動現金流量', 0],
-        ['投資活動現金流量', 0],
-        ['籌資活動現金流量', 0],
-        ['銀行帳戶尚未綁定總帳科目，現金流量表暫不以銀行實際餘額推算', 0]
+        ['?平瘣餃??暸?瘚?', 0],
+        ['??瘣餃??暸?瘚?', 0],
+        ['蝐?瘣餃??暸?瘚?', 0],
+        ['?銵董?嗅??芰?摰蜇撣喟??殷??暸?瘚?銵冽銝誑?銵祕??憿蝞?, 0]
       ];
     }
 
     let query = supabase
       .from('journal_entries')
-      .select('debit_account_id, credit_account_id, debit_amount, credit_amount, voucher_id, vouchers(category)')
+      .select('debit_account_id, credit_account_id, debit_amount, credit_amount, debit_amount_base, credit_amount_base, voucher_id, vouchers(category)')
       .not('voucher_id', 'is', null);
     if (startDate) query = query.gte('entry_date', startDate);
     if (endDate) query = query.lte('entry_date', endDate);
     const { data: entries, error } = await query;
     if (error) throw error;
 
-    const totals = { '營業': 0, '投資': 0, '融資': 0 };
+    const totals = { '?平': 0, '??': 0, '??': 0 };
     (entries || []).forEach(entry => {
-      const category = entry.vouchers?.category || '營業';
+      const category = entry.vouchers?.category || '?平';
       if (!(category in totals)) totals[category] = 0;
-      if (linkedBankAccountIds.includes(entry.debit_account_id)) totals[category] += Number(entry.debit_amount || 0);
-      if (linkedBankAccountIds.includes(entry.credit_account_id)) totals[category] -= Number(entry.credit_amount || 0);
+      if (linkedBankAccountIds.includes(entry.debit_account_id)) totals[category] += debitBase(entry);
+      if (linkedBankAccountIds.includes(entry.credit_account_id)) totals[category] -= creditBase(entry);
     });
 
-    const net = totals['營業'] + totals['投資'] + totals['融資'];
+    const net = totals['?平'] + totals['??'] + totals['??'];
     return [
-      ['營業活動現金流量', totals['營業']],
-      ['投資活動現金流量', totals['投資']],
-      ['籌資活動現金流量', totals['融資']],
-      ['本期現金及約當現金增加（減少）', net]
+      ['?平瘣餃??暸?瘚?', totals['?平']],
+      ['??瘣餃??暸?瘚?', totals['??']],
+      ['蝐?瘣餃??暸?瘚?', totals['??']],
+      ['?祆??暸????嗥????皜?嚗?, net]
     ];
   } catch (err) {
     console.warn('Linked-bank cashflow failed; falling back to legacy calculation:', err.message);
