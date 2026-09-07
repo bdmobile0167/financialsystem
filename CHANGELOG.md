@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 0.2.80 - 2026-09-07
+
+- Calculate bank account balances from all posted movements instead of the opening-balance generated column.
+- Applied the invoker balance RPC directly to Supabase; verified aggregation beyond 1000 movements and role restrictions.
+- Refresh bank accounts after manual entry and payment; refresh reports after payment and show account currency.
+- Authenticated browser workflows remain pending validation.
+
 ## 0.2.79 - 2026-09-04
 
 - Added an Exchange Rate Management card to the Settings page for accounting/admin/super_admin users.

@@ -1,10 +1,7 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 
 export async function loadBankAccounts() {
-  const { data, error } = await supabase
-    .from('bank_accounts')
-    .select('*')
-    .order('bank_name');
+  const { data, error } = await supabase.rpc('get_bank_accounts_with_balances');
 
   if (error) throw error;
   return data || [];

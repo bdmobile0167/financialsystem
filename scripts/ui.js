@@ -2151,7 +2151,7 @@ window.confirmPaymentFromList = async (voucherId) => {
       if (!result.success) throw new Error(result.error);
       document.querySelector('.modal-backdrop')?.remove();
       showMessage('付款完成，狀態已轉為已付款，並已產生付款憑證、銀行流水與日記帳。');
-      await Promise.all([renderPaymentManagement(), renderTransactionTable(), renderVoucherWorkflowList()]);
+      await Promise.all([renderPaymentManagement(), renderTransactionTable(), renderVoucherWorkflowList(), renderBankAccounts(), renderReports()]);
       renderDashboard();
     }, { loadingText: '付款處理中...' });
   } catch (error) {
@@ -3311,7 +3311,7 @@ async function renderBankAccounts() {
             <span>完整帳號：${escapeHtml(a.account_number || a.accountNumber || '-')}</span>
             <span>綁定科目：${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<em>未綁定</em>'}</span>
           </div>
-          <div class="bank-account-balance">NT$ ${balanceDisplay}</div>
+          <div class="bank-account-balance">${escapeHtml(a.currency || 'TWD')} ${balanceDisplay}</div>
           <div class="bank-account-actions">
             <button class="secondary edit-bank-btn" data-id="${a.id}">編輯</button>
             <button class="danger delete-bank-btn" data-id="${a.id}">刪除</button>
@@ -4612,6 +4612,7 @@ function initializeEventsInternal() {
     });
     if (transactionError) throw transactionError;
     await renderTransactionTable();
+    await renderBankAccounts();
     await renderReports();
     e.target.reset();
     updateTransactionAccountDefaults();
@@ -7272,6 +7273,7 @@ window.processPayment = async (voucherId, totalAmount) => {
     if (!result.success) throw new Error(result.error);
 
     alert('付款結案成功！');
+    await Promise.all([renderBankAccounts(), renderTransactionTable(), renderReports()]);
 
     // 重新渲染畫面
     if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
