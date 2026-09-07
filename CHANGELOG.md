@@ -1,5 +1,20 @@
 # 變更紀錄
 
+## 0.2.85 - 2026-09-07
+
+- Paginate transaction rows with exact counts and stable ID ordering; batch journal UUID filters.
+- Fail visibly on incomplete pages, count changes, duplicate IDs or backend errors.
+- Clear deletion caches at load start and ignore stale render results.
+- Preserve multiple debit/credit account summaries per transaction.
+- Browser regression tests cover 1251 transactions, 1320 journals, response caps, errors, empty filters and render races.
+
+## 0.2.84 - 2026-09-07
+
+- Snapshot payment-date currency/rate in voucher payments, bank movements and per-account journals.
+- Reject mismatched bank/voucher currencies, missing rates, invalid amounts, inconsistent line totals and pre-existing partial payments.
+- Preserve idempotent payment behavior and display payment currency/rate/base amount in payment views and export.
+- Verified rollback FX two-account and TWD payment tests; no browser end-to-end acceptance claimed.
+
 ## 0.2.83 - 2026-09-07
 
 - Lock bank currency when an opening balance or first reference exists, including statement, voucher, payroll and project references.

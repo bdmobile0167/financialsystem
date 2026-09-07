@@ -1,5 +1,7 @@
 ﻿import { supabase } from './supabaseClient.js';
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
+import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis } from './reports.js';
@@ -1229,19 +1231,19 @@ function collectDirectorShareholderRows() {
     .filter(row => row.name || row.role || row.idNumber || row.amount || row.address);
 }
 
+let transactionRenderGeneration = 0;
+
 async function renderTransactionTable() {
+  const generation = ++transactionRenderGeneration;
+  window.__transactionRowsCache = [];
   const body = document.getElementById('transactionTableBody');
   if (!body) return;
   body.innerHTML = '<tr><td colspan="10" class="muted">載入交易資料...</td></tr>';
 
   let txs = [];
   try {
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .select('id, bank_account_id, tx_date, type, amount, currency, exchange_rate, amount_base, description, transaction_no, counterparty, category, remark, attachment_id, voucher_id, bank:bank_accounts(bank_name, nickname, account_number), voucher:vouchers(voucher_no, status, category, project_id, summary)')
-      .order('tx_date', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (error) throw error;
+    const data = await fetchTransactionRows(supabase);
+    if (generation !== transactionRenderGeneration) return;
     txs = (data || []).map(transaction => ({
       id: transaction.id,
       date: transaction.tx_date,
@@ -1271,25 +1273,15 @@ async function renderTransactionTable() {
     const manualTransactionIds = txs
       .filter(tx => !tx.voucher_id && tx.id)
       .map(tx => tx.id);
-    const journalByTransactionId = new Map();
+    let journalByTransactionId = new Map();
     if (manualTransactionIds.length) {
-      const { data: journals, error: journalError } = await supabase
-        .from('journal_entries')
-        .select('transaction_id, debit_account:accounts!journal_entries_debit_account_id_fkey(code, name), credit_account:accounts!journal_entries_credit_account_id_fkey(code, name)')
-        .in('transaction_id', manualTransactionIds);
-      if (journalError) {
-        console.warn('載入交易分錄失敗:', journalError.message);
-      } else {
-        (journals || []).forEach(entry => {
-          journalByTransactionId.set(entry.transaction_id, {
-            debit: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
-            credit: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-'
-          });
-        });
-      }
+      const journals = await fetchTransactionJournals(supabase, manualTransactionIds);
+      if (generation !== transactionRenderGeneration) return;
+      journalByTransactionId = summarizeTransactionJournals(journals);
     }
     txs = txs.map(tx => ({ ...tx, journal: journalByTransactionId.get(tx.id) || null }));
   } catch (error) {
+    if (generation !== transactionRenderGeneration) return;
     console.error('載入 Supabase 交易失敗:', error);
     body.innerHTML = `<tr><td colspan="10" class="message error">載入交易失敗：${escapeHtml(error.message)}</td></tr>`;
     return;
@@ -1339,7 +1331,7 @@ async function renderTransactionTable() {
       <td>${escapeHtml(tx.currency)} ${Number(tx.amount).toLocaleString()}${tx.currency !== 'TWD' ? `<div class="muted">匯率 ${Number(tx.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 6 })}<br>TWD ${Number(tx.amount_base).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>` : ''}</td>
       <td>${tx.voucher_id
         ? '<span class="muted">由付款憑證管理</span>'
-        : `<button class="secondary delete-transaction-btn" data-id="${tx.id || ''}" data-index="${state.transactions.indexOf(tx)}">刪除</button>`}
+        : `${isFinanceOperator() ? `<button class="secondary edit-transaction-accounts-btn" data-id="${escapeHtml(tx.id || '')}">編輯科目</button>` : ''}<button class="secondary delete-transaction-btn" data-id="${tx.id || ''}" data-index="${state.transactions.indexOf(tx)}">刪除</button>`}
       </td>
     `;
     body.appendChild(row);
@@ -1451,7 +1443,7 @@ function renderPaymentAccountingSummary(voucher) {
         <div>
           #${index + 1} ${escapeHtml(line.account_code || '未指定')}
           ${line.description ? `｜${escapeHtml(line.description)}` : ''}
-          ${line.amount != null ? `｜NT$ ${Number(line.amount || 0).toLocaleString()}` : ''}
+          ${line.amount != null ? `｜${escapeHtml(voucher?.currency || 'TWD')} ${Number(line.amount || 0).toLocaleString()}` : ''}
         </div>`).join('')}</div>
     </div>`;
   }
@@ -1471,7 +1463,7 @@ function renderPaymentRecipientLockedPanel(recipient, voucher) {
     <section class="payment-confirmation-card">
       <div>
         <span class="payment-confirmation-label">固定付款金額</span>
-        <strong class="payment-confirmation-amount">NT$ ${Number(voucher?.total_amount || 0).toLocaleString()}</strong>
+        <strong class="payment-confirmation-amount">${escapeHtml(voucher?.currency || 'TWD')} ${Number(voucher?.total_amount || 0).toLocaleString()}</strong>
       </div>
       <div>
         <span class="payment-confirmation-label">收款人</span>
@@ -1509,7 +1501,7 @@ function renderPaymentLinePayeeSummary(voucher) {
               <span>${escapeHtml(line.payee_name || '尚未設定收款人')}${line.payee_identifier ? `｜${escapeHtml(line.payee_identifier)}` : ''}</span>
             </div>
             <div>
-              <strong>NT$ ${Number(line.amount || 0).toLocaleString()}</strong>
+              <strong>${escapeHtml(voucher?.currency || 'TWD')} ${Number(line.amount || 0).toLocaleString()}</strong>
               <span>${escapeHtml(line.account_code || '未指定科目')}</span>
             </div>
           </div>
@@ -1647,7 +1639,7 @@ async function renderPaymentManagement() {
     const filter = document.getElementById('paymentStatusFilter')?.value || 'approved';
     let query = supabase
       .from('vouchers')
-      .select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(description, amount, payee_name, payee_identifier, account_code), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(payment_no, payment_sequence_no, amount, paid_at, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
+.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(description, amount, payee_name, payee_identifier, account_code), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(payment_no, payment_sequence_no, currency, exchange_rate, amount_base, amount, paid_at, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
       .in('status', filter === 'all' ? ['approved', 'closed'] : [filter])
       .order('accounting_approved_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
@@ -1672,7 +1664,7 @@ async function renderPaymentManagement() {
             <td>${escapeHtml(voucher.applicant?.full_name || '-')}<br><span class="muted">${escapeHtml(voucher.applicant?.email || '')}</span></td>
             <td>${recipientSummary(voucher.payment_recipient, line)}</td>
             <td>${escapeHtml(getPaymentAccountDisplay(voucher))}<br><span class="muted">${escapeHtml(voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '尚未指定付款銀行')}</span></td>
-            <td><strong>NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</strong></td>
+            <td><strong>${escapeHtml(voucher.currency || 'TWD')} ${Number(voucher.total_amount || 0).toLocaleString()}</strong></td>
             <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? `已付款 ${voucher.payment_date || ''}` : '待付款'}</span>${payment?.payment_no ? `<br><strong class="payment-voucher-number">${escapeHtml(payment.payment_no)}${payment.payment_sequence_no ? `｜#${payment.payment_sequence_no}` : ''}</strong>` : ''}</td>
             <td>${paid
               ? `<button type="button" class="secondary" data-payment-action="view-voucher" data-voucher-id="${voucher.id}">查看付款憑證</button>`
@@ -1722,7 +1714,7 @@ async function fetchPayeePaymentHistory(payeeId) {
   const recipientIds = (payee.payment_recipients || []).map(item => item.id).filter(Boolean);
   let query = supabase
     .from('vouchers')
-    .select('id, tx_date, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, status, payment_date, payment_recipient_id, payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), payment:voucher_payments(payment_no, payment_sequence_no, payment_type, amount, paid_at, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
+.select('id, tx_date, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, payment_recipient_id, payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), payment:voucher_payments(payment_no, payment_sequence_no, payment_type, currency, exchange_rate, amount_base, amount, paid_at, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
     .order('payment_date', { ascending: false, nullsFirst: false })
     .order('tx_date', { ascending: false });
 
@@ -1762,7 +1754,7 @@ window.viewPayeePaymentHistory = async (payeeId) => {
               <td>${escapeHtml(voucher.request_voucher_no || '-')}<br><span class="muted">${escapeHtml(voucher.accounting_voucher_no || '-')}${voucher.accounting_sequence_no ? `｜#${voucher.accounting_sequence_no}` : ''}</span></td>
               <td>${escapeHtml(payment?.payment_no || '尚未付款')}${payment?.payment_sequence_no ? `<br><span class="muted">#${payment.payment_sequence_no}</span>` : ''}</td>
               <td>${escapeHtml(bank.nickname || bank.bank_name || '-')}<br><span class="muted">${escapeHtml(bank.account_number || '')}</span></td>
-              <td>NT$ ${Number(payment?.amount || voucher.total_amount || 0).toLocaleString()}</td>
+              <td>${escapeHtml(payment?.currency || voucher.currency || 'TWD')} ${Number(payment?.amount || voucher.total_amount || 0).toLocaleString()}</td>
               <td><span class="badge ${voucher.status === 'closed' ? 'success' : 'wait'}">${voucher.status === 'closed' ? '已付款' : escapeHtml(voucher.status || '-')}</span></td>
               <td><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove(); viewVoucherDetail('${voucher.id}')">查看單據</button></td>
             </tr>`;
@@ -2081,7 +2073,9 @@ window.viewPaymentVoucher = (voucherId) => {
       <dt>收款人</dt><dd>${escapeHtml(recipient.display_name || '')}</dd>
       <dt>收款帳戶</dt><dd>${escapeHtml(`${recipient.bank_name || ''} ${recipient.bank_branch || ''}｜${recipient.account_name || ''}｜${recipient.account_number || ''}`)}</dd>
       <dt>公司出款銀行</dt><dd>${escapeHtml(payment.bank?.nickname || payment.bank?.bank_name || '')}</dd>
-      <dt>付款金額</dt><dd class="payment-voucher-amount">NT$ ${Number(payment.amount || voucher.total_amount || 0).toLocaleString()}</dd>
+      <dt>付款金額</dt><dd class="payment-voucher-amount">${escapeHtml(payment.currency || voucher.currency || 'TWD')} ${Number(payment.amount || voucher.total_amount || 0).toLocaleString()}</dd>
+      <dt>付款匯率</dt><dd>${escapeHtml(String(payment.exchange_rate ?? 1))}</dd>
+      <dt>台幣金額</dt><dd>TWD ${Number(payment.amount_base ?? payment.amount ?? voucher.total_amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</dd>
     </dl>
     <div class="button-row"><button type="button" class="secondary" onclick="window.print()">列印</button><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button></div>
   </div>`;
@@ -2179,7 +2173,10 @@ async function exportPaymentListToExcel() {
     收款帳號: voucher.payment_recipient?.account_number || '',
     付款銀行: voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '',
     會計科目: voucher.accounting_account ? `${voucher.accounting_account.code} ${voucher.accounting_account.name}` : '',
+    幣別: voucher.currency || 'TWD',
     金額: Number(voucher.total_amount || 0),
+    付款匯率: getVoucherPayment(voucher)?.exchange_rate ?? '',
+    付款台幣金額: getVoucherPayment(voucher)?.amount_base ?? '',
     狀態: voucher.status === 'closed' ? '已付款' : '待付款',
     付款日期: voucher.payment_date || ''
   }));
@@ -3422,7 +3419,7 @@ async function renderVoucherCenter() {
   try {
     let query = supabase
       .from('vouchers')
-      .select('id, tx_date, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, category, status, total_amount, applicant_id, project_id, project:projects(project_code, name), payment:voucher_payments(payment_no, payment_sequence_no, amount, paid_at)')
+.select('id, tx_date, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, category, status, total_amount, currency, applicant_id, project_id, project:projects(project_code, name), payment:voucher_payments(payment_no, payment_sequence_no, currency, exchange_rate, amount_base, amount, paid_at)')
       .order('created_at', { ascending: false });
 
     if (projectFilter !== 'all') query = query.eq('project_id', projectFilter);
@@ -3460,7 +3457,7 @@ async function renderVoucherCenter() {
           <td>${escapeHtml(payment?.payment_no || (paid ? '-' : '尚未付款'))}${payment?.payment_sequence_no ? `<br><span class="muted">#${payment.payment_sequence_no}</span>` : ''}</td>
           <td>${escapeHtml(voucher.summary || voucher.project?.name || '')}<br><span class="muted">${escapeHtml(voucher.category || '-')}</span></td>
           <td><span class="badge ${paid ? 'success' : 'wait'}">${paid ? '已付款' : escapeHtml(voucher.status || '-')}</span></td>
-          <td>NT$ ${Number(voucher.total_amount || 0).toLocaleString()}</td>
+          <td>${escapeHtml(voucher.currency || 'TWD')} ${Number(voucher.total_amount || 0).toLocaleString()}</td>
         </tr>`;
     }).join('') || '<tr><td colspan="7" class="muted">沒有符合條件的憑證資料。</td></tr>';
   } catch (error) {
@@ -4311,6 +4308,19 @@ function initializeEventsInternal() {
   const transactionTableBody = document.getElementById('transactionTableBody');
   if (transactionTableBody) {
     transactionTableBody.addEventListener('click', async (e) => {
+      const editButton = e.target.closest('.edit-transaction-accounts-btn');
+      if (editButton) {
+        if (!isFinanceOperator()) return;
+        await openTransactionAccountEditor({
+          client: supabase, transactionId: editButton.dataset.id, getAccounts: fetchAccounts,
+          onSaved: async () => {
+            showMessage('交易科目已儲存並記錄稽核。');
+            await Promise.all([renderTransactionTable(), renderReports()]);
+            renderDashboard();
+          }
+        });
+        return;
+      }
       const deleteBtn = e.target.closest('.delete-transaction-btn');
       if (deleteBtn) {
         const transactionId = deleteBtn.dataset.id;

@@ -2805,3 +2805,22 @@ button.dashboard-link {
   background: #fef2f2;
   color: #991b1b;
 }
+
+.transaction-account-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+}
+.transaction-account-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.transaction-account-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.transaction-account-dialog h3 { font-size: 20px; margin: 0; }
+.transaction-account-dialog header button { width: auto; }
+.transaction-account-dialog fieldset { margin: 12px 0; padding: 12px; border: 1px solid #cbd5e1; min-width: 0; }
+.transaction-account-dialog label { display: block; margin-top: 8px; }
+.transaction-account-dialog select { width: 100%; min-width: 0; }
+.transaction-account-dialog [role="status"] { overflow-wrap: anywhere; }
