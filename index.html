@@ -1082,6 +1082,38 @@
             <div id="accountingPeriodList" style="margin-top:14px;"></div>
           </div>
 
+          <div class="panel" id="exchangeRatesCard" style="margin-top:16px;">
+            <h3>匯率管理</h3>
+            <p class="muted">目前財報以 TWD 為功能性貨幣；外幣交易正式開放前，先在這裡維護每日匯率。</p>
+            <form id="exchangeRateForm" class="form-grid">
+              <div>
+                <label for="exchangeCurrencyCode">幣別</label>
+                <select id="exchangeCurrencyCode" required></select>
+              </div>
+              <div>
+                <label for="exchangeRateDate">匯率日期</label>
+                <input type="date" id="exchangeRateDate" required />
+              </div>
+              <div>
+                <label for="exchangeRateValue">兌 TWD 匯率</label>
+                <input type="number" id="exchangeRateValue" min="0.000001" step="0.000001" placeholder="例如 31.500000" required />
+              </div>
+              <div>
+                <label for="exchangeRateSource">來源</label>
+                <select id="exchangeRateSource">
+                  <option value="manual">手動輸入</option>
+                  <option value="api">外部 API</option>
+                  <option value="system">系統</option>
+                </select>
+              </div>
+              <div style="align-self:end;">
+                <button type="submit" class="primary-btn">儲存匯率</button>
+                <button type="button" class="secondary" id="refreshExchangeRatesBtn">重新整理</button>
+              </div>
+            </form>
+            <div id="exchangeRateList" style="margin-top:14px;"></div>
+          </div>
+
           <!-- 2. 公司基本資料（可編輯表單） -->
           <div class="panel" id="companyInfoCard" style="margin-top:16px;">
             <h3>公司基本資料</h3>

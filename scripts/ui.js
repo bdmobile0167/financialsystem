@@ -2911,6 +2911,12 @@ function updateSettings() {
     if (isFinanceOperator()) renderAccountingPeriods();
   }
 
+  const exchangeRatesCard = document.getElementById('exchangeRatesCard');
+  if (exchangeRatesCard) {
+    exchangeRatesCard.style.display = isFinanceOperator() ? '' : 'none';
+    if (isFinanceOperator()) renderExchangeRates();
+  }
+
   ['systemSettingsCard'].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.style.display = canEditCompany ? '' : 'none';
@@ -3034,6 +3040,171 @@ async function reopenAccountingPeriod(periodId, button) {
   } catch (error) {
     console.error('重開會計期間失敗:', error);
     showMessage('重開會計期間失敗：' + formatAccountingPeriodError(error), true);
+  }
+}
+
+async function populateExchangeCurrencyOptions(currencies = null) {
+  const select = document.getElementById('exchangeCurrencyCode');
+  if (!select || !isFinanceOperator()) return;
+
+  try {
+    let rows = currencies;
+    if (!rows) {
+      const { data, error } = await supabase
+        .from('currencies')
+        .select('code, name, symbol, is_active')
+        .eq('is_active', true)
+        .order('code', { ascending: true });
+      if (error) throw error;
+      rows = data || [];
+    }
+
+    const selectable = (rows || []).filter(currency => currency.code !== 'TWD');
+    select.innerHTML = selectable.length
+      ? selectable.map(currency => `<option value="${escapeHtml(currency.code)}">${escapeHtml(currency.code)} - ${escapeHtml(currency.name)}</option>`).join('')
+      : '<option value="">尚無外幣幣別</option>';
+
+    const dateInput = document.getElementById('exchangeRateDate');
+    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+  } catch (error) {
+    console.error('載入幣別失敗:', error);
+    select.innerHTML = '<option value="">幣別載入失敗</option>';
+  }
+}
+
+async function renderExchangeRates() {
+  const list = document.getElementById('exchangeRateList');
+  if (!list || !isFinanceOperator()) return;
+
+  list.innerHTML = '<p class="muted">載入匯率...</p>';
+
+  try {
+    const [{ data: currencies, error: currencyError }, { data: rates, error: rateError }] = await Promise.all([
+      supabase
+        .from('currencies')
+        .select('code, name, symbol, is_active')
+        .eq('is_active', true)
+        .order('code', { ascending: true }),
+      supabase
+        .from('exchange_rates')
+        .select('id, currency_code, rate_date, rate, source, created_at, currencies(name, symbol)')
+        .order('rate_date', { ascending: false })
+        .order('currency_code', { ascending: true })
+        .limit(80)
+    ]);
+
+    if (currencyError) throw currencyError;
+    if (rateError) throw rateError;
+
+    await populateExchangeCurrencyOptions(currencies || []);
+
+    const rows = rates || [];
+    if (!rows.length) {
+      list.innerHTML = '<p class="muted">尚未建立外幣匯率；TWD 會固定以 1 計算。</p>';
+      return;
+    }
+
+    list.innerHTML = `
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>幣別</th>
+            <th>兌 TWD 匯率</th>
+            <th>來源</th>
+            <th>建立時間</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(rate => {
+            const locked = rate.currency_code === 'TWD' || rate.source === 'system';
+            return `
+              <tr>
+                <td>${escapeHtml(rate.rate_date)}</td>
+                <td>${escapeHtml(rate.currency_code)}<br><span class="muted">${escapeHtml(rate.currencies?.name || '')}</span></td>
+                <td style="text-align:right; font-variant-numeric:tabular-nums;">${Number(rate.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 6 })}</td>
+                <td>${formatExchangeRateSource(rate.source)}</td>
+                <td>${escapeHtml((rate.created_at || '').replace('T', ' ').slice(0, 19) || '-')}</td>
+                <td>
+                  ${locked
+                    ? '<span class="muted">系統匯率</span>'
+                    : `<button type="button" class="secondary edit-exchange-rate-btn" data-code="${escapeHtml(rate.currency_code)}" data-date="${escapeHtml(rate.rate_date)}" data-rate="${escapeHtml(rate.rate)}" data-source="${escapeHtml(rate.source || 'manual')}">編輯</button>
+                       <button type="button" class="danger delete-exchange-rate-btn" data-id="${rate.id}" data-label="${escapeHtml(`${rate.currency_code} ${rate.rate_date}`)}">刪除</button>`}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error) {
+    console.error('讀取匯率失敗:', error);
+    list.innerHTML = `<p class="message error">讀取匯率失敗：${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function formatExchangeRateSource(source) {
+  if (source === 'system') return '系統';
+  if (source === 'api') return '外部 API';
+  return '手動輸入';
+}
+
+async function saveExchangeRateFromForm(event) {
+  event.preventDefault();
+  if (!isFinanceOperator()) return showMessage('僅會計與管理員可維護匯率。', true);
+
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const currencyCode = document.getElementById('exchangeCurrencyCode')?.value;
+  const rateDate = document.getElementById('exchangeRateDate')?.value;
+  const rateValue = Number(document.getElementById('exchangeRateValue')?.value || 0);
+  const source = document.getElementById('exchangeRateSource')?.value || 'manual';
+
+  if (!currencyCode || currencyCode === 'TWD') return showMessage('請選擇外幣幣別。', true);
+  if (!rateDate) return showMessage('請選擇匯率日期。', true);
+  if (!Number.isFinite(rateValue) || rateValue <= 0) return showMessage('匯率必須大於 0。', true);
+
+  try {
+    await withActionLock(`exchange-rate:${currencyCode}:${rateDate}`, submitButton, async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('exchange_rates')
+        .upsert({
+          currency_code: currencyCode,
+          rate_date: rateDate,
+          rate: rateValue,
+          source,
+          created_by: authData?.user?.id || null
+        }, { onConflict: 'currency_code,rate_date' });
+
+      if (error) throw error;
+      document.getElementById('exchangeRateValue').value = '';
+      document.getElementById('exchangeRateSource').value = 'manual';
+      showMessage('匯率已儲存。');
+      await renderExchangeRates();
+    }, { loadingText: '儲存中...' });
+  } catch (error) {
+    console.error('儲存匯率失敗:', error);
+    showMessage('儲存匯率失敗：' + error.message, true);
+  }
+}
+
+async function deleteExchangeRate(rateId, label, button) {
+  if (!isFinanceOperator()) return showMessage('僅會計與管理員可刪除匯率。', true);
+  if (!rateId) return;
+  if (!confirm(`確定刪除匯率 ${label}？`)) return;
+
+  try {
+    await withActionLock(`exchange-rate:delete:${rateId}`, button, async () => {
+      const { error } = await supabase.from('exchange_rates').delete().eq('id', rateId);
+      if (error) throw error;
+      showMessage('匯率已刪除。');
+      await renderExchangeRates();
+    }, { loadingText: '刪除中...' });
+  } catch (error) {
+    console.error('刪除匯率失敗:', error);
+    showMessage('刪除匯率失敗：' + error.message, true);
   }
 }
 
@@ -4065,6 +4236,31 @@ function initializeEventsInternal() {
     if (!reopenBtn) return;
     reopenAccountingPeriod(reopenBtn.dataset.id, reopenBtn)
       .catch(error => showMessage('重開會計期間失敗：' + error.message, true));
+  });
+  safeListener('exchangeRateForm', 'submit', saveExchangeRateFromForm);
+  safeListener('refreshExchangeRatesBtn', 'click', () => renderExchangeRates());
+  safeListener('exchangeRateList', 'click', (event) => {
+    const editBtn = event.target.closest('.edit-exchange-rate-btn');
+    if (editBtn) {
+      const currencyInput = document.getElementById('exchangeCurrencyCode');
+      const dateInput = document.getElementById('exchangeRateDate');
+      const rateInput = document.getElementById('exchangeRateValue');
+      const sourceInput = document.getElementById('exchangeRateSource');
+      if (currencyInput) currencyInput.value = editBtn.dataset.code || '';
+      if (dateInput) dateInput.value = editBtn.dataset.date || '';
+      if (rateInput) {
+        rateInput.value = editBtn.dataset.rate || '';
+        rateInput.focus();
+      }
+      if (sourceInput) sourceInput.value = editBtn.dataset.source || 'manual';
+      return;
+    }
+
+    const deleteBtn = event.target.closest('.delete-exchange-rate-btn');
+    if (deleteBtn) {
+      deleteExchangeRate(deleteBtn.dataset.id, deleteBtn.dataset.label || '', deleteBtn)
+        .catch(error => showMessage('刪除匯率失敗：' + error.message, true));
+    }
   });
 
   safeListener('voucherSearchInput', 'input', renderVoucherCenter);

@@ -1,6 +1,24 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.77`
+目前本機版本：`0.2.79`
+
+## 0.2.79 重點
+
+- 設定頁新增「匯率管理」卡片，與月結鎖帳一樣只顯示給會計/admin/super_admin。
+- 可選擇外幣、匯率日期、兌 TWD 匯率與來源，儲存時同幣別同日期會更新既有資料。
+- 匯率列表顯示最近 80 筆，外幣手動/API 匯率可編輯或刪除，TWD/system 匯率鎖定。
+- 這一步只完成匯率維護，不開放外幣報支/交易輸入，避免半套外幣流程影響財報。
+- 本機 HTTP + headless Chrome 已確認登入頁可載入，未顯示 bootstrap error banner。
+- Production 仍需重新部署 `0.2.79` 並做實際登入、報支、付款與財報驗收。
+
+## 0.2.78 重點
+
+- 權益變動表不再把期初股本寫死為 0。
+- 有報表起始日時，權益變動表會先抓起始日前一天以前的累計試算表，再加上本期股本變動與本期損益。
+- 權益變動表改列：期初股本、期初保留盈餘、本期股本變動、本期損益、期末股本、期末保留盈餘、期末權益合計。
+- 舊 `src/modules/voucher/voucherFormLines.js` 已改為 deprecated guard，避免壞碼表單 handler 覆蓋正式 `scripts/ui.js` 流程。
+- 本機 HTTP + headless Chrome 已確認登入頁可載入，未顯示 bootstrap error banner。
+- Production 已由後續 `0.2.79` 接續，仍需重新部署並做實際登入、報支、付款與財報驗收。
 
 ## 0.2.77 重點
 
@@ -8,7 +26,7 @@
 - 重建報表與會計 fallback 模組內的壞碼字串，避免 `scripts/reports.js`、`src/modules/accounting/*.js` import 失敗。
 - 保留財報/總帳優先使用 `debit_amount_base`、`credit_amount_base`、`amount_base` 的 0.2.76 多幣別地基。
 - 本機 HTTP + headless Chrome 已確認登入頁可載入，未顯示 bootstrap error banner。
-- Production 仍需重新部署 `0.2.77` 並做實際登入、報支、付款與財報驗收。
+- Production 已由後續 `0.2.78` 接續，仍需重新部署並做實際登入、報支、付款與財報驗收。
 
 ## 0.2.76 重點
 

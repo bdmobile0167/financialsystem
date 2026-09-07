@@ -1,5 +1,22 @@
 # 變更紀錄
 
+## 0.2.79 - 2026-09-04
+
+- Added an Exchange Rate Management card to the Settings page for accounting/admin/super_admin users.
+- Added currency/date/rate/source inputs and upsert behavior for `exchange_rates`.
+- Added a recent exchange-rate list with edit/delete actions for non-system rates.
+- Locked TWD/system exchange rates in the UI so the functional currency baseline cannot be deleted.
+- Kept non-TWD transaction/voucher entry disabled for now; this release only adds rate maintenance.
+- Verified local app load through headless Chrome without a bootstrap error banner.
+
+## 0.2.78 - 2026-09-04
+
+- Merged the useful parts of Claude package `netlify-fixed (1).zip` without replacing the current working tree.
+- Fixed equity statement opening balances by calculating prior-period cumulative share capital and retained earnings.
+- Expanded the equity statement rows to show opening capital, opening retained earnings, current-period capital movement, net income, ending capital, ending retained earnings, and ending equity total.
+- Replaced deprecated `src/modules/voucher/voucherFormLines.js` with a guard module so corrupted legacy form handlers cannot override the active `scripts/ui.js` flow.
+- Verified local app load through headless Chrome without a bootstrap error banner.
+
 ## 0.2.77 - 2026-09-04
 
 - Fixed `main.js:5 App bootstrap failed: SyntaxError: Invalid or unexpected token`.

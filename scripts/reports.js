@@ -7,6 +7,35 @@ const OPERATING = 'operating';
 const INVESTING = 'investing';
 const FINANCING = 'financing';
 
+const LABELS = {
+  income: '\u6536\u5165',
+  expense: '\u652f\u51fa',
+  operating: '\u71df\u696d',
+  investing: '\u6295\u8cc7',
+  financing: '\u878d\u8cc7',
+  operatingRevenue: '\u4e00\u3001\u71df\u696d\u6536\u5165',
+  operatingExpense: '\u4e8c\u3001\u71df\u696d\u8cbb\u7528',
+  assets: '\u8cc7\u7522 (Assets)',
+  currentAssets: '\u6d41\u52d5\u8cc7\u7522',
+  nonCurrentAssets: '\u975e\u6d41\u52d5\u8cc7\u7522',
+  liabilitiesEquity: '\u8ca0\u50b5\u53ca\u6b0a\u76ca (Liabilities & Equity)',
+  currentLiabilities: '\u6d41\u52d5\u8ca0\u50b5',
+  equity: '\u6b0a\u76ca',
+  netIncome: '\u672c\u671f\u640d\u76ca',
+  operatingCashflow: '\u71df\u696d\u6d3b\u52d5\u73fe\u91d1\u6d41\u91cf',
+  investingCashflow: '\u6295\u8cc7\u6d3b\u52d5\u73fe\u91d1\u6d41\u91cf',
+  financingCashflow: '\u878d\u8cc7\u6d3b\u52d5\u73fe\u91d1\u6d41\u91cf',
+  netCashChange: '\u672c\u671f\u73fe\u91d1\u53ca\u7d04\u7576\u73fe\u91d1\u6de8\u589e\u52a0',
+  openingCapital: '\u671f\u521d\u80a1\u672c',
+  openingRetainedEarnings: '\u671f\u521d\u4fdd\u7559\u76c8\u9918',
+  capitalChange: '\u672c\u671f\u80a1\u672c\u8b8a\u52d5',
+  endingCapital: '\u671f\u672b\u80a1\u672c',
+  endingRetainedEarnings: '\u671f\u672b\u4fdd\u7559\u76c8\u9918',
+  endingEquity: '\u671f\u672b\u6b0a\u76ca\u5408\u8a08',
+  trialBalance: '\u8a66\u7b97\u8868',
+  noMemo: '\u7121\u6458\u8981'
+};
+
 function debitBase(entry) {
   return Number(entry?.debit_amount_base ?? entry?.debit_amount ?? 0);
 }
@@ -20,14 +49,14 @@ function amountBase(row) {
 }
 
 function normalizeType(type) {
-  if (type === '收入' || type === 'income' || type === 'deposit') return 'income';
-  if (type === '支出' || type === 'expense' || type === 'withdrawal') return 'expense';
+  if (type === LABELS.income || type === 'income' || type === 'deposit') return 'income';
+  if (type === LABELS.expense || type === 'expense' || type === 'withdrawal') return 'expense';
   return type || '';
 }
 
 function cashflowActivity(category) {
-  if (category === '投資' || category === INVESTING) return INVESTING;
-  if (category === '融資' || category === FINANCING) return FINANCING;
+  if (category === LABELS.investing || category === INVESTING) return INVESTING;
+  if (category === LABELS.financing || category === FINANCING) return FINANCING;
   return OPERATING;
 }
 
@@ -35,6 +64,29 @@ function accountBalance(row) {
   if (!row) return 0;
   if (row.type === 'asset' || row.type === 'expense') return Number(row.debitTotal || 0) - Number(row.creditTotal || 0);
   return Number(row.creditTotal || 0) - Number(row.debitTotal || 0);
+}
+
+function dayBefore(dateString) {
+  if (!dateString) return null;
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function netCreditBalance(rows, code) {
+  const row = rows.find(item => item.code === code);
+  return row ? Number(row.creditTotal || 0) - Number(row.debitTotal || 0) : 0;
+}
+
+function netIncomeFromRows(rows) {
+  const revenue = rows
+    .filter(row => String(row.code || '').startsWith('4'))
+    .reduce((sum, row) => sum + (Number(row.creditTotal || 0) - Number(row.debitTotal || 0)), 0);
+  const expense = rows
+    .filter(row => String(row.code || '').startsWith('5') || String(row.code || '').startsWith('6'))
+    .reduce((sum, row) => sum + (Number(row.debitTotal || 0) - Number(row.creditTotal || 0)), 0);
+  return revenue - expense;
 }
 
 function applyJournalEntryDateFilters(query, startDate, endDate) {
@@ -212,7 +264,7 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
     return Array.from(new Map(journalEntries.map(entry => [entry.id, entry])).values()).map(entry => ({
       id: entry.id,
       date: entry.entry_date,
-      summary: entry.memo || 'No memo',
+      summary: entry.memo || LABELS.noMemo,
       bank: '-',
       debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
       debitAmount: debitBase(entry),
@@ -242,7 +294,6 @@ export async function buildIncomeStatement(transactions = [], startDate = null, 
   const { rows } = await fetchTrialBalance(transactions, startDate, endDate);
   const revenueRows = rows.filter(row => String(row.code || '').startsWith('4'));
   const expenseRows = rows.filter(row => String(row.code || '').startsWith('5') || String(row.code || '').startsWith('6'));
-
   const totalRevenue = revenueRows.reduce((sum, row) => sum + (Number(row.creditTotal || 0) - Number(row.debitTotal || 0)), 0);
   const totalExpense = expenseRows.reduce((sum, row) => sum + (Number(row.debitTotal || 0) - Number(row.creditTotal || 0)), 0);
 
@@ -250,12 +301,12 @@ export async function buildIncomeStatement(transactions = [], startDate = null, 
     type: 'structured',
     sections: [
       {
-        title: '一、營業收入',
+        title: LABELS.operatingRevenue,
         items: revenueRows.map(row => [row.name, Number(row.creditTotal || 0) - Number(row.debitTotal || 0), row.code]),
         subtotal: totalRevenue
       },
       {
-        title: '二、營業費用',
+        title: LABELS.operatingExpense,
         items: expenseRows.map(row => [row.name, Number(row.debitTotal || 0) - Number(row.creditTotal || 0), row.code]),
         subtotal: totalExpense
       }
@@ -318,7 +369,6 @@ export async function buildBalanceSheet(transactions = [], startDate = null, end
   const nonCurrentAssetsRows = rows.filter(row => String(row.code || '').startsWith('16'));
   const currentLiabilitiesRows = rows.filter(row => String(row.code || '').startsWith('2'));
   const equityRows = rows.filter(row => String(row.code || '').startsWith('3'));
-
   const income = await buildIncomeStatement(transactions, startDate, endDate);
   const netProfit = Number(income.netProfit || 0);
   const currentAssetsTotal = currentAssetsRows.reduce((sum, row) => sum + accountBalance(row), 0);
@@ -337,34 +387,22 @@ export async function buildBalanceSheet(transactions = [], startDate = null, end
     type: 'structured',
     sections: [
       {
-        title: '資產 (Assets)',
+        title: LABELS.assets,
         subsections: [
-          {
-            title: '流動資產',
-            items: currentAssetsRows.map(row => [row.name, accountBalance(row), row.code]),
-            subtotal: currentAssetsTotal
-          },
-          {
-            title: '非流動資產',
-            items: nonCurrentAssetsRows.map(row => [row.name, accountBalance(row), row.code]),
-            subtotal: nonCurrentAssetsTotal
-          }
+          { title: LABELS.currentAssets, items: currentAssetsRows.map(row => [row.name, accountBalance(row), row.code]), subtotal: currentAssetsTotal },
+          { title: LABELS.nonCurrentAssets, items: nonCurrentAssetsRows.map(row => [row.name, accountBalance(row), row.code]), subtotal: nonCurrentAssetsTotal }
         ],
         total: currentAssetsTotal + nonCurrentAssetsTotal
       },
       {
-        title: '負債及權益 (Liabilities & Equity)',
+        title: LABELS.liabilitiesEquity,
         subsections: [
+          { title: LABELS.currentLiabilities, items: currentLiabilitiesRows.map(row => [row.name, accountBalance(row), row.code]), subtotal: liabilitiesTotal },
           {
-            title: '流動負債',
-            items: currentLiabilitiesRows.map(row => [row.name, accountBalance(row), row.code]),
-            subtotal: liabilitiesTotal
-          },
-          {
-            title: '權益',
+            title: LABELS.equity,
             items: [
               ...equityRows.map(row => [row.name, accountBalance(row), row.code]),
-              ['本期損益', netProfit, '3310']
+              [LABELS.netIncome, netProfit, '3310']
             ],
             subtotal: equityAccountTotal + netProfit
           }
@@ -383,10 +421,10 @@ export async function buildCashflowStatement(transactions = [], startDate = null
     console.warn('Unable to build linked-bank cashflow, using local transactions:', error.message);
     const analysis = buildCashFlowByActivity(transactions || []);
     return [
-      ['營業活動現金流量', analysis.operating],
-      ['投資活動現金流量', analysis.investing],
-      ['融資活動現金流量', analysis.financing],
-      ['本期現金及約當現金淨增加', analysis.net]
+      [LABELS.operatingCashflow, analysis.operating],
+      [LABELS.investingCashflow, analysis.investing],
+      [LABELS.financingCashflow, analysis.financing],
+      [LABELS.netCashChange, analysis.net]
     ];
   }
 }
@@ -415,38 +453,50 @@ export async function buildCashflowStatementByLinkedBanks(transactions = [], sta
 
   const net = totals[OPERATING] + totals[INVESTING] + totals[FINANCING];
   return [
-    ['營業活動現金流量', totals[OPERATING]],
-    ['投資活動現金流量', totals[INVESTING]],
-    ['融資活動現金流量', totals[FINANCING]],
-    ['本期現金及約當現金淨增加', net]
+    [LABELS.operatingCashflow, totals[OPERATING]],
+    [LABELS.investingCashflow, totals[INVESTING]],
+    [LABELS.financingCashflow, totals[FINANCING]],
+    [LABELS.netCashChange, net]
   ];
 }
 
 export async function buildEquityStatement(transactions = [], startDate = null, endDate = null) {
   try {
+    const openingCutoff = dayBefore(startDate);
+    const openingTrialBalance = startDate ? await fetchSupabaseTrialBalance(null, openingCutoff) : { rows: [] };
+    const openingCapital = netCreditBalance(openingTrialBalance.rows, '3110');
+    const openingRetainedEarnings = netCreditBalance(openingTrialBalance.rows, '3310') + netIncomeFromRows(openingTrialBalance.rows);
+
     const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const capitalRow = rows.find(row => row.code === '3110');
-    const retainedRow = rows.find(row => row.code === '3310');
-    const income = await buildIncomeStatement(transactions, startDate, endDate);
-    const capitalChange = capitalRow ? Number(capitalRow.creditTotal || 0) - Number(capitalRow.debitTotal || 0) : 0;
-    const retainedEarnings = (retainedRow ? Number(retainedRow.creditTotal || 0) - Number(retainedRow.debitTotal || 0) : 0)
-      + Number(income.netProfit || 0);
-    const endingEquity = capitalChange + retainedEarnings;
+    const capitalChange = netCreditBalance(rows, '3110');
+    const retainedAccountChange = netCreditBalance(rows, '3310');
+    const netProfitThisPeriod = netIncomeFromRows(rows);
+    const retainedEarningsChange = retainedAccountChange + netProfitThisPeriod;
+    const endingCapital = openingCapital + capitalChange;
+    const endingRetainedEarnings = openingRetainedEarnings + retainedEarningsChange;
+    const endingEquity = endingCapital + endingRetainedEarnings;
 
     return [
-      ['期初投入股本', 0],
-      ['本期股本變動', capitalChange],
-      ['本期保留盈餘與損益', retainedEarnings],
-      ['期末權益合計', endingEquity]
+      [LABELS.openingCapital, openingCapital],
+      [LABELS.openingRetainedEarnings, openingRetainedEarnings],
+      [LABELS.capitalChange, capitalChange],
+      [LABELS.netIncome, netProfitThisPeriod],
+      [LABELS.endingCapital, endingCapital],
+      [LABELS.endingRetainedEarnings, endingRetainedEarnings],
+      [LABELS.endingEquity, endingEquity]
     ];
   } catch (error) {
     console.warn('Unable to load Supabase equity statement, using local transactions:', error.message);
     const analysis = buildEquityAnalysis(transactions || [], 0);
+    const endingCapital = Number(analysis.openingCapital || 0) + Number(analysis.capitalChange || 0);
     return [
-      ['期初投入股本', analysis.openingCapital],
-      ['本期股本變動', analysis.capitalChange],
-      ['本期保留盈餘與損益', analysis.retainedEarnings],
-      ['期末權益合計', analysis.endingEquity]
+      [LABELS.openingCapital, analysis.openingCapital],
+      [LABELS.openingRetainedEarnings, 0],
+      [LABELS.capitalChange, analysis.capitalChange],
+      [LABELS.netIncome, analysis.retainedEarnings],
+      [LABELS.endingCapital, endingCapital],
+      [LABELS.endingRetainedEarnings, analysis.retainedEarnings],
+      [LABELS.endingEquity, analysis.endingEquity]
     ];
   }
 }
@@ -483,9 +533,9 @@ export async function buildTrialBalance(transactions = [], startDate = null, end
     type: 'structured',
     sections: [
       {
-        title: includeAdjustments ? '試算表（含 IFRS 調整）' : '試算表',
+        title: includeAdjustments ? `${LABELS.trialBalance}\uff08\u542b IFRS \u8abf\u6574\uff09` : LABELS.trialBalance,
         items: rows.map(row => [
-          `${row.name}（借 ${Number(row.debitTotal || 0).toLocaleString()} / 貸 ${Number(row.creditTotal || 0).toLocaleString()}）`,
+          `${row.name}\uff08\u501f ${Number(row.debitTotal || 0).toLocaleString()} / \u8cb8 ${Number(row.creditTotal || 0).toLocaleString()}\uff09`,
           Number(row.debitTotal || 0) - Number(row.creditTotal || 0),
           row.code
         ]),
