@@ -1371,6 +1371,7 @@ async function deleteUnvouchedTransactions() {
   state.transactions = (state.transactions || []).filter(tx => tx.voucher_id || tx.voucher_id === undefined);
   saveState(state);
   await renderTransactionTable();
+  await Promise.all([renderBankAccounts(), renderReports()]);
   renderDashboard();
   showMessage(`已刪除 ${rows.length} 筆無憑證交易。`);
 }
@@ -4317,6 +4318,7 @@ function initializeEventsInternal() {
             saveState(state);
           }
           await renderTransactionTable();
+          await renderBankAccounts();
           await renderReports();
           showMessage('交易已成功刪除。');
         }
@@ -4500,7 +4502,8 @@ function initializeEventsInternal() {
           .from('bank_accounts')
           .update(bankData)
           .eq('id', state.editingBankId)
-          ;
+          .select('id')
+          .single();
 
         if (error) {
           alert('更新失敗：' + error.message);

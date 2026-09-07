@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 0.2.81 - 2026-09-07
+
+- Reject missing-profile callers in both manual transaction mutation RPCs.
+- Align super_admin policies across bank accounts, bank movements, transactions and journal entries.
+- Require a returned bank row for update/delete success; refresh balances and reports after transaction deletion.
+- Verified rollback integration tests for admin/accounting/super_admin and denied manager/employee/missing-profile cases.
+
 ## 0.2.80 - 2026-09-07
 
 - Calculate bank account balances from all posted movements instead of the opening-balance generated column.

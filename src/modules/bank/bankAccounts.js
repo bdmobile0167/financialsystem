@@ -32,7 +32,9 @@ export async function deleteBankAccount(id) {
   const { error } = await supabase
     .from('bank_accounts')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select('id')
+    .single();
 
   if (error) throw error;
 }
