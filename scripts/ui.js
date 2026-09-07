@@ -1238,7 +1238,7 @@ async function renderTransactionTable() {
   try {
     const { data, error } = await supabase
       .from('bank_transactions')
-      .select('id, bank_account_id, tx_date, type, amount, description, transaction_no, counterparty, category, remark, attachment_id, voucher_id, bank:bank_accounts(bank_name, nickname, account_number), voucher:vouchers(voucher_no, status, category, project_id, summary)')
+      .select('id, bank_account_id, tx_date, type, amount, currency, exchange_rate, amount_base, description, transaction_no, counterparty, category, remark, attachment_id, voucher_id, bank:bank_accounts(bank_name, nickname, account_number), voucher:vouchers(voucher_no, status, category, project_id, summary)')
       .order('tx_date', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -1255,6 +1255,9 @@ async function renderTransactionTable() {
       type: transaction.type,
       category: transaction.category || transaction.voucher?.category || '營業',
       amount: transaction.amount,
+      currency: transaction.currency || 'TWD',
+      exchange_rate: transaction.exchange_rate,
+      amount_base: transaction.amount_base,
       voucher_id: transaction.voucher_id,
       transaction_no: transaction.transaction_no || '',
       voucher: transaction.voucher?.voucher_no || transaction.transaction_no,
@@ -1333,7 +1336,7 @@ async function renderTransactionTable() {
       <td>${escapeHtml(tx.category || '營業')}</td>
       <td>${escapeHtml(tx.journal?.debit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
       <td>${escapeHtml(tx.journal?.credit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
-      <td>$${Number(tx.amount).toLocaleString()}</td>
+      <td>${escapeHtml(tx.currency)} ${Number(tx.amount).toLocaleString()}${tx.currency !== 'TWD' ? `<div class="muted">匯率 ${Number(tx.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 6 })}<br>TWD ${Number(tx.amount_base).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>` : ''}</td>
       <td>${tx.voucher_id
         ? '<span class="muted">由付款憑證管理</span>'
         : `<button class="secondary delete-transaction-btn" data-id="${tx.id || ''}" data-index="${state.transactions.indexOf(tx)}">刪除</button>`}
@@ -3310,6 +3313,7 @@ async function renderBankAccounts() {
           <div class="bank-account-meta">
             <span>帳號末碼：${escapeHtml(accountTail)}</span>
             <span>完整帳號：${escapeHtml(a.account_number || a.accountNumber || '-')}</span>
+            <span>幣別：${escapeHtml(a.currency || 'TWD')}${a.currency_locked ? '（已鎖定）' : ''}</span>
             <span>綁定科目：${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<em>未綁定</em>'}</span>
           </div>
           <div class="bank-account-balance">${escapeHtml(a.currency || 'TWD')} ${balanceDisplay}</div>
@@ -3349,6 +3353,10 @@ function getSelectedOptionText(selectEl) {
 }
 
 function updateTransactionAccountSummary() {
+  const bankId = document.getElementById('txBankAccount')?.value;
+  const bank = (window.__bankAccountsForTransaction || []).find(item => item.id === bankId);
+  const amountLabel = document.querySelector('label[for="txAmount"]');
+  if (amountLabel) amountLabel.textContent = `金額（${bank?.currency || 'TWD'}）`;
   const summary = document.getElementById('txAccountSummary');
   const debitSelect = document.getElementById('txDebitAccount');
   const creditSelect = document.getElementById('txCreditAccount');
@@ -4591,7 +4599,7 @@ function initializeEventsInternal() {
     if (debitAccountId === creditAccountId) {
       throw new Error('借方與貸方科目不可相同');
     }
-    if (!amount || amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('請輸入大於 0 的交易金額');
     }
     if (!description) {

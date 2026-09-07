@@ -1,5 +1,20 @@
 # 變更紀錄
 
+## 0.2.83 - 2026-09-07
+
+- Lock bank currency when an opening balance or first reference exists, including statement, voucher, payroll and project references.
+- Preserve the lock after reference deletion; reject attempts to clear it.
+- Serialize manual entries with bank currency edits using a bank row update lock.
+- Display currency lock state; verified rollback tests and existing FX/role regression suites.
+
+## 0.2.82 - 2026-09-07
+
+- Snapshot bank currency and the latest rate on or before the transaction date in all three manual-entry records.
+- Force TWD rate to one; reject missing/inactive currencies, missing rates and nonfinite amounts before writing.
+- Preserve historical entry rates when exchange-rate master data changes.
+- Show transaction currency/rate/base amount and allow decimal entry amounts.
+- Verified FX and TWD synchronization, invalid-input rejection, and the existing bank role regression suite using rollback SQL tests.
+
 ## 0.2.81 - 2026-09-07
 
 - Reject missing-profile callers in both manual transaction mutation RPCs.
