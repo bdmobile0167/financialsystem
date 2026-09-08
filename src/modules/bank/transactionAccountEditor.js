@@ -12,8 +12,15 @@ export async function openTransactionAccountEditor({ client, transactionId, getA
   const close = dialog.querySelector('[data-close]');
   const form = dialog.querySelector('form');
   let saving = false;
-  close.onclick = () => dialog.close();
-  dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+  const dismiss = () => {
+    dialog.close();
+    dialog.remove();
+  };
+  close.onclick = () => { if (!saving) dismiss(); };
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    if (!saving) dismiss();
+  });
   dialog.addEventListener('close', () => dialog.remove(), { once: true });
   dialog.showModal();
   try {
@@ -63,7 +70,7 @@ export async function openTransactionAccountEditor({ client, transactionId, getA
         if (error) throw error;
         committed = true;
         await onSaved();
-        dialog.close();
+        dismiss();
       } catch (error) {
         status.textContent = committed ? `科目已儲存，但畫面更新失敗：${error.message}` : error.message;
         if (committed) form.remove();

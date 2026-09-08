@@ -2824,3 +2824,17 @@ button.dashboard-link {
 .transaction-account-dialog label { display: block; margin-top: 8px; }
 .transaction-account-dialog select { width: 100%; min-width: 0; }
 .transaction-account-dialog [role="status"] { overflow-wrap: anywhere; }
+
+.customer-toolbar { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin: 12px 0; }
+.customer-toolbar label { display: grid; gap: 4px; }
+.customer-toolbar button { width: auto; }
+.customer-edit-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; padding: 16px 0; border-block: 1px solid #d4dde7; }
+.customer-edit-form h3, .customer-edit-form [role="status"] { grid-column: 1 / -1; margin: 0; }
+.customer-edit-form label { display: grid; gap: 4px; min-width: 0; }
+.customer-edit-form input, .customer-edit-form select { width: 100%; min-width: 0; }
+#customers [role="status"], #customers td { overflow-wrap: anywhere; }
+#customers .table-wrapper { overflow-x: auto; }
+@media (max-width: 600px) {
+  .customer-edit-form { grid-template-columns: minmax(0, 1fr); }
+  .customer-toolbar label { width: 100%; }
+}

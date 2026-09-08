@@ -1,5 +1,17 @@
 # 變更紀錄
 
+## Unreleased - 2026-09-08
+
+- Apply AR customer master and atomic save/audit RPC remotely, with revision conflicts, restricted table access and rollback regression tests. Customer UI and AR invoice/receipt workflows remain pending.
+
+- Remove transaction account dialogs synchronously on dismissal; verify duplicate-submit locking and committed-save/failed-refresh behavior. Rerun transaction list regressions.
+
+- Reject conflicting OCR date/month fields; add a live API sample-test runner with per-field checks and input hashes. Actual user-sample model runs remain pending source images and authenticated test access.
+
+- Add per-file batch invoice recognition with partial-failure recovery and employee-owned expense descriptions.
+- Validate OCR uploads and extracted dates/amounts; add mocked browser/API regression tests.
+- Google Drive archiving and real-invoice accuracy validation remain pending (TASK-029); no deployment or training claimed.
+
 ## 0.2.85 - 2026-09-07
 
 - Paginate transaction rows with exact counts and stable ID ordering; batch journal UUID filters.

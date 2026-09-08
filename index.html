@@ -56,6 +56,7 @@
             <button class="tab-btn" data-tab="transactions">交易管理</button>
             <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
             <button class="tab-btn" data-tab="paymentManagement" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
+            <button class="tab-btn" data-tab="customers" style="display:none;">客戶管理</button>
             <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
           </div>
           <div class="nav-group">
@@ -331,6 +332,8 @@
           </div>
         </section>
 
+        <section id="customers" class="tab-panel" style="display:none;"></section>
+
         <section id="voucherWorkflow" class="tab-panel" style="display:none;">
         <!-- 將原本的雙欄 (grid-2) 移除，讓填表區塊擁有完整寬度以容納多欄位表格 -->
           
@@ -403,10 +406,10 @@
                   <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
                 </label>
                 <label for="aiScanReceiptUpload" class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;">
-                  🤖 AI 掃描憑證自動帶入（新增一列並填好資料）
-                  <input type="file" id="aiScanReceiptUpload" accept="image/*" style="display:none;">
+                  發票批次辨識
+                  <input type="file" id="aiScanReceiptUpload" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;">
                 </label>
-                <span id="aiScanStatus" class="muted" style="margin-left:8px; font-size:12px;"></span>
+                <span id="aiScanStatus" class="muted" role="status" style="margin-left:8px; font-size:12px; overflow-wrap:anywhere;"></span>
                 <button type="submit" class="primary-btn" style="margin-top: 15px; width: 100%;">送出報支申請</button>
               </div>
             </form>

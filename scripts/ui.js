@@ -1,5 +1,7 @@
 ﻿import { supabase } from './supabaseClient.js';
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
+import { mountCustomerManagement } from '../src/modules/receivables/customerManagement.js';
+import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
@@ -4103,68 +4105,7 @@ function initializeEventsInternal() {
     e.target.value = '';
   });
 
-  // 🤖 AI 掃描憑證：讀取圖片後呼叫 Gemini 辨識，自動新增一列並帶入憑證類型／號碼／金額／類別／月份
-  safeListener('aiScanReceiptUpload', 'change', async (e) => {
-    const file = e.target.files?.[0];
-    const statusEl = document.getElementById('aiScanStatus');
-    if (!file) return;
-
-    try {
-      if (statusEl) statusEl.textContent = '🤖 AI 辨識中，請稍候...';
-
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const res = await fetch('/api/scan-receipt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData.session.access_token}` },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' })
-      });
-      const result = await res.json();
-
-      const row = window.addExcelRow(file);
-      if (!row) return;
-
-      if (result.ok && result.extracted) {
-        const ex = result.extracted;
-        const invTypeSelect = row.querySelector('.grid-inv-type');
-        const invNumInput = row.querySelector('.grid-inv-num');
-        const catSelect = row.querySelector('.grid-item-category');
-        const amountInput = row.querySelector('.grid-amount');
-        const monthInput = row.querySelector('.grid-month');
-
-        if (ex.docType && invTypeSelect) {
-          invTypeSelect.value = ex.docType;
-          window.toggleInvoiceRequired?.(invTypeSelect);
-        }
-        if (ex.invoiceNumber && invNumInput) invNumInput.value = ex.invoiceNumber;
-        if (ex.expenseCategory && catSelect) {
-          catSelect.value = ex.expenseCategory;
-          window.toggleCategoryNote?.(catSelect);
-        }
-        if (ex.amount && amountInput) amountInput.value = ex.amount;
-        if (ex.txDate && monthInput) monthInput.value = ex.txDate.slice(0, 7);
-
-        window.calculateVoucherTotal?.();
-
-        if (statusEl) {
-          const confidenceLabel = { high: '信心程度高', medium: '信心程度中等，請覆核', low: '信心程度低，請務必覆核' }[ex.confidence] || '';
-          statusEl.textContent = `✅ 已自動帶入一列（${confidenceLabel || '請覆核內容是否正確'}）`;
-        }
-      } else {
-        if (statusEl) statusEl.textContent = `⚠️ ${result.message || 'AI 辨識失敗，已新增空白列請手動填寫。'}`;
-      }
-    } catch (err) {
-      if (statusEl) statusEl.textContent = `⚠️ AI 掃描發生錯誤：${err.message}`;
-    } finally {
-      e.target.value = '';
-    }
-  });
+  safeListener('aiScanReceiptUpload', 'change', (event) => handleInvoiceBatchUpload(event, supabase));
 
 
   // 在 initializeEventsInternal() 裡面尋找這段：
@@ -4177,7 +4118,7 @@ function initializeEventsInternal() {
       });
       document.querySelectorAll('.modal-backdrop').forEach(modal => modal.remove());
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement') && !isFinanceOperator()) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers') && !isFinanceOperator()) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
@@ -4202,6 +4143,11 @@ function initializeEventsInternal() {
       if (tab === 'paymentManagement') {
         setPaymentManagementMode('queue');
         renderPaymentManagement();
+      }
+      if (tab === 'customers') {
+        mountCustomerManagement(document.getElementById('customers'), {
+          client: supabase, canManage: isFinanceOperator, getDepartments: fetchDepartments
+        });
       }
       if (tab === 'settings') {
         fillCompanyInfoForm();
