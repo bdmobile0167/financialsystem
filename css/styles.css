@@ -2834,7 +2834,41 @@ button.dashboard-link {
 .customer-edit-form input, .customer-edit-form select { width: 100%; min-width: 0; }
 #customers [role="status"], #customers td { overflow-wrap: anywhere; }
 #customers .table-wrapper { overflow-x: auto; }
+#customers table { min-width: 720px; }
+#customers th:first-child, #customers td:first-child,
+#customers th:nth-child(4), #customers td:nth-child(4),
+#customers th:nth-child(5), #customers td:nth-child(5),
+#customers th:nth-child(6), #customers td:nth-child(6) { white-space: nowrap; }
 @media (max-width: 600px) {
   .customer-edit-form { grid-template-columns: minmax(0, 1fr); }
   .customer-toolbar label { width: 100%; }
+}
+
+.ar-toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin: 12px 0; }
+.ar-toolbar label { display: grid; gap: 4px; min-width: 220px; font-weight: 600; }
+.ar-toolbar button { width: auto; }
+.ar-invoice-form { margin: 16px 0; padding: 16px 0; border-block: 1px solid #d4dde7; }
+.ar-invoice-form h3 { margin-top: 0; }
+.ar-invoice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ar-invoice-grid label { display: grid; gap: 4px; min-width: 0; }
+.ar-invoice-grid input, .ar-invoice-grid select, .ar-invoice-grid textarea { width: 100%; min-width: 0; }
+.ar-invoice-grid textarea { min-height: 76px; resize: vertical; }
+.ar-invoice-grid .ar-wide { grid-column: 1 / -1; }
+.ar-lines { min-width: 980px; margin-top: 16px; }
+.ar-lines input, .ar-lines select { width: 100%; min-width: 90px; }
+.ar-lines th:first-child, .ar-lines td:first-child { min-width: 220px; }
+.ar-lines th:nth-child(6), .ar-lines td:nth-child(6) { min-width: 190px; }
+.ar-form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.ar-form-actions strong { margin-left: auto; }
+#arInvoices [role="status"], #arInvoices td { overflow-wrap: anywhere; }
+#arInvoices .table-wrapper { overflow-x: auto; }
+#arInvoices > .table-wrapper > table { min-width: 880px; }
+#arInvoices td:first-child small { display: block; margin-top: 4px; color: #64748b; }
+#arInvoices td:last-child { white-space: nowrap; }
+#arInvoices td:last-child button + button { margin-left: 6px; }
+
+@media (max-width: 760px) {
+  .ar-invoice-grid { grid-template-columns: minmax(0, 1fr); }
+  .ar-toolbar label, .ar-toolbar input, .ar-toolbar select { width: 100%; }
+  .ar-form-actions strong { width: 100%; margin-left: 0; }
 }

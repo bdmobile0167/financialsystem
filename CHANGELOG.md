@@ -1,6 +1,18 @@
 # 變更紀錄
 
-## Unreleased - 2026-09-08
+## 0.2.87 - 2026-09-10
+
+- Apply the AR invoice core directly to Supabase with draft and invoice sequences, invoice lines, finance-only RLS, atomic save/issue RPCs and same-transaction audit logs.
+- Post receivable, per-line revenue and output-tax journals when an invoice is issued; snapshot currency rates and reject missing rates, closed periods, inactive customers, stale revisions and project/department mismatches without partial writes.
+- Add finance-only receivable invoice search, draft editing, customer lookup, project/department selection, per-line revenue accounts, totals, issue confirmation and read-only issued details.
+- Include AR customer and invoice actions in Audit Trail, and pass remote rollback/role/FX tests plus desktop/mobile browser regressions. Receipts, allocations, voiding, aging and credit-limit enforcement remain pending.
+
+## 0.2.86 - 2026-09-10
+
+- Add finance-only paginated customer management with search, create, edit, deactivate, complete replacement payloads and optimistic revision checks.
+- Verify customer UI retries reuse the same UUID, duplicate submissions are locked, stale list responses cannot be accepted, and committed-save/list-refresh failures remain distinguishable.
+- Verify the full app still loads its login screen and the customer form remains within a 390px screenshot viewport.
+- Add a deterministic browser regression runner; all five feature pages plus app bootstrap pass, and migration lint passes.
 
 - Apply AR customer master and atomic save/audit RPC remotely, with revision conflicts, restricted table access and rollback regression tests. Customer UI and AR invoice/receipt workflows remain pending.
 

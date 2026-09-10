@@ -1,6 +1,7 @@
 ﻿import { supabase } from './supabaseClient.js';
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { mountCustomerManagement } from '../src/modules/receivables/customerManagement.js';
+import { mountArInvoiceManagement } from '../src/modules/receivables/arInvoiceManagement.js';
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
@@ -856,7 +857,7 @@ async function renderAuditTrail() {
     let systemAuditQuery = supabase
       .from('audit_logs')
       .select('*')
-      .in('table_name', ['department_budget_requests', 'department_budgets'])
+      .in('table_name', ['department_budget_requests', 'department_budgets', 'customers', 'ar_invoices'])
       .order('created_at', { ascending: false })
       .limit(200);
     if (actionFilter) systemAuditQuery = systemAuditQuery.eq('action', actionFilter);
@@ -895,7 +896,12 @@ async function renderAuditTrail() {
       department_budget_request_reject: '預算申請退件',
       department_budget_create: '部門預算建立',
       department_budget_update: '部門預算調整',
-      department_budget_delete: '部門預算刪除'
+      department_budget_delete: '部門預算刪除',
+      create_ar_customer: 'AR 客戶新增',
+      update_ar_customer: 'AR 客戶修改',
+      create_ar_invoice_draft: '應收發票草稿新增',
+      update_ar_invoice_draft: '應收發票草稿修改',
+      issue_ar_invoice: '應收發票開立'
     };
 
     const normalizedWorkflowLogs = (workflowLogs || []).map(log => ({
@@ -915,24 +921,48 @@ async function renderAuditTrail() {
     const normalizedSystemLogs = (systemLogs || []).map(log => {
       const nextData = log.new_data || {};
       const previousData = log.old_data || {};
+      const nextInvoice = nextData.invoice || (log.table_name === 'ar_invoices' ? nextData : {});
+      const previousInvoice = previousData.invoice || (log.table_name === 'ar_invoices' ? previousData : {});
       const departmentName = nextData.department_name || previousData.department_name || '';
       const amount = nextData.requested_amount || nextData.amount || previousData.requested_amount || previousData.amount || '';
+      let targetNo = log.record_id || '-';
+      let summary = '';
+      let reason = nextData.review_note || nextData.reason || previousData.review_note || previousData.reason || '';
+      let fromStatus = previousData.status || '';
+      let toStatus = nextData.status || '';
+      if (log.table_name === 'customers') {
+        targetNo = nextData.customer_no || previousData.customer_no || targetNo;
+        summary = ['AR 客戶', nextData.name || previousData.name || '', nextData.default_currency || previousData.default_currency || '']
+          .filter(Boolean).join(' / ');
+      } else if (log.table_name === 'ar_invoices') {
+        targetNo = nextInvoice.invoice_no || nextInvoice.draft_no || previousInvoice.invoice_no || previousInvoice.draft_no || targetNo;
+        const invoiceAmount = nextInvoice.total_amount ?? previousInvoice.total_amount;
+        const invoiceCurrency = nextInvoice.currency || previousInvoice.currency || '';
+        summary = ['應收發票', nextInvoice.tax_invoice_no || previousInvoice.tax_invoice_no || '',
+          invoiceAmount === null || invoiceAmount === undefined ? '' : `${invoiceCurrency} ${Number(invoiceAmount).toLocaleString()}`]
+          .filter(Boolean).join(' / ');
+        fromStatus = previousInvoice.status || '';
+        toStatus = nextInvoice.status || '';
+        reason = '';
+      } else {
+        summary = [
+          log.table_name === 'department_budget_requests' ? '部門預算申請' : '部門預算',
+          nextData.fiscal_year || previousData.fiscal_year || '',
+          departmentName,
+          amount ? `NT$ ${Number(amount).toLocaleString()}` : ''
+        ].filter(Boolean).join(' / ');
+      }
       return {
         source: 'system',
         created_at: log.created_at,
         actorName: operatorNameById[log.user_id] || '系統',
         actorRole: '',
         action: log.action,
-        targetNo: log.record_id || '-',
-        summary: [
-          log.table_name === 'department_budget_requests' ? '部門預算申請' : '部門預算',
-          nextData.fiscal_year || previousData.fiscal_year || '',
-          departmentName,
-          amount ? `NT$ ${Number(amount).toLocaleString()}` : ''
-        ].filter(Boolean).join(' / '),
-        reason: nextData.review_note || nextData.reason || previousData.review_note || previousData.reason || '',
-        fromStatus: previousData.status || '',
-        toStatus: nextData.status || '',
+        targetNo,
+        summary,
+        reason,
+        fromStatus,
+        toStatus,
         voucherId: null
       };
     });
@@ -4118,7 +4148,7 @@ function initializeEventsInternal() {
       });
       document.querySelectorAll('.modal-backdrop').forEach(modal => modal.remove());
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers') && !isFinanceOperator()) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers' || tab === 'arInvoices') && !isFinanceOperator()) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
@@ -4147,6 +4177,11 @@ function initializeEventsInternal() {
       if (tab === 'customers') {
         mountCustomerManagement(document.getElementById('customers'), {
           client: supabase, canManage: isFinanceOperator, getDepartments: fetchDepartments
+        });
+      }
+      if (tab === 'arInvoices') {
+        mountArInvoiceManagement(document.getElementById('arInvoices'), {
+          client: supabase, canManage: isFinanceOperator, getDepartments: fetchDepartments, getProjects: fetchProjects
         });
       }
       if (tab === 'settings') {

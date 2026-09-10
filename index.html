@@ -57,6 +57,7 @@
             <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
             <button class="tab-btn" data-tab="paymentManagement" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
             <button class="tab-btn" data-tab="customers" style="display:none;">客戶管理</button>
+            <button class="tab-btn" data-tab="arInvoices" style="display:none;">應收發票</button>
             <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
           </div>
           <div class="nav-group">
@@ -333,6 +334,7 @@
         </section>
 
         <section id="customers" class="tab-panel" style="display:none;"></section>
+        <section id="arInvoices" class="tab-panel" style="display:none;"></section>
 
         <section id="voucherWorkflow" class="tab-panel" style="display:none;">
         <!-- 將原本的雙欄 (grid-2) 移除，讓填表區塊擁有完整寬度以容納多欄位表格 -->
@@ -995,6 +997,11 @@
                   <option value="department_budget_request_approve">預算申請核准</option>
                   <option value="department_budget_request_reject">預算申請退件</option>
                   <option value="department_budget_update">部門預算調整</option>
+                  <option value="create_ar_customer">AR 客戶新增</option>
+                  <option value="update_ar_customer">AR 客戶修改</option>
+                  <option value="create_ar_invoice_draft">應收發票草稿新增</option>
+                  <option value="update_ar_invoice_draft">應收發票草稿修改</option>
+                  <option value="issue_ar_invoice">應收發票開立</option>
                 </select>
               </div>
               <div>
