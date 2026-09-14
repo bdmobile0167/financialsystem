@@ -4,6 +4,7 @@ const STATUS_LABELS = {
   pending_review: '待主管審核',
   pending_accounting: '待會計複核',
   approved: '待付款',
+  partially_paid: '部分付款',
   closed: '已結案',
   manager_rejected: '主管退件',
   accounting_rejected: '會計退件',
@@ -109,17 +110,17 @@ export async function renderDashboard() {
 
     const totalBudget = visibleProjects.reduce((sum, project) => sum + Number(project.total_budget || 0), 0);
     const totalSpent = visibleVouchers
-      .filter(voucher => ['pending_accounting', 'approved', 'closed'].includes(voucher.status))
+      .filter(voucher => ['pending_accounting', 'approved', 'partially_paid', 'closed'].includes(voucher.status))
       .reduce((sum, voucher) => sum + Number(voucher.total_amount || 0), 0);
     const totalRemaining = Math.max(0, totalBudget - totalSpent);
     const pendingReview = visibleVouchers.filter(voucher => voucher.status === 'pending_review').length;
     const pendingAccounting = visibleVouchers.filter(voucher => voucher.status === 'pending_accounting').length;
-    const pendingPayment = visibleVouchers.filter(voucher => voucher.status === 'approved').length;
+    const pendingPayment = visibleVouchers.filter(voucher => ['approved', 'partially_paid'].includes(voucher.status)).length;
     const rejectedCount = visibleVouchers.filter(voucher => ['manager_rejected', 'accounting_rejected'].includes(voucher.status)).length;
 
     const myVouchers = vouchers.filter(voucher => voucher.applicant_id === user.id);
     const myPendingCount = myVouchers.filter(voucher => ['pending_review', 'pending_accounting'].includes(voucher.status)).length;
-    const myCompletedCount = myVouchers.filter(voucher => ['approved', 'closed'].includes(voucher.status)).length;
+    const myCompletedCount = myVouchers.filter(voucher => ['approved', 'partially_paid', 'closed'].includes(voucher.status)).length;
 
     const metrics = isEmployee
       ? [
@@ -157,7 +158,7 @@ export async function renderDashboard() {
     const projectList = visibleProjects.length
       ? visibleProjects.slice(0, 6).map(project => {
           const spent = visibleVouchers
-            .filter(voucher => voucher.project_id === project.id && ['approved', 'closed'].includes(voucher.status))
+            .filter(voucher => voucher.project_id === project.id && ['approved', 'partially_paid', 'closed'].includes(voucher.status))
             .reduce((sum, voucher) => sum + Number(voucher.total_amount || 0), 0);
           const budget = Number(project.total_budget || 0);
           const percent = budget > 0 ? Math.min(100, Math.round(spent / budget * 100)) : 0;

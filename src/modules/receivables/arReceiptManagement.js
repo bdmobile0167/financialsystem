@@ -121,10 +121,12 @@ export function mountArReceiptManagement(root, { client, canManage, confirmActio
         reversalSummary.textContent = `已於 ${receipt.reversal_date || '-'} 沖銷｜原因：${receipt.reversal_reason || '-'}`;
       }
       const tableWrap = document.createElement('div'); tableWrap.className = 'table-wrapper';
-      const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>發票號碼</th><th>沖銷金額</th><th>發票匯率</th><th>收款匯率</th><th>已實現匯差</th></tr></thead><tbody></tbody>';
+      const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>發票號碼</th><th>發票幣別沖銷</th><th>銀行幣別實收</th><th>發票匯率</th><th>收款匯率</th><th>已實現匯差</th></tr></thead><tbody></tbody>';
       allocations.forEach(allocation => {
         const row = document.createElement('tr');
-        [allocation.invoice?.invoice_no || allocation.invoice?.draft_no || '', formatAmount(allocation.amount, receipt.currency),
+        [allocation.invoice?.invoice_no || allocation.invoice?.draft_no || '',
+          formatAmount(allocation.amount, allocation.invoice?.currency || receipt.currency),
+          formatAmount(allocation.receipt_amount ?? allocation.amount, receipt.currency),
           allocation.invoice_exchange_rate, allocation.receipt_exchange_rate, formatAmount(allocation.realized_fx_base, 'TWD')]
           .forEach(value => { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); });
         table.querySelector('tbody').append(row);
@@ -203,7 +205,7 @@ export function mountArReceiptManagement(root, { client, canManage, confirmActio
         <label>收款日期<input name="receipt_date" type="date" required></label>
         <label class="ar-wide">備註<textarea name="memo" maxlength="2000"></textarea></label></div>
         <div class="ar-toolbar"><label>發票號碼搜尋<input data-invoice-search type="search" maxlength="80"></label><button type="button" data-find>查詢未收發票</button></div>
-        <div class="table-wrapper"><table class="ar-allocation-table"><thead><tr><th>發票號碼</th><th>日期／到期日</th><th>原始金額</th><th>已收</th><th>未收</th><th>本次沖銷</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrapper"><table class="ar-allocation-table"><thead><tr><th>發票號碼</th><th>日期／到期日</th><th>原始金額</th><th>已收</th><th>未收</th><th>發票幣別沖銷</th><th>銀行幣別實收</th></tr></thead><tbody></tbody></table></div>
         <div class="ar-form-actions"><strong data-total>收款合計 TWD 0</strong><button type="submit">確認收款入帳</button><button type="button" data-cancel>取消</button></div>
         <p data-form-status role="status"></p>`;
       const customerSearch = form.querySelector('[data-customer-search]');
@@ -213,45 +215,67 @@ export function mountArReceiptManagement(root, { client, canManage, confirmActio
       const allocationBody = form.querySelector('.ar-allocation-table tbody');
       const formStatus = form.querySelector('[data-form-status]');
       const allocations = new Map();
-      let customers = initialCustomers, customerTimer, customerVersion = 0, invoiceVersion = 0;
+      let customers = initialCustomers, customerTimer, customerVersion = 0, invoiceVersion = 0, lastInvoiceResult = null;
       form.elements.receipt_date.value = toLocalDateInputValue();
 
       const renderCustomers = rows => {
         const current = customerSelect.value; customerSelect.replaceChildren(); addOption(customerSelect, '請選擇客戶', '');
         rows.forEach(customer => addOption(customerSelect, `${customer.customer_no} ${customer.name}`, customer.id, customer.id === current));
       };
-      const renderBanks = customer => {
-        const current = bankSelect.value; bankSelect.replaceChildren(); addOption(bankSelect, '請選擇同幣別銀行', '');
+      const renderBanks = () => {
+        const current = bankSelect.value; bankSelect.replaceChildren(); addOption(bankSelect, '請選擇收款銀行', '');
         banks.forEach(bank => {
           const option = new Option(`${bank.nickname || bank.bank_name} (${bank.account_number})｜${bank.currency}`, bank.id,
-            false, bank.id === current && bank.currency === customer?.default_currency);
-          option.disabled = Boolean(customer) && bank.currency !== customer.default_currency; bankSelect.add(option);
+            false, bank.id === current);
+          bankSelect.add(option);
         });
       };
-      renderCustomers(customers); renderBanks(null);
+      renderCustomers(customers); renderBanks();
       const updateTotal = () => {
-        const customer = customers.find(row => row.id === customerSelect.value);
-        const total = [...allocations.values()].reduce((sum, amount) => sum + amount, 0);
-        form.querySelector('[data-total]').textContent = `收款合計 ${formatAmount(roundMoney(total), customer?.default_currency || 'TWD')}`;
+        const bank = banks.find(row => row.id === bankSelect.value);
+        const total = [...allocations.values()].reduce((sum, item) => sum + (Number(item.receiptAmount) || 0), 0);
+        form.querySelector('[data-total]').textContent = bank
+          ? `收款合計 ${formatAmount(roundMoney(total), bank.currency)}`
+          : '收款合計：請先選擇銀行';
       };
       const renderInvoices = result => {
+        lastInvoiceResult = result;
         allocationBody.replaceChildren();
+        const bank = banks.find(item => item.id === bankSelect.value);
         result.rows.forEach(invoice => {
           const row = document.createElement('tr');
           const values = [invoice.invoice_no || invoice.draft_no, `${invoice.issue_date} / ${invoice.due_date}`,
             formatAmount(invoice.total_amount, invoice.currency), formatAmount(invoice.paid_amount, invoice.currency),
             formatAmount(invoice.outstanding_amount, invoice.currency)];
           values.forEach(value => { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); });
-          const amountCell = document.createElement('td'); const input = document.createElement('input');
-          input.type = 'number'; input.min = '0'; input.max = String(invoice.outstanding_amount); input.step = '0.01';
-          input.value = allocations.get(invoice.invoice_id) || ''; input.setAttribute('aria-label', `沖銷 ${invoice.invoice_no || invoice.draft_no}`);
-          input.addEventListener('input', () => {
-            const amount = Number(input.value);
-            if (Number.isFinite(amount) && amount > 0) allocations.set(invoice.invoice_id, roundMoney(amount));
-            else allocations.delete(invoice.invoice_id);
+          const current = allocations.get(invoice.invoice_id) || { invoiceAmount: '', receiptAmount: '' };
+          const invoiceCell = document.createElement('td'); const invoiceInput = document.createElement('input');
+          invoiceInput.dataset.invoiceAmount = '1'; invoiceInput.type = 'number'; invoiceInput.min = '0';
+          invoiceInput.max = String(invoice.outstanding_amount); invoiceInput.step = '0.01'; invoiceInput.value = current.invoiceAmount;
+          invoiceInput.setAttribute('aria-label', `${invoice.currency} 沖銷 ${invoice.invoice_no || invoice.draft_no}`);
+          const receiptCell = document.createElement('td'); const receiptInput = document.createElement('input');
+          receiptInput.dataset.receiptAmount = '1'; receiptInput.type = 'number'; receiptInput.min = '0'; receiptInput.step = '0.01';
+          receiptInput.value = current.receiptAmount; receiptInput.disabled = !bank;
+          receiptInput.readOnly = Boolean(bank && bank.currency === invoice.currency);
+          if (receiptInput.readOnly && current.invoiceAmount) {
+            receiptInput.value = current.invoiceAmount;
+            allocations.set(invoice.invoice_id, { ...current, receiptAmount: current.invoiceAmount });
+          }
+          receiptInput.setAttribute('aria-label', `${bank?.currency || '銀行幣別'} 實收 ${invoice.invoice_no || invoice.draft_no}`);
+          const saveAllocation = () => {
+            const invoiceAmount = Number(invoiceInput.value);
+            if (receiptInput.readOnly) receiptInput.value = invoiceInput.value;
+            const receiptAmount = Number(receiptInput.value);
+            if ((Number.isFinite(invoiceAmount) && invoiceAmount > 0) || (Number.isFinite(receiptAmount) && receiptAmount > 0)) {
+              allocations.set(invoice.invoice_id, {
+                invoiceAmount: Number.isFinite(invoiceAmount) && invoiceAmount > 0 ? roundMoney(invoiceAmount) : '',
+                receiptAmount: Number.isFinite(receiptAmount) && receiptAmount > 0 ? roundMoney(receiptAmount) : ''
+              });
+            } else allocations.delete(invoice.invoice_id);
             updateTotal();
-          });
-          amountCell.append(input); row.append(amountCell); allocationBody.append(row);
+          };
+          invoiceInput.addEventListener('input', saveAllocation); receiptInput.addEventListener('input', saveAllocation);
+          invoiceCell.append(invoiceInput); receiptCell.append(receiptInput); row.append(invoiceCell, receiptCell); allocationBody.append(row);
         });
         formStatus.textContent = result.count > MAX_ALLOCATIONS
           ? `共有 ${result.count} 張未收發票，目前顯示前 ${MAX_ALLOCATIONS} 張，請輸入發票號碼縮小範圍`
@@ -276,8 +300,9 @@ export function mountArReceiptManagement(root, { client, canManage, confirmActio
         }, 250);
       });
       customerSelect.addEventListener('change', () => {
-        allocations.clear(); renderBanks(customers.find(row => row.id === customerSelect.value)); updateTotal(); loadInvoices();
+        allocations.clear(); renderBanks(); updateTotal(); loadInvoices();
       });
+      bankSelect.addEventListener('change', () => { if (lastInvoiceResult) renderInvoices(lastInvoiceResult); updateTotal(); });
       form.querySelector('[data-find]').onclick = loadInvoices;
       form.querySelector('[data-cancel]').onclick = () => {
         if (!saving) { clearTimeout(customerTimer); editor.replaceChildren(); editing = false; }
@@ -286,12 +311,15 @@ export function mountArReceiptManagement(root, { client, canManage, confirmActio
         event.preventDefault(); if (saving || !alive()) return;
         const customer = customers.find(row => row.id === customerSelect.value);
         const bank = banks.find(row => row.id === bankSelect.value);
-        const selected = [...allocations].filter(([, amount]) => Number.isFinite(amount) && amount > 0)
-          .map(([invoice_id, amount]) => ({ invoice_id, amount }));
-        if (!customer || !bank || bank.currency !== customer.default_currency) { formStatus.textContent = '請選擇客戶及相同幣別的收款銀行'; return; }
-        if (!selected.length || selected.length > MAX_ALLOCATIONS) { formStatus.textContent = '請填寫 1 至 200 張發票的沖銷金額'; return; }
-        const total = roundMoney(selected.reduce((sum, item) => sum + item.amount, 0));
-        if (selected.some(item => item.amount <= 0) || total <= 0) { formStatus.textContent = '沖銷金額必須大於 0'; return; }
+        const selected = [...allocations].map(([invoice_id, item]) => ({ invoice_id,
+          amount: Number(item.invoiceAmount), receipt_amount: Number(item.receiptAmount) }));
+        if (!customer || !bank) { formStatus.textContent = '請選擇客戶與收款銀行'; return; }
+        if (!selected.length || selected.length > MAX_ALLOCATIONS || selected.some(item =>
+          !Number.isFinite(item.amount) || item.amount <= 0 || !Number.isFinite(item.receipt_amount) || item.receipt_amount <= 0)) {
+          formStatus.textContent = '請填寫 1 至 200 張發票的沖銷金額與銀行實收金額'; return;
+        }
+        const total = roundMoney(selected.reduce((sum, item) => sum + item.receipt_amount, 0));
+        if (total <= 0) { formStatus.textContent = '銀行實收合計必須大於 0'; return; }
         const payload = { customer_id: customer.id, bank_account_id: bank.id,
           receipt_date: form.elements.receipt_date.value, amount: total, memo: form.elements.memo.value };
         saving = true; formStatus.textContent = '收款入帳中...';

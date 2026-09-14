@@ -4,6 +4,7 @@ export const VOUCHER_STATUS = {
   PENDING_ACCOUNTING: 'pending_accounting',
   ACCOUNTING_REJECTED: 'accounting_rejected',
   APPROVED: 'approved',
+  PARTIALLY_PAID: 'partially_paid',
   CLOSED: 'closed',
   PAID: 'paid',
   VOIDED: 'voided',
@@ -16,6 +17,7 @@ export const STATUS_LABELS = {
   [VOUCHER_STATUS.PENDING_ACCOUNTING]: '\u5f85\u6703\u8a08\u6838\u51c6',
   [VOUCHER_STATUS.ACCOUNTING_REJECTED]: '\u6703\u8a08\u9000\u56de',
   [VOUCHER_STATUS.APPROVED]: '\u5f85\u4ed8\u6b3e',
+  [VOUCHER_STATUS.PARTIALLY_PAID]: '\u90e8\u5206\u4ed8\u6b3e',
   [VOUCHER_STATUS.CLOSED]: '\u5df2\u92b7\u5e33',
   [VOUCHER_STATUS.PAID]: '\u5df2\u4ed8\u6b3e',
   [VOUCHER_STATUS.VOIDED]: '\u5df2\u4f5c\u5ee2',
@@ -42,7 +44,7 @@ export function getAllowedActions(role, status) {
     actions.push('accounting_approve', 'accounting_reject');
   }
 
-  if (financeRoles.includes(role) && status === VOUCHER_STATUS.APPROVED) {
+  if (financeRoles.includes(role) && [VOUCHER_STATUS.APPROVED, VOUCHER_STATUS.PARTIALLY_PAID].includes(status)) {
     actions.push('close');
   }
 

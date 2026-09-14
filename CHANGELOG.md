@@ -1,5 +1,15 @@
 # 變更紀錄
 
+## 0.2.89 - 2026-09-14
+
+- Apply AR aging, receipt reversal and cross-currency receipt allocation directly to Supabase; keep local reference SQL and rollback tests under `tools/sql/`.
+- Add finance-only historical aging by customer, department, project and overdue bucket with server pagination and separate totals per currency. Future receipts no longer alter earlier as-of balances.
+- Add atomic receipt reversal with date, reason, revision/idempotency checks, mirrored bank movement and journals, restored invoice balances and complete audit history. Posted records remain immutable.
+- Allow invoice-currency `amount` and bank-currency `receipt_amount` per allocation; post cash and receivable base values separately and recognize the resulting realized FX gain or loss.
+- Verify two independent concurrent receipt/issue scenarios: row locks reject or serialize conflicting writes without over-allocation, credit-limit breach or partial records.
+- Pass AR core, FX, role, reversal, aging and credit-limit remote tests plus all 12 desktop/mobile browser regressions. Authenticated Production acceptance remains pending, so the release is not `1.0.0`.
+- Treat the four supplied invoice images as live-model fixtures rather than UI assets; score document type on the three single-invoice cases and require field abstention for the multi-document image. Actual model execution still requires the original local files and a test session token.
+
 ## 0.2.88 - 2026-09-14
 
 - Apply `ar_receipt_core` and `restrict_ar_financial_visibility` directly to Supabase, adding finance-only receipts, allocations, an invoker balance view and atomic `post_ar_receipt` posting.
@@ -8,7 +18,7 @@
 - Enforce customer credit limits while issuing invoices under a customer row lock; treat null as unlimited and zero as no credit, and release available credit after posted receipts.
 - Add finance-only AR receipt search, customer lookup, currency-compatible bank selection, invoice allocation entry and receipt details on desktop and mobile.
 - Preserve `ar_receipt_id` in transaction mapping; show AR receipt numbers and prevent manual account editing, single deletion and bulk manual-entry deletion for AR-generated rows.
-- Pass AR core/FX/role/credit rollback tests, legacy manual transaction and bank regression tests, migration lint, plus all desktop/mobile browser regressions. Voiding, aging, cross-currency settlement and authenticated production acceptance remain pending.
+- Pass AR core/FX/role/credit rollback tests, legacy manual transaction and bank regression tests, migration lint, plus all desktop/mobile browser regressions. Voiding, aging and cross-currency settlement were completed in 0.2.89; authenticated production acceptance remains pending.
 
 ## 0.2.87 - 2026-09-10
 

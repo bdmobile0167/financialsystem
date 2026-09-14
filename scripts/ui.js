@@ -4,6 +4,7 @@ import { mountCustomerManagement } from '../src/modules/receivables/customerMana
 import { mountArInvoiceManagement } from '../src/modules/receivables/arInvoiceManagement.js';
 import { mountArReceiptManagement } from '../src/modules/receivables/arReceiptManagement.js';
 import { mountArAgingReport } from '../src/modules/receivables/arAgingReport.js';
+import { mountVoucherPaymentSplitEditor } from '../src/modules/payment/voucherPaymentSplits.js';
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
@@ -16,7 +17,7 @@ import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAtta
 import { signInWithSupabase, getCurrentSessionUser, changeMyPassword, signOutSupabase } from './auth.js';
 import { loadBankAccounts, addBankAccount, deleteBankAccount, getBankBalance } from '../src/modules/bank/bankAccounts.js';
 import { createProject, updateProjectBudget, fetchProjectBudgetLogs } from '../src/modules/budget/budget.js';
-import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject, closeVoucherByAccounting } from '../src/modules/voucher/voucherApi.js';
+import { fetchAccounts, fetchBankAccounts, fetchDepartments, fetchMyVouchers, fetchWorkflowLogs, createVoucher, updateVoucher, deleteVoucher, managerApprove, managerReject, accountingApprove, accountingReject } from '../src/modules/voucher/voucherApi.js';
 import { fetchAllUsers, updateUserProfile, resetUserPassword, toggleUserActive, inviteNewUser, updateUserPermissions, getDefaultPermissions, fetchProjectMembers, updateProjectMembers as saveProjectMembersApi } from '../src/modules/admin/adminApi.js';
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead, subscribeMyNotifications } from './notifications.js';
 import { calcInvoiceTax } from './taxCalc.js';
@@ -1471,7 +1472,17 @@ async function fetchPayrollAgencyIdentifiers() {
   return (data || []).map(item => item.payee_identifier).filter(Boolean);
 }
 
-function recipientSummary(recipient, line) {
+function recipientSummary(recipient, line, splits = []) {
+  const activeSplits = (splits || []).filter(split => split.payment_status !== 'voided');
+  if (activeSplits.length) {
+    const names = Array.from(new Set(activeSplits.map(split =>
+      split.recipient?.display_name || split.recipient_snapshot?.display_name || '未命名收款人'
+    )));
+    return `<div class="payment-recipient-details">
+      <strong>${names.map(escapeHtml).join('、')}</strong><br>
+      <span class="muted">${activeSplits.length} 筆付款拆分</span>
+    </div>`;
+  }
   if (recipient) {
     return `
       <div class="payment-recipient-details">
@@ -1483,8 +1494,16 @@ function recipientSummary(recipient, line) {
   return `<span class="muted">${escapeHtml(line?.payee_name || '尚未設定收款人')} ${escapeHtml(line?.payee_identifier || '')}</span>`;
 }
 
-function getVoucherPayment(voucher) {
-  return Array.isArray(voucher?.payment) ? voucher.payment[0] : voucher?.payment;
+function getVoucherPayments(voucher) {
+  if (Array.isArray(voucher?.payment)) return voucher.payment;
+  return voucher?.payment ? [voucher.payment] : [];
+}
+
+function getVoucherPaymentStatus(voucher) {
+  if (voucher?.status === 'closed') return { label: '已付款', badge: 'success', paid: true };
+  if (voucher?.status === 'partially_paid') return { label: '部分付款', badge: 'warning', paid: false };
+  if (voucher?.status === 'voided') return { label: '已作廢', badge: 'wait', paid: true };
+  return { label: '待付款', badge: 'warning', paid: false };
 }
 
 function getVoucherLineAccountCodes(voucher) {
@@ -1513,170 +1532,12 @@ function renderPaymentAccountingSummary(voucher) {
   return '<p class="warning-text">尚未找到會計審核科目，請回會計審核確認每筆明細已歸類。</p>';
 }
 
-function renderPaymentRecipientLockedPanel(recipient, voucher) {
-  const name = recipient?.display_name || voucher?.voucher_lines?.[0]?.payee_name || '尚未指定';
-  const identifier = recipient?.identifier || voucher?.voucher_lines?.[0]?.payee_identifier || '';
-  const bankText = [recipient?.bank_name, recipient?.bank_branch].filter(Boolean).join(' ');
-  const accountName = recipient?.account_name || recipient?.display_name || '';
-  const accountNumber = recipient?.account_number || '';
-  return `
-    <section class="payment-confirmation-card">
-      <div>
-        <span class="payment-confirmation-label">固定付款金額</span>
-        <strong class="payment-confirmation-amount">${escapeHtml(voucher?.currency || 'TWD')} ${Number(voucher?.total_amount || 0).toLocaleString()}</strong>
-      </div>
-      <div>
-        <span class="payment-confirmation-label">收款人</span>
-        <strong id="paymentEditorRecipientName">${escapeHtml(name)}</strong>
-        ${identifier ? `<span class="muted">｜${escapeHtml(identifier)}</span>` : ''}
-      </div>
-      <div>
-        <span class="payment-confirmation-label">收款帳戶</span>
-        <strong id="paymentEditorRecipientAccountSummary">${escapeHtml(bankText || '未設定銀行')}｜戶名：${escapeHtml(accountName || '-')}｜帳號：${escapeHtml(accountNumber || '-')}</strong>
-      </div>
-    </section>
-    <input type="hidden" id="paymentEditorRecipientBank" value="${escapeHtml(recipient?.bank_name || '')}">
-    <input type="hidden" id="paymentEditorRecipientBranch" value="${escapeHtml(recipient?.bank_branch || '')}">
-    <input type="hidden" id="paymentEditorRecipientAccountName" value="${escapeHtml(accountName)}">
-    <input type="hidden" id="paymentEditorRecipientAccountNumber" value="${escapeHtml(accountNumber)}">
-  `;
-}
-
-function renderPaymentLinePayeeSummary(voucher) {
-  const lines = voucher?.voucher_lines || [];
-  if (!lines.length) {
-    return '<p class="warning-text">此單據沒有明細項目，請回會計審核確認資料。</p>';
-  }
-  return `
-    <section class="payment-line-summary">
-      <div class="payment-line-summary-header">
-        <strong>付款項目</strong>
-        <span>${lines.length} 筆</span>
-      </div>
-      <div class="payment-line-summary-list">
-        ${lines.map((line, index) => `
-          <div class="payment-line-summary-row">
-            <div>
-              <strong>#${index + 1} ${escapeHtml(line.description || '未填摘要')}</strong>
-              <span>${escapeHtml(line.payee_name || '尚未設定收款人')}${line.payee_identifier ? `｜${escapeHtml(line.payee_identifier)}` : ''}</span>
-            </div>
-            <div>
-              <strong>${escapeHtml(voucher?.currency || 'TWD')} ${Number(line.amount || 0).toLocaleString()}</strong>
-              <span>${escapeHtml(line.account_code || '未指定科目')}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </section>`;
-}
-
-function getVoucherPayeeIdentifiers(voucher) {
-  return new Set((voucher?.voucher_lines || [])
-    .map(line => String(line.payee_identifier || '').trim())
-    .filter(Boolean));
-}
-
-function getVoucherRelatedRecipients(voucher, recipients) {
-  const identifiers = getVoucherPayeeIdentifiers(voucher);
-  if (voucher?.payment_recipient?.identifier) identifiers.add(String(voucher.payment_recipient.identifier).trim());
-  return (recipients || []).filter(item => {
-    if (voucher?.primary_payee_id && item.payee_id === voucher.primary_payee_id) return true;
-    return item.identifier && identifiers.has(String(item.identifier).trim());
-  });
-}
-
-function paymentRecipientOptionLabel(recipient) {
-  const bankText = [recipient?.bank_name, recipient?.bank_branch].filter(Boolean).join(' ');
-  const accountText = recipient?.account_number ? `｜${recipient.account_number}` : '';
-  return `${recipient?.display_name || '未命名'}｜${recipient?.identifier || '-'}${bankText ? `｜${bankText}` : ''}${accountText}`;
-}
-
-function paymentRecipientSearchText(recipient) {
-  return [
-    recipient?.display_name,
-    recipient?.identifier,
-    recipient?.bank_name,
-    recipient?.bank_branch,
-    recipient?.account_name,
-    recipient?.account_number
-  ].filter(Boolean).join(' ').toLowerCase();
-}
-
-function renderPaymentRecipientSelectOptions(recipients, selectedRecipientId = '', query = '') {
-  const normalizedQuery = String(query || '').trim().toLowerCase();
-  const filteredRecipients = (recipients || []).filter(item => {
-    if (!normalizedQuery) return true;
-    return paymentRecipientSearchText(item).includes(normalizedQuery);
-  });
-  const selectedExists = filteredRecipients.some(item => item.id === selectedRecipientId);
-  const selectedRecipient = (recipients || []).find(item => item.id === selectedRecipientId);
-  const visibleRecipients = selectedRecipient && !selectedExists
-    ? [selectedRecipient, ...filteredRecipients]
-    : filteredRecipients;
-  return [
-    '<option value="">請選擇收款人</option>',
-    ...visibleRecipients.map(item => `<option value="${item.id}" ${item.id === selectedRecipientId ? 'selected' : ''}>${escapeHtml(paymentRecipientOptionLabel(item))}</option>`)
-  ].join('');
-}
-
-window.togglePaymentRecipientChange = () => {
-  const panel = document.getElementById('paymentRecipientChangePanel');
-  const button = document.getElementById('paymentRecipientChangeToggle');
-  const willShow = panel?.hasAttribute('hidden');
-  if (panel) panel.toggleAttribute('hidden', !willShow);
-  if (button) button.textContent = willShow ? '取消更換付款人' : '更換本筆付款人';
-};
-
-window.filterPaymentRecipientOptions = () => {
-  const input = document.getElementById('paymentRecipientSearch');
-  const select = document.getElementById('paymentEditorRecipient');
-  if (!select) return;
-  const selectedRecipientId = select.value || window.__paymentEditorSelectedRecipientId || '';
-  select.innerHTML = renderPaymentRecipientSelectOptions(
-    window.__paymentEditorRecipients || [],
-    selectedRecipientId,
-    input?.value || ''
-  );
-};
-
 function getPaymentAccountDisplay(voucher) {
   const accountCodes = getVoucherLineAccountCodes(voucher);
   if (accountCodes.length > 1) return `多科目：${accountCodes.join('、')}`;
   if (accountCodes.length === 1) return accountCodes[0];
   if (voucher?.accounting_account) return `${voucher.accounting_account.code} ${voucher.accounting_account.name}`;
   return '未指定科目';
-}
-
-function getPaymentDebitAccountRef(voucher) {
-  return voucher?.accounting_account_id || getVoucherLineAccountCodes(voucher)[0] || voucher?.accounting_account?.code || null;
-}
-
-function buildPaymentNote(paymentDate, voucher) {
-  const compactDate = (paymentDate || new Date().toISOString().slice(0, 10)).slice(5).replace('-', '');
-  const base = (voucher?.summary || voucher?.request_voucher_no || voucher?.voucher_no || '付款')
-    .replace(/\s+/g, '_')
-    .slice(0, 30);
-  return `${compactDate}_${base}`;
-}
-
-function wirePaymentNoteAutoFill(voucher) {
-  const dateInput = document.getElementById('paymentEditorDate');
-  const noteInput = document.getElementById('paymentEditorNote');
-  if (!dateInput || !noteInput) return;
-  noteInput.dataset.autoPaymentNote = noteInput.value ? '0' : '1';
-  if (!noteInput.value) {
-    noteInput.value = buildPaymentNote(dateInput.value, voucher);
-    noteInput.dataset.autoPaymentNote = '1';
-  }
-  dateInput.addEventListener('change', () => {
-    if (noteInput.dataset.autoPaymentNote !== '0') {
-      noteInput.value = buildPaymentNote(dateInput.value, voucher);
-      noteInput.dataset.autoPaymentNote = '1';
-    }
-  });
-  noteInput.addEventListener('input', () => {
-    noteInput.dataset.autoPaymentNote = '0';
-  });
 }
 
 function setPaymentManagementMode(mode = 'queue') {
@@ -1699,8 +1560,8 @@ async function renderPaymentManagement() {
     const filter = document.getElementById('paymentStatusFilter')?.value || 'approved';
     let query = supabase
       .from('vouchers')
-.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(description, amount, payee_name, payee_identifier, account_code), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(payment_no, payment_sequence_no, currency, exchange_rate, amount_base, amount, paid_at, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
-      .in('status', filter === 'all' ? ['approved', 'closed'] : [filter])
+.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, payment_assignment_revision, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(id, description, amount, payee_name, payee_identifier, account_code, created_at), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number, currency), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(voucher_payment_split_id, payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date, reversal_reason, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number, currency)), payment_splits:voucher_payment_splits(id, amount, payment_status, payment_no, paid_at, reversal_date, recipient_snapshot, recipient:payment_recipients(display_name, identifier, bank_name, bank_branch, account_name, account_number), bank:bank_accounts(bank_name, nickname, account_number, currency)))')
+      .in('status', filter === 'all' ? ['approved', 'partially_paid', 'closed', 'voided'] : [filter])
       .order('accounting_approved_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
     const { data, error } = await query;
@@ -1712,21 +1573,22 @@ async function renderPaymentManagement() {
         <thead><tr><th>付款</th><th>單號／專案</th><th>申請人</th><th>付款對象</th><th>科目／付款銀行</th><th>金額</th><th>狀態</th><th>操作</th></tr></thead>
         <tbody>${paymentRowsCache.map(voucher => {
           const line = voucher.voucher_lines?.[0];
-          const paid = voucher.status === 'closed';
-          const payment = getVoucherPayment(voucher);
+          const status = getVoucherPaymentStatus(voucher);
+          const payments = getVoucherPayments(voucher);
+          const paymentNumbers = payments.map(payment => payment.payment_no).filter(Boolean);
           return `<tr>
-            <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? '已完成' : '待處理'}</span></td>
+            <td><span class="badge ${status.badge}">${escapeHtml(status.label)}</span></td>
             <td>
               <strong>${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '-')}</strong>
               ${voucher.accounting_voucher_no ? `<br><span class="muted">${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜#${voucher.accounting_sequence_no}` : ''}</span>` : ''}
               <br><span class="muted">${escapeHtml(voucher.project ? `${voucher.project.project_code} ${voucher.project.name}` : '部門預算')}</span>
             </td>
             <td>${escapeHtml(voucher.applicant?.full_name || '-')}<br><span class="muted">${escapeHtml(voucher.applicant?.email || '')}</span></td>
-            <td>${recipientSummary(voucher.payment_recipient, line)}</td>
+            <td>${recipientSummary(voucher.payment_recipient, line, voucher.payment_splits)}</td>
             <td>${escapeHtml(getPaymentAccountDisplay(voucher))}<br><span class="muted">${escapeHtml(voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '尚未指定付款銀行')}</span></td>
             <td><strong>${escapeHtml(voucher.currency || 'TWD')} ${Number(voucher.total_amount || 0).toLocaleString()}</strong></td>
-            <td><span class="badge ${paid ? 'success' : 'warning'}">${paid ? `已付款 ${voucher.payment_date || ''}` : '待付款'}</span>${payment?.payment_no ? `<br><strong class="payment-voucher-number">${escapeHtml(payment.payment_no)}${payment.payment_sequence_no ? `｜#${payment.payment_sequence_no}` : ''}</strong>` : ''}</td>
-            <td>${paid
+            <td><span class="badge ${status.badge}">${escapeHtml(status.label)} ${escapeHtml(voucher.payment_date || '')}</span>${paymentNumbers.length ? `<br><strong class="payment-voucher-number">${paymentNumbers.map(escapeHtml).join('<br>')}</strong>` : ''}</td>
+            <td>${status.paid
               ? `<button type="button" class="secondary" data-payment-action="view-voucher" data-voucher-id="${voucher.id}">查看付款憑證</button>`
               : `<button type="button" class="primary-btn" style="width:auto; padding:8px 12px;" data-payment-action="open-editor" data-voucher-id="${voucher.id}">付款設定／確認付款</button>`}</td>
           </tr>`;
@@ -1772,19 +1634,13 @@ async function fetchPayeePaymentHistory(payeeId) {
   const payee = payees.find(item => item.id === payeeId);
   if (!payee) throw new Error('找不到付款人資料');
   const recipientIds = (payee.payment_recipients || []).map(item => item.id).filter(Boolean);
-  let query = supabase
-    .from('vouchers')
-.select('id, tx_date, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, payment_recipient_id, payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number), payment:voucher_payments(payment_no, payment_sequence_no, payment_type, currency, exchange_rate, amount_base, amount, paid_at, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
-    .order('payment_date', { ascending: false, nullsFirst: false })
-    .order('tx_date', { ascending: false });
-
-  if (recipientIds.length) {
-    query = query.or(`primary_payee_id.eq.${payeeId},payment_recipient_id.in.(${recipientIds.join(',')})`);
-  } else {
-    query = query.eq('primary_payee_id', payeeId);
-  }
-
-  const { data, error } = await query;
+  if (!recipientIds.length) return { payee, rows: [] };
+  const { data, error } = await supabase
+    .from('voucher_payment_splits')
+    .select('id, amount, amount_base, currency, exchange_rate, payment_status, payment_no, payment_sequence_no, paid_at, reversal_date, reversal_reason, recipient_snapshot, voucher:vouchers!voucher_id(id, tx_date, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, status, payment_date), payment:voucher_payments!voucher_payment_split_id(payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date, reversal_reason, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number))')
+    .in('payment_recipient_id', recipientIds)
+    .order('paid_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return { payee, rows: data || [] };
 }
@@ -1805,17 +1661,20 @@ window.viewPayeePaymentHistory = async (payeeId) => {
       <div class="table-scroll">
         <table>
           <thead><tr><th>付款日期</th><th>摘要</th><th>申請/會計單號</th><th>付款單號</th><th>出款銀行</th><th>金額</th><th>狀態</th><th>操作</th></tr></thead>
-          <tbody>${rows.map(voucher => {
-            const payment = getVoucherPayment(voucher);
-            const bank = payment?.bank || voucher.payment_bank || {};
+          <tbody>${rows.map(split => {
+            const voucher = Array.isArray(split.voucher) ? split.voucher[0] : split.voucher || {};
+            const payment = Array.isArray(split.payment) ? split.payment[0] : split.payment || null;
+            const bank = payment?.bank || {};
+            const reversed = split.payment_status === 'voided' || payment?.status === 'reversed';
+            const paid = split.payment_status === 'paid' || payment?.status === 'posted';
             return `<tr>
-              <td>${escapeHtml(payment?.paid_at || voucher.payment_date || voucher.tx_date || '')}</td>
+              <td>${escapeHtml(payment?.paid_at || split.paid_at || voucher.payment_date || voucher.tx_date || '')}${reversed && (payment?.reversal_date || split.reversal_date) ? `<br><span class="muted">反轉 ${escapeHtml(payment?.reversal_date || split.reversal_date)}</span>` : ''}</td>
               <td>${escapeHtml(voucher.summary || '')}</td>
               <td>${escapeHtml(voucher.request_voucher_no || '-')}<br><span class="muted">${escapeHtml(voucher.accounting_voucher_no || '-')}${voucher.accounting_sequence_no ? `｜#${voucher.accounting_sequence_no}` : ''}</span></td>
-              <td>${escapeHtml(payment?.payment_no || '尚未付款')}${payment?.payment_sequence_no ? `<br><span class="muted">#${payment.payment_sequence_no}</span>` : ''}</td>
+              <td>${escapeHtml(payment?.payment_no || split.payment_no || '尚未付款')}${payment?.payment_sequence_no || split.payment_sequence_no ? `<br><span class="muted">#${escapeHtml(payment?.payment_sequence_no || split.payment_sequence_no)}</span>` : ''}</td>
               <td>${escapeHtml(bank.nickname || bank.bank_name || '-')}<br><span class="muted">${escapeHtml(bank.account_number || '')}</span></td>
-              <td>${escapeHtml(payment?.currency || voucher.currency || 'TWD')} ${Number(payment?.amount || voucher.total_amount || 0).toLocaleString()}</td>
-              <td><span class="badge ${voucher.status === 'closed' ? 'success' : 'wait'}">${voucher.status === 'closed' ? '已付款' : escapeHtml(voucher.status || '-')}</span></td>
+              <td>${escapeHtml(payment?.currency || split.currency || 'TWD')} ${Number(payment?.amount ?? split.amount ?? 0).toLocaleString()}</td>
+              <td><span class="badge ${reversed ? 'wait' : paid ? 'success' : 'warning'}">${reversed ? '已反轉' : paid ? '已付款' : '待付款'}</span>${reversed && (payment?.reversal_reason || split.reversal_reason) ? `<br><span class="muted">${escapeHtml(payment?.reversal_reason || split.reversal_reason)}</span>` : ''}</td>
               <td><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove(); viewVoucherDetail('${voucher.id}')">查看單據</button></td>
             </tr>`;
           }).join('') || '<tr><td colspan="8" class="muted">尚無付款紀錄。</td></tr>'}</tbody>
@@ -2017,126 +1876,88 @@ window.openPaymentEditor = async (voucherId) => {
   modal.innerHTML = `
     <div class="payment-editor-modal">
       <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
-      <p class="muted">載入付款設定...</p>
-      <div class="button-row">
-        <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
-      </div>
+      <p class="muted">載入付款拆分...</p>
     </div>`;
   document.body.appendChild(modal);
 
-  void (async () => {
-    try {
-      const [recipients, banks] = await withTimeout(
-        Promise.all([fetchPaymentRecipients(), fetchBankAccounts()]),
-        '付款設定資料載入逾時，請確認付款人主檔、會計科目與銀行帳戶是否可正常讀取。'
-      );
-      const relatedRecipients = getVoucherRelatedRecipients(voucher, recipients);
-      const selectedRecipient = recipients.find(item => item.id === voucher.payment_recipient_id)
-        || voucher.payment_recipient
-        || relatedRecipients.find(item => item.active !== false)
-        || relatedRecipients[0]
-        || {};
-      const selectedRecipientId = voucher.payment_recipient_id || selectedRecipient.id || '';
-      const selectedBankId = voucher.payment_bank_account_id || voucher.project?.default_bank_account_id || '';
-      const activeRecipients = recipients.filter(item => item.active !== false);
-      const selectableRecipients = Array.from(new Map([
-        ...(selectedRecipient?.id ? [[selectedRecipient.id, selectedRecipient]] : []),
-        ...relatedRecipients.map(item => [item.id, item]),
-        ...activeRecipients.map(item => [item.id, item])
-      ]).values());
-      window.__paymentEditorRecipients = selectableRecipients;
-      window.__paymentEditorSelectedRecipientId = selectedRecipientId;
-      const card = modal.querySelector('.payment-editor-modal');
-      if (!card) return;
+  try {
+    const [recipients, banks] = await withTimeout(
+      Promise.all([fetchPaymentRecipients(), fetchBankAccounts()]),
+      '付款設定資料載入逾時，請確認付款人主檔與銀行帳戶是否可正常讀取。'
+    );
+    const card = modal.querySelector('.payment-editor-modal');
+    if (!card) return;
+    await mountVoucherPaymentSplitEditor({
+      client: supabase,
+      container: card,
+      voucher,
+      recipients,
+      banks,
+      confirmAction: message => confirm(message),
+      onCancel: () => modal.remove(),
+      onSaved: async () => {
+        showMessage('付款拆分已儲存，未勾選付款前仍可修改。');
+        await renderPaymentManagement();
+      },
+      onPaid: async result => {
+        modal.remove();
+        showMessage(result.status === 'closed'
+          ? '全部付款完成，付款憑證、銀行流水與分錄已同步建立。'
+          : '勾選項目已付款，其餘拆分仍保留為待付款。');
+        await Promise.all([
+          renderPaymentManagement(),
+          renderTransactionTable(),
+          renderVoucherWorkflowList(),
+          renderBankAccounts(),
+          renderReports()
+        ]);
+        renderDashboard();
+      }
+    });
+  } catch (error) {
+    console.error('開啟付款設定失敗:', error);
+    const card = modal.querySelector('.payment-editor-modal');
+    if (card) {
       card.innerHTML = `
         <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
-        ${voucher.accounting_voucher_no ? `<p class="muted">會計憑證：${escapeHtml(voucher.accounting_voucher_no)}${voucher.accounting_sequence_no ? `｜流水 #${voucher.accounting_sequence_no}` : ''}</p>` : ''}
-        <p>${escapeHtml(voucher.summary || '')}</p>
-        ${activeRecipients.length ? '' : '<p class="warning-text">目前沒有可用的付款人，請先到所有付款人名單新增或啟用付款人。</p>'}
-        ${banks.length ? '' : '<p class="warning-text">目前沒有可用的公司付款銀行，請先建立銀行帳戶。</p>'}
-        ${renderPaymentRecipientLockedPanel(selectedRecipient, voucher)}
-        ${renderPaymentLinePayeeSummary(voucher)}
-        <div class="payment-recipient-change">
-          <button type="button" id="paymentRecipientChangeToggle" class="secondary" onclick="togglePaymentRecipientChange()">更換本筆付款人</button>
-          <div id="paymentRecipientChangePanel" hidden>
-            <label for="paymentRecipientSearch">搜尋收款人／帳號<input id="paymentRecipientSearch" type="search" placeholder="輸入姓名、身分證/統編、銀行或帳號" oninput="filterPaymentRecipientOptions()"></label>
-            <label for="paymentEditorRecipient">更換收款人<select id="paymentEditorRecipient" onchange="populatePaymentRecipientFields()">${renderPaymentRecipientSelectOptions(selectableRecipients, selectedRecipientId)}</select></label>
-            <p class="muted">若收款人或帳號錯誤，這裡只更換本筆付款人；付款人主檔請到「所有付款人」維護。</p>
-          </div>
-        </div>
-        ${renderPaymentAccountingSummary(voucher)}
-        <label for="paymentEditorBank">公司付款銀行<select id="paymentEditorBank"><option value="">請選擇公司實際出款帳戶</option>${banks.map(item => `<option value="${item.id}" ${item.id === selectedBankId ? 'selected' : ''}>${escapeHtml(item.nickname || item.bank_name)} (${escapeHtml(item.account_number)})</option>`).join('')}</select></label>
-        <label for="paymentEditorDate">付款日期<input id="paymentEditorDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
-        <label for="paymentEditorNote">會計備註<textarea id="paymentEditorNote" rows="3">${escapeHtml(voucher.accounting_note || '')}</textarea></label>
-        <div class="button-row">
-          <button type="button" class="secondary" onclick="savePaymentDraft('${voucher.id}')">儲存修改</button>
-          <button type="button" class="primary-btn" onclick="confirmPaymentFromList('${voucher.id}')">確認已付款</button>
-          <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">取消</button>
-        </div>`;
-      wirePaymentNoteAutoFill(voucher);
-    } catch (error) {
-      console.error('開啟付款設定失敗:', error);
-      const card = modal.querySelector('.payment-editor-modal');
-      if (card) {
-        card.innerHTML = `
-          <h3>付款設定 - ${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</h3>
-          <p class="message error">開啟付款設定失敗：${escapeHtml(error.message)}</p>
-          <p class="muted">請先確認「所有付款人」、會計科目與公司銀行帳戶資料都可以正常載入。</p>
-          <div class="button-row">
-            <button type="button" class="primary-btn" onclick="this.closest('.modal-backdrop').remove(); openPaymentEditor('${voucher.id}')">重新載入</button>
-            <button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button>
-          </div>`;
-      } else {
-        alert('開啟付款設定失敗：' + error.message);
-      }
+        <p class="message error">開啟付款設定失敗：${escapeHtml(error.message)}</p>
+        <div class="button-row"><button type="button" class="secondary" data-close-payment-error>關閉</button></div>`;
+      card.querySelector('[data-close-payment-error]')?.addEventListener('click', () => modal.remove());
     }
-  })();
-};
-
-window.populatePaymentRecipientFields = () => {
-  const recipientId = document.getElementById('paymentEditorRecipient')?.value;
-  window.__paymentEditorSelectedRecipientId = recipientId || '';
-  const recipient = (window.__paymentEditorRecipients || []).find(item => item.id === recipientId) || {};
-  const bankText = [recipient.bank_name, recipient.bank_branch].filter(Boolean).join(' ');
-  const accountName = recipient.account_name || recipient.display_name || '';
-  const accountNumber = recipient.account_number || '';
-  const values = {
-    paymentEditorRecipientBank: recipient.bank_name,
-    paymentEditorRecipientBranch: recipient.bank_branch,
-    paymentEditorRecipientAccountName: accountName,
-    paymentEditorRecipientAccountNumber: accountNumber
-  };
-  Object.entries(values).forEach(([id, value]) => {
-    const input = document.getElementById(id);
-    if (input) input.value = value || '';
-  });
-  const nameEl = document.getElementById('paymentEditorRecipientName');
-  if (nameEl) nameEl.textContent = recipient.display_name || '尚未指定';
-  const summaryEl = document.getElementById('paymentEditorRecipientAccountSummary');
-  if (summaryEl) summaryEl.textContent = `${bankText || '未設定銀行'}｜戶名：${accountName || '-'}｜帳號：${accountNumber || '-'}`;
+  }
 };
 
 window.viewPaymentVoucher = (voucherId) => {
   const voucher = paymentRowsCache.find(item => item.id === voucherId);
-  const payment = getVoucherPayment(voucher);
-  if (!voucher || !payment) return alert('找不到付款憑證資料。');
-  const recipient = payment.recipient_snapshot || voucher.payment_recipient || {};
+  const payments = getVoucherPayments(voucher);
+  if (!voucher || !payments.length) return alert('找不到付款憑證資料。');
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.innerHTML = `<div class="payment-voucher-document">
-    <header><div>${escapeHtml(payment.payment_no || '付款憑證')}</div><h2>付款憑證</h2><div>${escapeHtml(payment.paid_at || '')}</div></header>
+    <header><div>${payments.length} 筆付款</div><h2>付款憑證</h2><div>${escapeHtml(voucher.payment_date || '')}</div></header>
     <div class="payment-voucher-company">${escapeHtml(state.companyInfo?.companyNameZh || '公司')}</div>
     <dl>
       <dt>申請憑證</dt><dd>${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '')}</dd>
       <dt>會計憑證</dt><dd>${escapeHtml(voucher.accounting_voucher_no || '-')}${voucher.accounting_sequence_no ? `｜流水 #${voucher.accounting_sequence_no}` : ''}</dd>
       <dt>付款摘要</dt><dd>${escapeHtml(voucher.summary || '')}</dd>
-      <dt>收款人</dt><dd>${escapeHtml(recipient.display_name || '')}</dd>
-      <dt>收款帳戶</dt><dd>${escapeHtml(`${recipient.bank_name || ''} ${recipient.bank_branch || ''}｜${recipient.account_name || ''}｜${recipient.account_number || ''}`)}</dd>
-      <dt>公司出款銀行</dt><dd>${escapeHtml(payment.bank?.nickname || payment.bank?.bank_name || '')}</dd>
-      <dt>付款金額</dt><dd class="payment-voucher-amount">${escapeHtml(payment.currency || voucher.currency || 'TWD')} ${Number(payment.amount || voucher.total_amount || 0).toLocaleString()}</dd>
-      <dt>付款匯率</dt><dd>${escapeHtml(String(payment.exchange_rate ?? 1))}</dd>
-      <dt>台幣金額</dt><dd>TWD ${Number(payment.amount_base ?? payment.amount ?? voucher.total_amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</dd>
+      <dt>單據總額</dt><dd class="payment-voucher-amount">${escapeHtml(voucher.currency || 'TWD')} ${Number(voucher.total_amount || 0).toLocaleString()}</dd>
     </dl>
+    <div class="table-scroll"><table class="payment-voucher-split-table">
+      <thead><tr><th>付款單號</th><th>付款日</th><th>收款人／帳戶</th><th>公司出款銀行</th><th>金額</th><th>台幣金額</th><th>狀態</th></tr></thead>
+      <tbody>${payments.map(payment => {
+        const recipient = payment.recipient_snapshot || {};
+        const reversed = payment.status === 'reversed';
+        return `<tr>
+          <td><strong>${escapeHtml(payment.payment_no || '-')}</strong>${payment.payment_sequence_no ? `<br><span class="muted">#${payment.payment_sequence_no}</span>` : ''}</td>
+          <td>${escapeHtml(payment.paid_at || '')}${reversed ? `<br><span class="muted">反轉 ${escapeHtml(payment.reversal_date || '')}</span>` : ''}</td>
+          <td>${escapeHtml(recipient.display_name || '')}<br><span class="muted">${escapeHtml(`${recipient.bank_name || ''} ${recipient.bank_branch || ''}｜${recipient.account_name || ''}｜${recipient.account_number || ''}`)}</span></td>
+          <td>${escapeHtml(payment.bank?.nickname || payment.bank?.bank_name || '')}<br><span class="muted">${escapeHtml(payment.bank?.account_number || '')}</span></td>
+          <td>${escapeHtml(payment.currency || voucher.currency || 'TWD')} ${Number(payment.amount || 0).toLocaleString()}</td>
+          <td>TWD ${Number(payment.amount_base ?? payment.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+          <td><span class="badge ${reversed ? 'wait' : 'success'}">${reversed ? '已反轉' : '已付款'}</span>${reversed && payment.reversal_reason ? `<br><span class="muted">${escapeHtml(payment.reversal_reason)}</span>` : ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
     <div class="button-row"><button type="button" class="secondary" onclick="window.print()">列印</button><button type="button" class="secondary" onclick="this.closest('.modal-backdrop').remove()">關閉</button></div>
   </div>`;
   document.body.appendChild(modal);
@@ -2149,97 +1970,41 @@ window.openPaymentQueue = async (voucherId) => {
   await window.openPaymentEditor(voucherId);
 };
 
-async function savePaymentAssignment(voucherId) {
-  const recipientId = document.getElementById('paymentEditorRecipient')?.value || null;
-  const bankId = document.getElementById('paymentEditorBank')?.value || null;
-  const note = document.getElementById('paymentEditorNote')?.value.trim() || null;
-  const recipientBank = document.getElementById('paymentEditorRecipientBank')?.value.trim() || null;
-  const recipientAccountName = document.getElementById('paymentEditorRecipientAccountName')?.value.trim() || null;
-  const recipientAccountNumber = document.getElementById('paymentEditorRecipientAccountNumber')?.value.trim() || null;
-  const voucher = paymentRowsCache.find(item => item.id === voucherId);
-  const accountRef = getPaymentDebitAccountRef(voucher);
-  const { data: updatedVoucher, error } = await supabase.rpc('save_voucher_payment_assignment', {
-    p_voucher_id: voucherId,
-    p_payment_recipient_id: recipientId,
-    p_payment_bank_account_id: bankId,
-    p_accounting_note: note
-  });
-  if (error) throw error;
-  if (!updatedVoucher) {
-    throw new Error('此付款資料已不是待付款狀態，請重新整理付款清單後再操作。');
-  }
-  return { recipientId, accountRef, bankId, note, recipientBank, recipientAccountName, recipientAccountNumber };
-}
-
-window.savePaymentDraft = async (voucherId) => {
-  try {
-    await savePaymentAssignment(voucherId);
-    document.querySelector('.modal-backdrop')?.remove();
-    showMessage('付款設定已儲存，付款前仍可繼續修改。');
-    await renderPaymentManagement();
-  } catch (error) {
-    alert('儲存付款設定失敗：' + error.message);
-  }
-};
-
-window.confirmPaymentFromList = async (voucherId) => {
-  const triggerBtn = document.querySelector(`button[onclick="confirmPaymentFromList('${voucherId}')"]`);
-  try {
-    await withActionLock(`payment-confirm:${voucherId}`, triggerBtn, async () => {
-      const paymentDate = document.getElementById('paymentEditorDate')?.value;
-      const recipientId = document.getElementById('paymentEditorRecipient')?.value || null;
-      const recipientBank = document.getElementById('paymentEditorRecipientBank')?.value.trim() || null;
-      const recipientAccountName = document.getElementById('paymentEditorRecipientAccountName')?.value.trim() || null;
-      const recipientAccountNumber = document.getElementById('paymentEditorRecipientAccountNumber')?.value.trim() || null;
-      const bankId = document.getElementById('paymentEditorBank')?.value || null;
-      const voucher = paymentRowsCache.find(item => item.id === voucherId);
-      const accountRef = getPaymentDebitAccountRef(voucher);
-
-      if (!recipientId) throw new Error('請先選擇收款人');
-      if (!recipientBank) throw new Error('請確認收款銀行名稱');
-      if (!recipientAccountName) throw new Error('請確認收款戶名');
-      if (!recipientAccountNumber) throw new Error('請確認收款帳號');
-      if (!accountRef) throw new Error('找不到會計審核科目，請回會計審核確認每筆明細已歸類。');
-      if (!bankId) throw new Error('請先選擇付款銀行');
-      if (!paymentDate) throw new Error('請選擇付款日期');
-      if (!confirm('確認款項已經從公司銀行帳戶實際付出？確認後會轉為「已付款」，並產生日記帳、銀行流水與付款憑證。')) return;
-
-      const assignment = await savePaymentAssignment(voucherId);
-      const result = await closeVoucherByAccounting(voucherId, assignment.accountRef, assignment.bankId, paymentDate);
-      if (!result.success) throw new Error(result.error);
-      document.querySelector('.modal-backdrop')?.remove();
-      showMessage('付款完成，狀態已轉為已付款，並已產生付款憑證、銀行流水與日記帳。');
-      await Promise.all([renderPaymentManagement(), renderTransactionTable(), renderVoucherWorkflowList(), renderBankAccounts(), renderReports()]);
-      renderDashboard();
-    }, { loadingText: '付款處理中...' });
-  } catch (error) {
-    alert('付款失敗：' + error.message);
-  }
-};
-
 async function exportPaymentListToExcel() {
   const XLSX = await import('https://esm.sh/xlsx@0.18.5');
-  const rows = paymentRowsCache.map(voucher => ({
-    單號: voucher.voucher_no,
-    申請憑證號: voucher.request_voucher_no || '',
-    會計憑證號: voucher.accounting_voucher_no || '',
-    付款憑證號: getVoucherPayment(voucher)?.payment_no || '',
-    專案: voucher.project ? `${voucher.project.project_code} ${voucher.project.name}` : '',
-    申請人: voucher.applicant?.full_name || '',
-    收款人: voucher.payment_recipient?.display_name || voucher.voucher_lines?.[0]?.payee_name || '',
-    收款銀行: voucher.payment_recipient?.bank_name || '',
-    分行: voucher.payment_recipient?.bank_branch || '',
-    戶名: voucher.payment_recipient?.account_name || '',
-    收款帳號: voucher.payment_recipient?.account_number || '',
-    付款銀行: voucher.payment_bank?.nickname || voucher.payment_bank?.bank_name || '',
-    會計科目: voucher.accounting_account ? `${voucher.accounting_account.code} ${voucher.accounting_account.name}` : '',
-    幣別: voucher.currency || 'TWD',
-    金額: Number(voucher.total_amount || 0),
-    付款匯率: getVoucherPayment(voucher)?.exchange_rate ?? '',
-    付款台幣金額: getVoucherPayment(voucher)?.amount_base ?? '',
-    狀態: voucher.status === 'closed' ? '已付款' : '待付款',
-    付款日期: voucher.payment_date || ''
-  }));
+  const rows = paymentRowsCache.flatMap(voucher => {
+    const payments = getVoucherPayments(voucher);
+    const records = payments.length ? payments : [null];
+    return records.map(payment => {
+      const recipient = payment?.recipient_snapshot || voucher.payment_recipient || {};
+      const bank = payment?.bank || voucher.payment_bank || {};
+      const reversed = payment?.status === 'reversed';
+      return {
+        單號: voucher.voucher_no,
+        申請憑證號: voucher.request_voucher_no || '',
+        會計憑證號: voucher.accounting_voucher_no || '',
+        付款憑證號: payment?.payment_no || '',
+        專案: voucher.project ? `${voucher.project.project_code} ${voucher.project.name}` : '',
+        申請人: voucher.applicant?.full_name || '',
+        收款人: recipient.display_name || voucher.voucher_lines?.[0]?.payee_name || '',
+        收款人識別碼: recipient.identifier || '',
+        收款銀行: recipient.bank_name || '',
+        分行: recipient.bank_branch || '',
+        戶名: recipient.account_name || '',
+        收款帳號: recipient.account_number || '',
+        付款銀行: bank.nickname || bank.bank_name || '',
+        會計科目: getPaymentAccountDisplay(voucher),
+        幣別: payment?.currency || voucher.currency || 'TWD',
+        金額: Number(payment?.amount ?? voucher.total_amount ?? 0),
+        付款匯率: payment?.exchange_rate ?? '',
+        付款台幣金額: payment?.amount_base ?? '',
+        狀態: reversed ? '已反轉' : payment ? '已付款' : getVoucherPaymentStatus(voucher).label,
+        付款日期: payment?.paid_at || voucher.payment_date || '',
+        反轉日期: payment?.reversal_date || '',
+        反轉原因: payment?.reversal_reason || ''
+      };
+    });
+  });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), '付款清單');
   XLSX.writeFile(workbook, `付款清單_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -3479,7 +3244,7 @@ async function renderVoucherCenter() {
   try {
     let query = supabase
       .from('vouchers')
-.select('id, tx_date, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, category, status, total_amount, currency, applicant_id, project_id, project:projects(project_code, name), payment:voucher_payments(payment_no, payment_sequence_no, currency, exchange_rate, amount_base, amount, paid_at)')
+.select('id, tx_date, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, category, status, total_amount, currency, applicant_id, project_id, project:projects(project_code, name), payment:voucher_payments(payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date)')
       .order('created_at', { ascending: false });
 
     if (projectFilter !== 'all') query = query.eq('project_id', projectFilter);
@@ -3491,32 +3256,34 @@ async function renderVoucherCenter() {
     if (error) throw error;
 
     const filtered = (data || []).filter(voucher => {
-      const payment = getVoucherPayment(voucher);
+      const payments = getVoucherPayments(voucher);
       if (!keyword) return true;
       return [
         voucher.request_voucher_no,
         voucher.voucher_no,
         voucher.accounting_voucher_no,
-        payment?.payment_no,
         voucher.summary,
         voucher.category,
         voucher.status,
         voucher.project?.project_code,
         voucher.project?.name
-      ].some(field => (field || '').toLowerCase().includes(keyword));
+      ].some(field => String(field || '').toLowerCase().includes(keyword))
+        || payments.some(payment => String(payment.payment_no || '').toLowerCase().includes(keyword));
     });
 
     body.innerHTML = filtered.map(voucher => {
-      const payment = getVoucherPayment(voucher);
-      const paid = voucher.status === 'closed';
+      const payments = getVoucherPayments(voucher);
+      const status = getVoucherPaymentStatus(voucher);
+      const paymentNumbers = payments.map(payment => payment.payment_no).filter(Boolean);
+      const paymentSequences = payments.map(payment => payment.payment_sequence_no).filter(Boolean);
       return `
         <tr>
           <td>${escapeHtml(voucher.tx_date || '')}</td>
           <td>${escapeHtml(voucher.request_voucher_no || voucher.voucher_no || '-')}</td>
           <td>${escapeHtml(voucher.accounting_voucher_no || '-')}${voucher.accounting_sequence_no ? `<br><span class="muted">#${voucher.accounting_sequence_no}</span>` : ''}</td>
-          <td>${escapeHtml(payment?.payment_no || (paid ? '-' : '尚未付款'))}${payment?.payment_sequence_no ? `<br><span class="muted">#${payment.payment_sequence_no}</span>` : ''}</td>
+          <td>${paymentNumbers.length ? paymentNumbers.map(escapeHtml).join('<br>') : '尚未付款'}${paymentSequences.length ? `<br><span class="muted">流水 #${paymentSequences.map(escapeHtml).join('、#')}</span>` : ''}</td>
           <td>${escapeHtml(voucher.summary || voucher.project?.name || '')}<br><span class="muted">${escapeHtml(voucher.category || '-')}</span></td>
-          <td><span class="badge ${paid ? 'success' : 'wait'}">${paid ? '已付款' : escapeHtml(voucher.status || '-')}</span></td>
+          <td><span class="badge ${status.badge}">${escapeHtml(status.label)}</span></td>
           <td>${escapeHtml(voucher.currency || 'TWD')} ${Number(voucher.total_amount || 0).toLocaleString()}</td>
         </tr>`;
     }).join('') || '<tr><td colspan="7" class="muted">沒有符合條件的憑證資料。</td></tr>';
@@ -5484,7 +5251,7 @@ function renderVoucherCard(v) {
         </div>
         <div>
           <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">付款憑證</span>
-          <span style="font-weight:600; color:#1e293b;">${v.voucher_payments?.[0]?.payment_no || '尚未付款'}</span>
+          <span style="font-weight:600; color:#1e293b;">${(v.voucher_payments || []).map(payment => escapeHtml(payment.payment_no)).filter(Boolean).join('、') || '尚未付款'}</span>
         </div>
         <div>
           <span class="muted" style="font-size:11px; display:block; margin-bottom:2px;">摘要</span>
@@ -7291,38 +7058,7 @@ async function renderFinancialCenter() {
  */
 window.processPayment = async (voucherId, totalAmount) => {
   return window.openPaymentEditor(voucherId);
-
-  const triggerBtn = document.querySelector(`button[onclick="processPayment('${voucherId}', ${totalAmount})"]`);
-  const accountId = document.getElementById(`acc-${voucherId}`)?.value;
-  const bankId = document.getElementById(`bank-${voucherId}`)?.value;
-
-  if (!accountId || !bankId) {
-    alert('請先指定會計科目與付款銀行');
-    return;
-  }
-  if (!confirm(`確定付款結案？金額 $${Number(totalAmount).toLocaleString()}`)) return;
-
-  await withActionLock(`payment:${voucherId}`, triggerBtn, async () => {
-  try {
-    await ensureAccountingCanCloseVoucher(voucherId);
-
-    const today = new Date().toISOString().split('T')[0];
-    const result = await closeVoucherByAccounting(voucherId, accountId, bankId, today);
-    if (!result.success) throw new Error(result.error);
-
-    alert('付款結案成功！');
-    await Promise.all([renderBankAccounts(), renderTransactionTable(), renderReports()]);
-
-    // 重新渲染畫面
-    if (typeof renderFinancialCenter === 'function') renderFinancialCenter();
-    if (typeof renderDashboard === 'function') renderDashboard();
-
-  } catch (err) {
-    console.error(err);
-    alert(`付款結案失敗：${err.message}`);
-  }
-  });
-}; // 確保函式有正確閉合
+};
 
 async function promptRejectReason() {
   const preset = prompt(
