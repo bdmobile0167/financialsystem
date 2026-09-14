@@ -11,9 +11,11 @@ function formatAmount(value, currency = 'TWD') {
 
 function addDays(dateText, days) {
   if (!dateText) return '';
-  const date = new Date(`${dateText}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return '';
-  date.setDate(date.getDate() + Number(days || 0));
+  const parts = dateText.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(part => !Number.isInteger(part))) return '';
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  if (date.getUTCFullYear() !== parts[0] || date.getUTCMonth() !== parts[1] - 1 || date.getUTCDate() !== parts[2]) return '';
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
   return date.toISOString().slice(0, 10);
 }
 

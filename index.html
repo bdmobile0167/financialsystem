@@ -58,6 +58,8 @@
             <button class="tab-btn" data-tab="paymentManagement" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
             <button class="tab-btn" data-tab="customers" style="display:none;">客戶管理</button>
             <button class="tab-btn" data-tab="arInvoices" style="display:none;">應收發票</button>
+            <button class="tab-btn" data-tab="arReceipts" style="display:none;">AR 收款</button>
+            <button class="tab-btn" data-tab="arAging" style="display:none;">應收帳齡</button>
             <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
           </div>
           <div class="nav-group">
@@ -225,13 +227,13 @@
             <div class="panel-header">
               <div>
                 <h3>交易清單</h3>
-                <p class="muted">手動入帳會顯示借方／貸方科目；已關聯付款憑證的交易請回付款管理處理。</p>
+                <p class="muted">手動入帳會顯示借方／貸方科目；已關聯付款憑證或 AR 收款的交易請回原流程處理。</p>
               </div>
-              <button type="button" id="deleteUnvouchedTransactionsBtn" class="danger">刪除全部無憑證</button>
+              <button type="button" id="deleteUnvouchedTransactionsBtn" class="danger">刪除全部手動入帳</button>
             </div>
             <table>
               <thead>
-                <tr><th>憑證</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>借方</th><th>貸方</th><th>金額</th><th>操作</th></tr>
+                <tr><th>憑證／來源</th><th>日期</th><th>銀行</th><th>明細</th><th>類型</th><th>分類</th><th>借方</th><th>貸方</th><th>金額</th><th>操作</th></tr>
               </thead>
               <tbody id="transactionTableBody"></tbody>
             </table>
@@ -335,6 +337,8 @@
 
         <section id="customers" class="tab-panel" style="display:none;"></section>
         <section id="arInvoices" class="tab-panel" style="display:none;"></section>
+        <section id="arReceipts" class="tab-panel" style="display:none;"></section>
+        <section id="arAging" class="tab-panel" style="display:none;"></section>
 
         <section id="voucherWorkflow" class="tab-panel" style="display:none;">
         <!-- 將原本的雙欄 (grid-2) 移除，讓填表區塊擁有完整寬度以容納多欄位表格 -->
@@ -1002,6 +1006,8 @@
                   <option value="create_ar_invoice_draft">應收發票草稿新增</option>
                   <option value="update_ar_invoice_draft">應收發票草稿修改</option>
                   <option value="issue_ar_invoice">應收發票開立</option>
+                  <option value="post_ar_receipt">AR 收款入帳</option>
+                  <option value="apply_ar_receipt">AR 發票沖銷</option>
                 </select>
               </div>
               <div>

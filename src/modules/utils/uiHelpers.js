@@ -246,6 +246,8 @@ export function applyRoleBasedTabVisibility() {
   setTabVisible('bankAccounts', canBank);
   setTabVisible('customers', ['admin', 'super_admin', 'accounting'].includes(user?.role));
   setTabVisible('arInvoices', ['admin', 'super_admin', 'accounting'].includes(user?.role));
+  setTabVisible('arReceipts', ['admin', 'super_admin', 'accounting'].includes(user?.role));
+  setTabVisible('arAging', ['admin', 'super_admin', 'accounting'].includes(user?.role));
   setTabVisible('bankReconcile', canReconcile);
   setTabVisible('budget', canProjects);
   setTabVisible('reports', canReports);

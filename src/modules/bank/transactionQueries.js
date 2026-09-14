@@ -28,7 +28,7 @@ async function fetchPages(buildQuery) {
 
 export function fetchTransactionRows(client) {
   return fetchPages(() => client.from('bank_transactions')
-    .select('id, bank_account_id, tx_date, type, amount, currency, exchange_rate, amount_base, description, transaction_no, counterparty, category, remark, attachment_id, voucher_id, bank:bank_accounts(bank_name, nickname, account_number), voucher:vouchers(voucher_no, status, category, project_id, summary)', { count: 'exact' })
+    .select('id, bank_account_id, tx_date, type, amount, currency, exchange_rate, amount_base, description, transaction_no, counterparty, category, remark, attachment_id, voucher_id, ar_receipt_id, bank:bank_accounts(bank_name, nickname, account_number), voucher:vouchers(voucher_no, status, category, project_id, summary), ar_receipt:ar_receipts(receipt_no,status)', { count: 'exact' })
     .order('tx_date', { ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: false }));

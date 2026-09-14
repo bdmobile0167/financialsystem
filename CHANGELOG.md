@@ -1,10 +1,21 @@
 # 變更紀錄
 
+## 0.2.88 - 2026-09-14
+
+- Apply `ar_receipt_core` and `restrict_ar_financial_visibility` directly to Supabase, adding finance-only receipts, allocations, an invoker balance view and atomic `post_ar_receipt` posting.
+- Support one receipt across multiple invoices, repeated partial receipts, exact outstanding balances, same-currency foreign receipts and realized FX gain/loss while keeping bank movements, transactions, journals, invoice status and audit in one database transaction.
+- Reject over-allocation, duplicate invoice allocation, stale retry payloads, closed periods, missing rates, cross-currency banks, direct table writes and manual mutation of AR-linked ledger rows.
+- Enforce customer credit limits while issuing invoices under a customer row lock; treat null as unlimited and zero as no credit, and release available credit after posted receipts.
+- Add finance-only AR receipt search, customer lookup, currency-compatible bank selection, invoice allocation entry and receipt details on desktop and mobile.
+- Preserve `ar_receipt_id` in transaction mapping; show AR receipt numbers and prevent manual account editing, single deletion and bulk manual-entry deletion for AR-generated rows.
+- Pass AR core/FX/role/credit rollback tests, legacy manual transaction and bank regression tests, migration lint, plus all desktop/mobile browser regressions. Voiding, aging, cross-currency settlement and authenticated production acceptance remain pending.
+
 ## 0.2.87 - 2026-09-10
 
 - Apply the AR invoice core directly to Supabase with draft and invoice sequences, invoice lines, finance-only RLS, atomic save/issue RPCs and same-transaction audit logs.
 - Post receivable, per-line revenue and output-tax journals when an invoice is issued; snapshot currency rates and reject missing rates, closed periods, inactive customers, stale revisions and project/department mismatches without partial writes.
 - Add finance-only receivable invoice search, draft editing, customer lookup, project/department selection, per-line revenue accounts, totals, issue confirmation and read-only issued details.
+- Calculate customer payment-term due dates with timezone-independent calendar arithmetic so Taiwan browsers do not shift the date one day earlier.
 - Include AR customer and invoice actions in Audit Trail, and pass remote rollback/role/FX tests plus desktop/mobile browser regressions. Receipts, allocations, voiding, aging and credit-limit enforcement remain pending.
 
 ## 0.2.86 - 2026-09-10

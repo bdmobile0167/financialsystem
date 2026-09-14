@@ -2,6 +2,8 @@
 import { getCurrentMonthVoucherSummary } from '../src/modules/voucher/voucherSummary.js';
 import { mountCustomerManagement } from '../src/modules/receivables/customerManagement.js';
 import { mountArInvoiceManagement } from '../src/modules/receivables/arInvoiceManagement.js';
+import { mountArReceiptManagement } from '../src/modules/receivables/arReceiptManagement.js';
+import { mountArAgingReport } from '../src/modules/receivables/arAgingReport.js';
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
@@ -857,7 +859,7 @@ async function renderAuditTrail() {
     let systemAuditQuery = supabase
       .from('audit_logs')
       .select('*')
-      .in('table_name', ['department_budget_requests', 'department_budgets', 'customers', 'ar_invoices'])
+      .in('table_name', ['department_budget_requests', 'department_budgets', 'customers', 'ar_invoices', 'ar_receipts'])
       .order('created_at', { ascending: false })
       .limit(200);
     if (actionFilter) systemAuditQuery = systemAuditQuery.eq('action', actionFilter);
@@ -901,7 +903,9 @@ async function renderAuditTrail() {
       update_ar_customer: 'AR 客戶修改',
       create_ar_invoice_draft: '應收發票草稿新增',
       update_ar_invoice_draft: '應收發票草稿修改',
-      issue_ar_invoice: '應收發票開立'
+      issue_ar_invoice: '應收發票開立',
+      post_ar_receipt: 'AR 收款入帳',
+      apply_ar_receipt: 'AR 發票沖銷'
     };
 
     const normalizedWorkflowLogs = (workflowLogs || []).map(log => ({
@@ -943,6 +947,17 @@ async function renderAuditTrail() {
           .filter(Boolean).join(' / ');
         fromStatus = previousInvoice.status || '';
         toStatus = nextInvoice.status || '';
+        reason = '';
+      } else if (log.table_name === 'ar_receipts') {
+        const nextReceipt = nextData.receipt || nextData;
+        const previousReceipt = previousData.receipt || previousData;
+        targetNo = nextReceipt.receipt_no || previousReceipt.receipt_no || targetNo;
+        const receiptAmount = nextReceipt.amount ?? previousReceipt.amount;
+        const receiptCurrency = nextReceipt.currency || previousReceipt.currency || '';
+        summary = ['AR 收款', receiptAmount === null || receiptAmount === undefined ? ''
+          : `${receiptCurrency} ${Number(receiptAmount).toLocaleString()}`].filter(Boolean).join(' / ');
+        fromStatus = previousReceipt.status || '';
+        toStatus = nextReceipt.status || '';
         reason = '';
       } else {
         summary = [
@@ -1293,6 +1308,9 @@ async function renderTransactionTable() {
       exchange_rate: transaction.exchange_rate,
       amount_base: transaction.amount_base,
       voucher_id: transaction.voucher_id,
+      ar_receipt_id: transaction.ar_receipt_id,
+      ar_receipt: transaction.ar_receipt?.receipt_no || '',
+      ar_receipt_status: transaction.ar_receipt?.status || '',
       transaction_no: transaction.transaction_no || '',
       voucher: transaction.voucher?.voucher_no || transaction.transaction_no,
       remark: transaction.remark || '',
@@ -1303,7 +1321,7 @@ async function renderTransactionTable() {
     }));
 
     const manualTransactionIds = txs
-      .filter(tx => !tx.voucher_id && tx.id)
+      .filter(tx => !tx.voucher_id && !tx.ar_receipt_id && tx.id)
       .map(tx => tx.id);
     let journalByTransactionId = new Map();
     if (manualTransactionIds.length) {
@@ -1332,7 +1350,8 @@ async function renderTransactionTable() {
   const sortedTxs = [...txs].sort((a, b) => {
     const dateCompare = String(b.date || b.tx_date || '').localeCompare(String(a.date || a.tx_date || ''));
     if (dateCompare !== 0) return dateCompare;
-    return String(a.voucher || a.voucher_no || a.voucher_id || '').localeCompare(String(b.voucher || b.voucher_no || b.voucher_id || ''));
+    return String(a.voucher || a.voucher_no || a.voucher_id || a.ar_receipt || a.ar_receipt_id || '')
+      .localeCompare(String(b.voucher || b.voucher_no || b.voucher_id || b.ar_receipt || b.ar_receipt_id || ''));
   });
 
   window.__transactionRowsCache = sortedTxs;
@@ -1342,13 +1361,19 @@ async function renderTransactionTable() {
     
     const txStatus = tx.status || tx.voucher_status || tx.payment_status || '';
     const requiresVoucher = ['approved', 'closed', 'paid'].includes(txStatus) || !!tx.voucher_id;
+    const isArReversal = Boolean(tx.ar_receipt_id && tx.type === '支出' && tx.ar_receipt_status === 'reversed');
     const voucherDisplay = tx.voucher_id
       ? `<a href="javascript:void(0)" onclick="viewVoucherDetail('${tx.voucher_id}')" style="color:#007bff; font-weight:bold; text-decoration:underline;">${tx.voucher || tx.voucher_no || '檢視憑證'}</a>`
-      : (tx.voucher || tx.voucher_no
+      : (tx.ar_receipt_id
+          ? `<span class="badge">${escapeHtml(tx.ar_receipt || 'AR 收款')}${isArReversal ? '（沖銷）' : ''}</span>`
+          : (tx.voucher || tx.voucher_no
           ? `<span class="badge">${tx.voucher || tx.voucher_no}</span>`
           : (requiresVoucher
               ? '<span class="badge danger">憑證異常</span>'
-              : '<span class="badge wait">無憑證</span>'));
+              : '<span class="badge wait">手動入帳</span>')));
+    const managedJournalLabel = tx.ar_receipt_id
+      ? (isArReversal ? 'AR 收款沖銷分錄' : 'AR 收款分錄')
+      : (tx.voucher_id ? '付款分錄' : '未入帳');
 
     // 嚴格對應 HTML Header: 憑證 | 日期 | 銀行 | 明細 | 類型 | 分類 | 借方 | 貸方 | 金額 | 操作
     row.innerHTML = `
@@ -1358,12 +1383,14 @@ async function renderTransactionTable() {
       <td>${escapeHtml(tx.detail)}<div class="muted">${escapeHtml(tx.customer || '')}</div></td>
       <td>${escapeHtml(tx.type || '')}</td>
       <td>${escapeHtml(tx.category || '營業')}</td>
-      <td>${escapeHtml(tx.journal?.debit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
-      <td>${escapeHtml(tx.journal?.credit || (tx.voucher_id ? '付款分錄' : '未入帳'))}</td>
+      <td>${escapeHtml(tx.journal?.debit || managedJournalLabel)}</td>
+      <td>${escapeHtml(tx.journal?.credit || managedJournalLabel)}</td>
       <td>${escapeHtml(tx.currency)} ${Number(tx.amount).toLocaleString()}${tx.currency !== 'TWD' ? `<div class="muted">匯率 ${Number(tx.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 6 })}<br>TWD ${Number(tx.amount_base).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>` : ''}</td>
       <td>${tx.voucher_id
         ? '<span class="muted">由付款憑證管理</span>'
-        : `${isFinanceOperator() ? `<button class="secondary edit-transaction-accounts-btn" data-id="${escapeHtml(tx.id || '')}">編輯科目</button>` : ''}<button class="secondary delete-transaction-btn" data-id="${tx.id || ''}" data-index="${state.transactions.indexOf(tx)}">刪除</button>`}
+        : (tx.ar_receipt_id
+          ? '<span class="muted">由 AR 收款管理</span>'
+          : `${isFinanceOperator() ? `<button class="secondary edit-transaction-accounts-btn" data-id="${escapeHtml(tx.id || '')}">編輯科目</button>` : ''}<button class="secondary delete-transaction-btn" data-id="${escapeHtml(tx.id || '')}" data-index="${state.transactions.indexOf(tx)}">刪除</button>`)}
       </td>
     `;
     body.appendChild(row);
@@ -1375,7 +1402,7 @@ async function deleteUnvouchedTransactions() {
     showMessage('僅會計部門與 Admin 可刪除交易。', true);
     return;
   }
-  const rows = (window.__transactionRowsCache || []).filter(tx => !tx.voucher_id);
+  const rows = (window.__transactionRowsCache || []).filter(tx => !tx.voucher_id && !tx.ar_receipt_id);
   if (!rows.length) {
     showMessage('目前沒有可刪除的無憑證交易。');
     return;
@@ -1395,7 +1422,8 @@ async function deleteUnvouchedTransactions() {
     }
   }
 
-  state.transactions = (state.transactions || []).filter(tx => tx.voucher_id || tx.voucher_id === undefined);
+  state.transactions = (state.transactions || []).filter(tx => tx.voucher_id || tx.ar_receipt_id ||
+    (tx.voucher_id === undefined && tx.ar_receipt_id === undefined));
   saveState(state);
   await renderTransactionTable();
   await Promise.all([renderBankAccounts(), renderReports()]);
@@ -4148,7 +4176,7 @@ function initializeEventsInternal() {
       });
       document.querySelectorAll('.modal-backdrop').forEach(modal => modal.remove());
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers' || tab === 'arInvoices') && !isFinanceOperator()) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers' || tab === 'arInvoices' || tab === 'arReceipts' || tab === 'arAging') && !isFinanceOperator()) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
@@ -4181,6 +4209,14 @@ function initializeEventsInternal() {
       }
       if (tab === 'arInvoices') {
         mountArInvoiceManagement(document.getElementById('arInvoices'), {
+          client: supabase, canManage: isFinanceOperator, getDepartments: fetchDepartments, getProjects: fetchProjects
+        });
+      }
+      if (tab === 'arReceipts') {
+        mountArReceiptManagement(document.getElementById('arReceipts'), { client: supabase, canManage: isFinanceOperator });
+      }
+      if (tab === 'arAging') {
+        mountArAgingReport(document.getElementById('arAging'), {
           client: supabase, canManage: isFinanceOperator, getDepartments: fetchDepartments, getProjects: fetchProjects
         });
       }
