@@ -8,6 +8,7 @@ import { mountVoucherPaymentSplitEditor } from '../src/modules/payment/voucherPa
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
+import { importBankStatementRows } from '../src/modules/bank/bankStatementImport.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis } from './reports.js';
@@ -381,12 +382,13 @@ async function renderUserManagementPanel() {
             </div>
 
             <div>
-              <label for="newUserPassword" class="block font-semibold text-slate-700 mb-1">預設初始密碼 *</label>
-              <input
-                type="text"
+                <label for="newUserPassword" class="block font-semibold text-slate-700 mb-1">初始密碼（僅 Gmail 備援模式）</label>
+                <input
+                type="password"
                 id="newUserPassword"
-                required
-                value="Bd@1234"
+                minlength="12"
+                autocomplete="new-password"
+                placeholder="留空由伺服器產生獨立暫時密碼"
                 class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-purple-500 focus:outline-none"
               />
             </div>
@@ -421,9 +423,10 @@ async function renderUserManagementPanel() {
             請輸入要賦予該使用者的全新密碼，更換後立即生效。
           </p>
           <input
-            type="text"
+            type="password"
             id="resetPassInput"
             placeholder="輸入新密碼..."
+            autocomplete="new-password"
             class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-purple-500 focus:outline-none"
           />
           <div class="flex justify-end space-x-2 text-xs">
@@ -634,7 +637,7 @@ window.closeCreateUserModal = () => {
   document.getElementById('newUserEmail').value = '';
   document.getElementById('newUserRole').value = 'employee';
   document.getElementById('newUserDepartment').value = '';
-  document.getElementById('newUserPassword').value = 'Bd@1234';
+  document.getElementById('newUserPassword').value = '';
 };
 
 window.handleCreateUserSubmit = async (e) => {
@@ -1560,7 +1563,7 @@ async function renderPaymentManagement() {
     const filter = document.getElementById('paymentStatusFilter')?.value || 'approved';
     let query = supabase
       .from('vouchers')
-.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, payment_assignment_revision, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(id, description, amount, payee_name, payee_identifier, account_code, created_at), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number, currency), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(voucher_payment_split_id, payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date, reversal_reason, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number, currency)), payment_splits:voucher_payment_splits(id, amount, payment_status, payment_no, paid_at, reversal_date, recipient_snapshot, recipient:payment_recipients(display_name, identifier, bank_name, bank_branch, account_name, account_number), bank:bank_accounts(bank_name, nickname, account_number, currency)))')
+.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, payment_assignment_revision, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(id, description, amount, payee_name, payee_identifier, account_code, created_at), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number, currency), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(voucher_payment_split_id, payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date, reversal_reason, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number, currency)), payment_splits:voucher_payment_splits(id, amount, amount_base, currency, exchange_rate, payment_status, payment_no, payment_sequence_no, paid_at, reversal_date, reversal_reason, recipient_snapshot, recipient:payment_recipients(display_name, identifier, bank_name, bank_branch, account_name, account_number), bank:bank_accounts(bank_name, nickname, account_number, currency)))')
       .in('status', filter === 'all' ? ['approved', 'partially_paid', 'closed', 'voided'] : [filter])
       .order('accounting_approved_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
@@ -1666,7 +1669,7 @@ window.viewPayeePaymentHistory = async (payeeId) => {
             const payment = Array.isArray(split.payment) ? split.payment[0] : split.payment || null;
             const bank = payment?.bank || {};
             const reversed = split.payment_status === 'voided' || payment?.status === 'reversed';
-            const paid = split.payment_status === 'paid' || payment?.status === 'posted';
+            const paid = split.payment_status === 'paid' || payment?.status === 'paid';
             return `<tr>
               <td>${escapeHtml(payment?.paid_at || split.paid_at || voucher.payment_date || voucher.tx_date || '')}${reversed && (payment?.reversal_date || split.reversal_date) ? `<br><span class="muted">反轉 ${escapeHtml(payment?.reversal_date || split.reversal_date)}</span>` : ''}</td>
               <td>${escapeHtml(voucher.summary || '')}</td>
@@ -1974,16 +1977,20 @@ async function exportPaymentListToExcel() {
   const XLSX = await import('https://esm.sh/xlsx@0.18.5');
   const rows = paymentRowsCache.flatMap(voucher => {
     const payments = getVoucherPayments(voucher);
-    const records = payments.length ? payments : [null];
-    return records.map(payment => {
-      const recipient = payment?.recipient_snapshot || voucher.payment_recipient || {};
-      const bank = payment?.bank || voucher.payment_bank || {};
-      const reversed = payment?.status === 'reversed';
+    const splits = voucher.payment_splits || [];
+    const records = splits.length
+      ? splits.map(split => ({ split, payment: payments.find(item => item.voucher_payment_split_id === split.id) || null }))
+      : (payments.length ? payments.map(payment => ({ split: null, payment })) : [{ split: null, payment: null }]);
+    return records.map(({ split, payment }) => {
+      const recipient = split?.recipient || split?.recipient_snapshot || payment?.recipient_snapshot || voucher.payment_recipient || {};
+      const bank = payment?.bank || split?.bank || voucher.payment_bank || {};
+      const reversed = split?.payment_status === 'voided' || payment?.status === 'reversed';
+      const paid = split?.payment_status === 'paid' || payment?.status === 'paid';
       return {
         單號: voucher.voucher_no,
         申請憑證號: voucher.request_voucher_no || '',
         會計憑證號: voucher.accounting_voucher_no || '',
-        付款憑證號: payment?.payment_no || '',
+        付款憑證號: payment?.payment_no || split?.payment_no || '',
         專案: voucher.project ? `${voucher.project.project_code} ${voucher.project.name}` : '',
         申請人: voucher.applicant?.full_name || '',
         收款人: recipient.display_name || voucher.voucher_lines?.[0]?.payee_name || '',
@@ -1994,14 +2001,14 @@ async function exportPaymentListToExcel() {
         收款帳號: recipient.account_number || '',
         付款銀行: bank.nickname || bank.bank_name || '',
         會計科目: getPaymentAccountDisplay(voucher),
-        幣別: payment?.currency || voucher.currency || 'TWD',
-        金額: Number(payment?.amount ?? voucher.total_amount ?? 0),
-        付款匯率: payment?.exchange_rate ?? '',
-        付款台幣金額: payment?.amount_base ?? '',
-        狀態: reversed ? '已反轉' : payment ? '已付款' : getVoucherPaymentStatus(voucher).label,
-        付款日期: payment?.paid_at || voucher.payment_date || '',
-        反轉日期: payment?.reversal_date || '',
-        反轉原因: payment?.reversal_reason || ''
+        幣別: payment?.currency || split?.currency || voucher.currency || 'TWD',
+        金額: Number(payment?.amount ?? split?.amount ?? voucher.total_amount ?? 0),
+        付款匯率: payment?.exchange_rate ?? split?.exchange_rate ?? '',
+        付款台幣金額: payment?.amount_base ?? split?.amount_base ?? '',
+        狀態: reversed ? '已反轉' : paid ? '已付款' : split ? '待付款' : getVoucherPaymentStatus(voucher).label,
+        付款日期: payment?.paid_at || split?.paid_at || voucher.payment_date || '',
+        反轉日期: payment?.reversal_date || split?.reversal_date || '',
+        反轉原因: payment?.reversal_reason || split?.reversal_reason || ''
       };
     });
   });
@@ -3104,11 +3111,28 @@ async function renderBankAccounts() {
   if (!body) return;
 
   try {
-    const [bankAccounts, ledgerAccounts] = await Promise.all([loadBankAccounts(), fetchAccounts()]);
+    const [bankAccounts, ledgerAccounts, currencyResult] = await Promise.all([
+      loadBankAccounts(),
+      fetchAccounts(),
+      supabase.from('currencies').select('code, name, is_active').order('code')
+    ]);
+    if (currencyResult.error) throw currencyResult.error;
     const accounts = Array.isArray(bankAccounts) ? bankAccounts : [];
     const ledgerById = new Map((ledgerAccounts || []).map(account => [account.id, account]));
     window.__transactionAccounts = ledgerAccounts || [];
     window.__bankAccountsForTransaction = accounts;
+    window.__bankCurrencies = currencyResult.data || [];
+    const currencySelect = document.getElementById('bankCurrency');
+    if (currencySelect) {
+      const selectedValue = currencySelect.value || 'TWD';
+      const currencies = window.__bankCurrencies.length
+        ? window.__bankCurrencies
+        : [{ code: 'TWD', name: 'New Taiwan Dollar', is_active: true }];
+      currencySelect.innerHTML = currencies.map(currency =>
+        `<option value="${escapeHtml(currency.code)}" ${currency.is_active ? '' : 'disabled'}>${escapeHtml(currency.code)} - ${escapeHtml(currency.name)}${currency.is_active ? '' : '（停用）'}</option>`
+      ).join('');
+      currencySelect.value = currencies.some(currency => currency.code === selectedValue) ? selectedValue : 'TWD';
+    }
     const ledgerSelect = document.getElementById('bankLedgerAccountId');
     if (ledgerSelect) {
       const selectedValue = ledgerSelect.value;
@@ -4295,6 +4319,7 @@ function initializeEventsInternal() {
         account_number: document.getElementById('bankAccountNumber').value.trim(),
         nickname: document.getElementById('bankNickname').value.trim(),
         opening_balance: parseFloat(document.getElementById('bankOpeningBalance').value) || 0,
+        currency: document.getElementById('bankCurrency')?.value || 'TWD',
         ledger_account_id: document.getElementById('bankLedgerAccountId').value || null,
         accounting_account_id: document.getElementById('bankLedgerAccountId').value || null
       };
@@ -4547,11 +4572,11 @@ function initializeEventsInternal() {
         resultBox.style.display = 'block';
         resultBox.className = result.emailSent === false ? 'message warning' : 'message success';
         if (result.emailProvider === 'supabase') {
-          resultBox.textContent = `帳號已建立，Supabase 已接受邀請請求：${result.credentials.email}。實際寄信由 Supabase SMTP 背景處理，請用 Auth logs 或 SMTP test email 確認。`;
+          resultBox.textContent = `帳號已建立，Supabase 已接受邀請請求：${result.email}。實際寄信由 Supabase SMTP 背景處理，請用 Auth logs 或 SMTP test email 確認。`;
         } else if (result.emailSent) {
-          resultBox.textContent = `帳號已建立，邀請信已寄至 ${result.credentials.email}（使用者登入後系統會強制要求設定新密碼）。`;
+          resultBox.textContent = `帳號已建立，邀請信已寄至 ${result.email}（使用者登入後系統會強制要求設定新密碼）。`;
         } else {
-          resultBox.textContent = `帳號已建立但通知信失敗：${result.credentials.email}｜初始密碼：${result.credentials.tempPassword}（${result.emailError || '未知原因'}）`;
+          resultBox.textContent = `帳號已建立但通知信失敗：${result.email}（${result.emailError || '未知原因'}）。請檢查寄信設定，必要時由管理員重設該帳號密碼；系統不會回顯暫時密碼。`;
         }
         e.target.reset();
         await renderAdminUserTable();
@@ -5217,7 +5242,7 @@ function renderVoucherCard(v) {
   if (isMine && ['pending_review', 'manager_rejected', 'accounting_rejected'].includes(v.status)) {
     actions += `<span class="muted" style="font-size:12px;">可修改後重送（下一階段補上編輯介面）</span>`;
   }
-  if (['manager', 'admin'].includes(role) && v.status === 'pending_review') {
+  if (['manager', 'admin', 'super_admin'].includes(role) && v.status === 'pending_review') {
     actions += `<button class="primary-btn" onclick="viewVoucherDetail('${v.id}')">查看並審核</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
   }
@@ -5320,7 +5345,7 @@ async function renderVoucherWorkflowList() {
             </button>
             <button class="btn-small warning reject-voucher-btn" data-id="${row.id}" data-stage="accounting">退件</button>
           `;
-        } else if (vStatus === 'approved') {
+        } else if (['approved', 'partially_paid'].includes(vStatus)) {
           actionButtons = `
             <button class="btn-small success close-voucher-btn" data-id="${row.id}" onclick="openPaymentQueue('${row.id}')">
               前往付款清單
@@ -6430,6 +6455,17 @@ window.editBankAccount = async (id) => {
     document.getElementById('bankNickname').value = account.nickname || '';
     document.getElementById('bankOpeningBalance').value = account.opening_balance || 0; // 確保期初餘額正確帶入
     document.getElementById('bankLedgerAccountId').value = account.ledger_account_id || account.accounting_account_id || '';
+    const currencySelect = document.getElementById('bankCurrency');
+    const currencyHint = document.getElementById('bankCurrencyHint');
+    if (currencySelect) {
+      currencySelect.value = account.currency || 'TWD';
+      currencySelect.disabled = Boolean(account.currency_locked);
+    }
+    if (currencyHint) {
+      currencyHint.textContent = account.currency_locked
+        ? '此帳戶已有餘額或關聯資料，幣別不可變更。'
+        : '帳戶首次產生餘額或關聯資料後，幣別會鎖定。';
+    }
     // 記錄目前正在編輯的 ID
     state.editingBankId = id;
 
@@ -6465,6 +6501,13 @@ window.resetBankForm = () => {
   const form = document.getElementById('bankAccountForm');
   if (!form) return;
   form.reset();
+  const currencySelect = document.getElementById('bankCurrency');
+  if (currencySelect) {
+    currencySelect.disabled = false;
+    currencySelect.value = 'TWD';
+  }
+  const currencyHint = document.getElementById('bankCurrencyHint');
+  if (currencyHint) currencyHint.textContent = '';
 
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) {
@@ -6891,21 +6934,6 @@ window.openCloseVoucherModal = async (voucherId) => {
 window.confirmCloseVoucher = async (voucherId) => {
   return window.openPaymentQueue(voucherId);
 };
-
-function getStatusBadgeWithDate(v) {
-  let text = '';
-  if (v.status === 'closed') {
-    text = `已付款 ${v.payment_date ? v.payment_date : ''}`;
-    return `<span class="badge success">已付款</span>`;
-  } else if (v.status === 'approved') {
-    return `<span class="badge warning">待付款</span>`;
-  } else if (v.status === 'pending_accounting') {
-    return `<span class="badge warning">待會計核准</span>`;
-  } else if (v.status === 'pending_review') {
-    return `<span class="badge warning">待主管審核</span>`;
-  }
-  return `<span class="badge">${v.status || '處理中'}</span>`;
-}
 
 let selectedTeamMembers = [];
 
@@ -7604,25 +7632,26 @@ async function populateStatementBankAccountSelect() {
   // 呼叫你系統既有的 API 抓取 DB 裡的銀行帳戶
   availableBankAccounts = await fetchBankAccounts();
   
-  select.innerHTML = '<option value="">請選擇銀行帳戶...</option>' + 
-    availableBankAccounts.map(b => 
-      `<option value="${b.id}">${b.bank_name} - ${b.account_number.slice(-4)} (${b.nickname || ''})</option>`
+  select.innerHTML = '<option value="">請選擇銀行帳戶...</option>' +
+    availableBankAccounts.map(b =>
+      `<option value="${escapeHtml(b.id)}">${escapeHtml(b.bank_name)} - ${escapeHtml(String(b.account_number || '').slice(-4))} (${escapeHtml(b.nickname || '')}) · ${escapeHtml(b.currency || 'TWD')}</option>`
     ).join('');
 
   // 監聽選擇改變，提示使用者對應的解析規則
-  select.addEventListener('change', (e) => {
+  select.onchange = (e) => {
     const bankCode = detectParserCode(e.target.value);
     const hintEl = document.getElementById('detectedParserText');
     if (bankCode) {
-      hintEl.innerHTML = `✅ 已自動對應解析規則：<strong>${bankCode}</strong>`;
-      hintEl.style.color = 'green';
+      const bank = availableBankAccounts.find(item => item.id === e.target.value);
+      hintEl.textContent = `已對應 ${bankCode} 解析規則；匯入幣別為 ${bank?.currency || 'TWD'}。`;
+      hintEl.style.color = 'var(--success, #047857)';
     } else if (e.target.value) {
-      hintEl.innerHTML = `⚠️ 系統目前沒有此銀行帳戶的 PDF 解析規則`;
-      hintEl.style.color = 'red';
+      hintEl.textContent = '系統目前沒有此銀行帳戶的 PDF 解析規則。';
+      hintEl.style.color = 'var(--danger, #b91c1c)';
     } else {
-      hintEl.innerHTML = '';
+      hintEl.textContent = '';
     }
-  });
+  };
 }
 
 // 2. 自動判斷對應的 Parser 規則 (玉山187, 兆豐347...等)
@@ -7683,17 +7712,19 @@ async function handleParseStatement() {
       return;
     }
 
+    const selectedBank = availableBankAccounts.find(bank => bank.id === bankAccountId);
+    const currency = selectedBank?.currency || 'TWD';
     previewArea.innerHTML = `
       <p>解析到 <strong>${parsedStatementRecords.length}</strong> 筆交易，請確認後匯入：</p>
       <table>
-        <thead><tr><th>日期</th><th>摘要</th><th>對象</th><th>支出</th><th>收入</th><th>餘額</th></tr></thead>
+        <thead><tr><th>日期</th><th>摘要</th><th>對象</th><th>支出（${escapeHtml(currency)}）</th><th>收入（${escapeHtml(currency)}）</th><th>餘額（${escapeHtml(currency)}）</th></tr></thead>
         <tbody>
           ${parsedStatementRecords.map(r => `
             <tr>
-              <td>${r.date || '-'}</td><td>${r.detail || '-'}</td><td>${r.counterparty || '-'}</td>
-              <td>${r.expense ? Number(r.expense).toLocaleString() : '-'}</td>
-              <td>${r.income ? Number(r.income).toLocaleString() : '-'}</td>
-              <td>${r.balance != null ? Number(r.balance).toLocaleString() : '-'}</td>
+              <td>${escapeHtml(r.date || '-')}</td><td>${escapeHtml(r.detail || '-')}</td><td>${escapeHtml(r.counterparty || '-')}</td>
+              <td>${Number(r.expense) > 0 ? escapeHtml(Number(r.expense).toLocaleString()) : '-'}</td>
+              <td>${Number(r.income) > 0 ? escapeHtml(Number(r.income).toLocaleString()) : '-'}</td>
+              <td>${r.balance != null && Number.isFinite(Number(r.balance)) ? escapeHtml(Number(r.balance).toLocaleString()) : '-'}</td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -7707,82 +7738,33 @@ async function handleParseStatement() {
 }
 
 // 4. 修改確認匯入邏輯
-function normalizeStatementKey(row) {
-  const numberKey = value => Number(value || 0).toFixed(2);
-  return [
-    row.tx_date || '',
-    String(row.detail || '').trim(),
-    String(row.counterparty || '').trim(),
-    numberKey(row.expense),
-    numberKey(row.income),
-    row.balance === null || row.balance === undefined ? '' : numberKey(row.balance)
-  ].join('|');
-}
-
-async function filterExistingStatementRows(bankAccountId, rows) {
-  if (!rows.length) return { newRows: [], duplicateCount: 0 };
-
-  const dates = rows.map(row => row.tx_date).filter(Boolean).sort();
-  const minDate = dates[0];
-  const maxDate = dates[dates.length - 1];
-  if (!minDate || !maxDate) return { newRows: rows, duplicateCount: 0 };
-
-  const { data, error } = await supabase
-    .from('bank_statement_transactions')
-    .select('tx_date, detail, counterparty, expense, income, balance, source_file_name')
-    .eq('bank_account_id', bankAccountId)
-    .gte('tx_date', minDate)
-    .lte('tx_date', maxDate);
-
-  if (error) throw error;
-
-  const existingKeys = new Set((data || []).map(normalizeStatementKey));
-  const newRows = rows.filter(row => !existingKeys.has(normalizeStatementKey(row)));
-  return { newRows, duplicateCount: rows.length - newRows.length };
-}
-
-async function handleConfirmImportStatement() {
+async function handleConfirmImportStatement(event) {
   const bankAccountId = document.getElementById('statementBankAccountId').value;
-  // 匯入資料庫時，一併把解析規則(bankCode)存進去備查
-  const bankCode = detectParserCode(bankAccountId); 
+  const bankCode = detectParserCode(bankAccountId);
   const fileName = document.getElementById('statementFileInput')?.files[0]?.name || '';
-  const { data: { user } } = await supabase.auth.getUser();
+  const button = event?.currentTarget || document.getElementById('confirmImportStatementBtn');
 
   try {
-    const rows = parsedStatementRecords
-      .filter(r => r.date)
-      .map(r => ({
-        bank_account_id: bankAccountId || null,
-        bank_code: bankCode,
-        tx_date: r.date.replace(/\//g, '-'),
-        detail: r.detail,
-        counterparty: r.counterparty,
-        expense: r.expense || 0,
-        income: r.income || 0,
-        balance: r.balance,
-        source_file_name: fileName,
-        uploaded_by: user.id
-      }));
-
-    if (!rows.length) {
-      showMessage('沒有可匯入的對帳資料。', true);
-      return;
-    }
-
-    const { newRows, duplicateCount } = await filterExistingStatementRows(bankAccountId, rows);
-    if (!newRows.length) {
-      showMessage(`沒有新增資料，${duplicateCount} 筆都已存在於對帳庫。`);
-      return;
-    }
-
-    const { error } = await supabase.from('bank_statement_transactions').insert(newRows);
-    if (error) throw error;
-
-    const skippedText = duplicateCount ? `，已跳過 ${duplicateCount} 筆重複資料` : '';
-    showMessage(`已匯入 ${newRows.length} 筆對帳資料${skippedText}。`);
-    document.getElementById('statementPreviewArea').innerHTML = '';
-    document.getElementById('statementFileInput').value = '';
-    document.getElementById('detectedParserText').innerHTML = '';
+    await withActionLock(`bank-statement-import:${bankAccountId}:${fileName}`, button, async () => {
+      const result = await importBankStatementRows(supabase, {
+        bankAccountId,
+        bankCode,
+        sourceFileName: fileName,
+        records: parsedStatementRecords.filter(record => record.date || record.tx_date)
+      });
+      const importedCount = Number(result.imported_count || 0);
+      const duplicateCount = Number(result.duplicate_count || 0);
+      if (!importedCount) {
+        showMessage(`沒有新增資料，${duplicateCount} 筆都已存在於帳單庫。`);
+      } else {
+        const skippedText = duplicateCount ? `，已跳過 ${duplicateCount} 筆重複資料` : '';
+        showMessage(`已匯入 ${importedCount} 筆 ${result.currency || 'TWD'} 對帳資料${skippedText}。`);
+      }
+      document.getElementById('statementPreviewArea').innerHTML = '';
+      document.getElementById('statementFileInput').value = '';
+      document.getElementById('detectedParserText').textContent = '';
+      parsedStatementRecords = [];
+    });
   } catch (error) {
     showMessage(`匯入失敗：${error.message}`, true);
   }

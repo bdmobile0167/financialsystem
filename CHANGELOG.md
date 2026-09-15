@@ -1,5 +1,15 @@
 # 變更紀錄
 
+## 0.2.90 - 2026-09-15
+
+- Apply `voucher_payment_splits_and_reversals` and `voucher_payment_audit_hardening` directly to Supabase, adding per-line recipient/bank splits, partial payment status, immutable recipient snapshots and reversal traceability.
+- Replace the single-recipient payment dialog with line groups, recipient name search, separate company bank selection, exact per-line totals and selective payment; update payment history, voucher center and Excel export for all splits.
+- Prevent duplicate payments before confirmation resolves and lock the editor after a committed payment whose UI refresh fails.
+- Pass remote split/FX/role/idempotency/rollback/reversal tests and all 15 desktop/mobile/browser regressions, including explicit horizontal-overflow assertions and static parsing of all server API files.
+- Remove the shared invite default password. Gmail fallback now creates a unique temporary password per account, escapes email content and never returns the password in the API response.
+- Add a public-upload allowlist, scanner and sanitized `.release-upload/` staging generator; exclude real invoice images, attachments, financial exports, backups, environment files and credentials from GitHub. Supplied invoice images remain private model fixtures only.
+- Production authenticated acceptance, SMTP delivery and real invoice-model execution remain pending, so the release is not `1.0.0`.
+
 ## 0.2.89 - 2026-09-14
 
 - Apply AR aging, receipt reversal and cross-currency receipt allocation directly to Supabase; keep local reference SQL and rollback tests under `tools/sql/`.

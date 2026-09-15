@@ -386,27 +386,6 @@ export async function deleteVoucher(voucherId) {
   };
 }
 
-export async function closeVoucherByAccounting(voucherId, accountCodeId, bankAccountId, paymentDate) {
-  try {
-    const { data: result, error } = await supabase.rpc('close_voucher_by_accounting', {
-      p_voucher_id: voucherId,
-      p_debit_account: accountCodeId,
-      p_bank_account_id: bankAccountId,
-      p_payment_date: paymentDate
-    });
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      message: result?.idempotent ? 'Payment is already closed.' : 'Payment completed and closed.'
-    };
-  } catch (error) {
-    console.error('Payment close failed:', error);
-    return { success: false, error: error.message };
-  }
-}
-
 export async function fetchUserVouchers(userId) {
   const { data, error } = await supabase
     .from('vouchers')

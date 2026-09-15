@@ -352,6 +352,7 @@ export async function mountVoucherPaymentSplitEditor({
   onCancel = () => {}
 }) {
   let storedSplits = await fetchVoucherPaymentSplits(client, voucher.id);
+  let paymentInFlight = false;
   const state = {
     voucher: { ...voucher },
     recipients: activeRecipients(recipients),
@@ -448,12 +449,17 @@ export async function mountVoucherPaymentSplitEditor({
     });
 
     container.querySelector('[data-pay-splits]')?.addEventListener('click', async () => {
+      if (paymentInFlight) return;
+      paymentInFlight = true;
       try {
         updateStateFromInputs(container, state);
         const { selectedIds } = validateState(state, { requireSelection: true });
         const selectedTotal = state.splits.filter(split => selectedIds.includes(split.id)).reduce((sum, split) => sum + split.amount, 0);
         const confirmed = await confirmAction(`確認已從公司銀行實際付出 ${formatMoney(selectedTotal, voucher.currency || 'TWD')}？`);
-        if (!confirmed) return;
+        if (!confirmed) {
+          paymentInFlight = false;
+          return;
+        }
         setBusy(container, true, '付款處理中...');
         const saveResponse = await client.rpc('save_voucher_payment_splits', {
           p_voucher_id: voucher.id,
@@ -478,6 +484,7 @@ export async function mountVoucherPaymentSplitEditor({
           lockCommittedEditor(container, '付款已完成，但畫面更新失敗。請關閉視窗並重新整理；請勿重複付款。');
         }
       } catch (error) {
+        paymentInFlight = false;
         setBusy(container, false);
         showEditorMessage(container, error.message, 'error');
       }

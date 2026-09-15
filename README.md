@@ -1,6 +1,15 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.89`
+目前本機版本：`0.2.90`
+
+## 0.2.90 重點
+
+- 一張報支可按每個明細拆給多位收款人及不同公司出款銀行，並可只勾選部分拆分先付款；每筆都保存獨立付款號碼、收款快照、銀行流水與分錄。
+- 已付款拆分不可改寫；作廢以反向流水及反向分錄保留歷史。金額不等於各明細或整張單據時整筆拒絕，快速連點及已付款但畫面刷新失敗也不會重複付款。
+- 一般員工不可讀完整拆分／收款主檔；付款人明細、憑證中心、付款清單與 Excel 匯出均已改用多筆付款資料。
+- 移除邀請帳號共用預設密碼；Gmail fallback 改為每位使用者獨立臨時密碼，API 不回顯密碼。
+- 新增 GitHub 公開上傳白名單與機密／個資檢查器；發票圖片只作模型私有樣本，不會放入 UI 或 repository。
+- 遠端付款拆分與外幣付款回歸、15 項桌面／手機與 server API 語法測試通過。Production 真實登入驗收仍未完成，因此未升 `1.0.0`。
 
 ## 0.2.89 重點
 
@@ -153,7 +162,7 @@
 ## 0.2.70 重點
 
 - 會計審核改走 `approve_voucher_review_by_accounting` RPC，明細逐列科目、付款人、備註、核准狀態、預算與 workflow log 同一交易完成。
-- 付款設定改走 `save_voucher_payment_assignment` RPC，付款人、付款銀行與會計備註不再直接分段寫入 `vouchers`。
+- 0.2.70 曾將付款設定改走 `save_voucher_payment_assignment` RPC；0.2.90 已由逐項 `save_voucher_payment_splits` 正式取代。
 - 主管核准/退件與重送改走 RPC，狀態與 workflow log 不再分段寫入。
 
 ## 0.2.69 重點
@@ -173,7 +182,7 @@
 - 已修正銀行 PDF 解析 parser key 壞碼，`玉山187` 與 `兆豐` 系列 bankCode 不會再因檔案編碼損壞被判定不支援。
 - 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.89`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.90`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -181,7 +190,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 歷史檢查為 `0.2.62` `READY`；目前 `0.2.89` 仍需由使用者推送／部署後重新確認。
+- Vercel production 歷史檢查為 `0.2.62` `READY`；目前 `0.2.90` 仍需由使用者推送／部署後重新確認。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - AR 客戶、發票、信用控管、收款反轉、帳齡及跨幣別收款均已完成；`TASK-022` 只保留正式環境真實角色端到端驗收。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。
@@ -200,7 +209,6 @@
 - Vercel project：`financialsystem`
 - Production domain：`financialsystem-nine.vercel.app`
 - Supabase project ref：`imlmclalgbfxhhnpsyam`
-- 本機正式目錄：`C:\Users\BDPM\Desktop\bdm0167\表格自動化\netlify`
 
 ## 目前重點
 
@@ -260,20 +268,40 @@ npm run lint:migrations
 
 ## GitHub 上傳清單
 
-應上傳：
+先執行隱私與機密檢查：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/check-public-upload.ps1
+```
+
+建議直接產生安全上傳暫存區：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/prepare-public-upload.ps1
+```
+
+成功後只上傳 `.release-upload/` **裡面的內容**，不要上傳原工作目錄，也不要把 `.release-upload` 當成 repository 的最外層資料夾。
+
+不要把整個工作目錄拖進 GitHub。Vercel 執行必要內容：
 
 - `api/`
 - `css/`
-- `docs/`
 - `scripts/`
 - `src/`
-- `supabase/migrations/`
+- `index.html`
+- `package.json`
+
+版本與維護紀錄建議一併上傳：
+
+- `docs/`
+- `tools/sql/`
+- `tools/tests/`，但排除 `tools/tests/private-invoice-samples/`
 - `.env.example`
 - `.gitignore`
 - `CHANGELOG.md`
-- `index.html`
-- `package.json`
 - `README.md`
+
+本專案的 Supabase schema/RPC 由管理連線直接套用；依目前部署方式，`supabase/migrations/` 不需要上傳 GitHub 或由 Vercel 執行。本機 `tools/sql/` 只保留匿名化的參考 SQL 與回歸測試。
 
 不要上傳：
 
@@ -281,6 +309,11 @@ npm run lint:migrations
 - `.vercel/`、`.netlify/`
 - `node_modules/`
 - `.tmp-*` 截圖或 smoke-test 暫存資料夾
+- `.release-upload/` 本身只是本機安全選檔暫存區，不納入 repository
+- `tools/tests/private-invoice-samples/`、`private-data/`、`uploads/`、`attachments/`
+- 真實發票／收據圖片、銀行對帳單、薪資或交易匯出檔、資料庫備份
+- 一般圖片與 Office 文件預設也被阻擋；未來公開 UI 資產需經人工確認後再以單檔例外加入
+- Google Drive folder ID、OAuth token、client secret 或內部 Git server 位址
 - 真實 Supabase secret key、Gmail app password、Gemini API key
 
 ## 主要文件
@@ -301,7 +334,7 @@ npm run lint:migrations
 - Production 重新部署並做 Vercel / Supabase invite 驗收。
 - Supabase Dashboard SMTP test email 仍需確認實際投遞。
 - 外部 Git server 仍需 SSH key / remote push。
-- 多收款人付款拆分仍是較大的後續資料模型調整。
+- 發票真實模型樣本與 Google Drive 私有歸檔仍待驗收。
 
 
 

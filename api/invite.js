@@ -2,9 +2,22 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { createAdminClient, json, requireRole } = require('./_supabaseServer');
 
-const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || 'Bd@1234';
 const APP_LOGIN_URL = process.env.APP_LOGIN_URL || 'https://financialsystem-nine.vercel.app';
 const ALLOWED_ROLES = new Set(['admin', 'accounting', 'manager', 'employee']);
+const MIN_TEMP_PASSWORD_LENGTH = 12;
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function generateTemporaryPassword() {
+  return `Aa1!${crypto.randomBytes(12).toString('base64url')}`;
+}
 
 function useSupabaseInviteEmail() {
   const provider = String(process.env.INVITE_EMAIL_PROVIDER || '').trim().toLowerCase();
@@ -29,7 +42,9 @@ function validateInvitePayload(body = {}, options = {}) {
   const role = String(body.role || 'employee').trim();
   const departmentId = body.departmentId || null;
   const employeeId = body.employeeId ? String(body.employeeId).trim() : null;
-  const password = body.password ? String(body.password).trim() : DEFAULT_PASSWORD;
+  const password = body.password
+    ? String(body.password).trim()
+    : (options.supabaseInvite ? '' : generateTemporaryPassword());
   const permissions = body.permissions && typeof body.permissions === 'object' && !Array.isArray(body.permissions)
     ? body.permissions
     : {};
@@ -40,8 +55,8 @@ function validateInvitePayload(body = {}, options = {}) {
   if (departmentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(departmentId)) {
     errors.push('departmentId must be a UUID');
   }
-  if (!options.supabaseInvite && password.length < 6) {
-    errors.push('password must be at least 6 characters');
+  if (!options.supabaseInvite && password.length < MIN_TEMP_PASSWORD_LENGTH) {
+    errors.push(`password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters`);
   }
 
   return {
@@ -52,17 +67,22 @@ function validateInvitePayload(body = {}, options = {}) {
 }
 
 function buildInviteEmailHtml({ fullName, email, tempPassword, correlationId }) {
+  const safeName = escapeHtml(fullName);
+  const safeEmail = escapeHtml(email);
+  const safePassword = escapeHtml(tempPassword);
+  const safeLoginUrl = escapeHtml(APP_LOGIN_URL);
+  const safeCorrelationId = escapeHtml(correlationId);
   return `
     <div style="font-family: Arial, sans-serif; max-width:520px; margin:0 auto; color:#1e293b;">
       <h2 style="color:#1d4ed8;">Financial system account invitation</h2>
-      <p>Hello ${fullName || ''}, your account has been created.</p>
+      <p>Hello ${safeName}, your account has been created.</p>
       <table style="border-collapse:collapse; margin:16px 0;">
-        <tr><td style="padding:6px 12px; color:#64748b;">Login email</td><td style="padding:6px 12px; font-weight:600;">${email}</td></tr>
-        <tr><td style="padding:6px 12px; color:#64748b;">Temporary password</td><td style="padding:6px 12px; font-weight:600;">${tempPassword}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">Login email</td><td style="padding:6px 12px; font-weight:600;">${safeEmail}</td></tr>
+        <tr><td style="padding:6px 12px; color:#64748b;">Temporary password</td><td style="padding:6px 12px; font-weight:600;">${safePassword}</td></tr>
       </table>
-      <p><a href="${APP_LOGIN_URL}" style="display:inline-block; background:#1d4ed8; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;">Open financial system</a></p>
+      <p><a href="${safeLoginUrl}" style="display:inline-block; background:#1d4ed8; color:#fff; padding:10px 20px; border-radius:6px; text-decoration:none;">Open financial system</a></p>
       <p style="color:#dc2626; font-size:14px;">Please change your password after first login.</p>
-      <p style="color:#94a3b8; font-size:12px;">Correlation ID: ${correlationId}</p>
+      <p style="color:#94a3b8; font-size:12px;">Correlation ID: ${safeCorrelationId}</p>
     </div>
   `;
 }
@@ -190,7 +210,7 @@ module.exports = async (req, res) => {
       emailProvider: shouldUseSupabaseInvite ? 'supabase' : 'gmail',
       emailError: shouldUseSupabaseInvite || emailResult.sent ? null : emailResult.reason,
       emailNote: shouldUseSupabaseInvite ? emailResult.reason : null,
-      credentials: { email, tempPassword: shouldUseSupabaseInvite ? null : password }
+      email
     });
   } catch (error) {
     console.error('invite failed', { correlationId, error: error.message });

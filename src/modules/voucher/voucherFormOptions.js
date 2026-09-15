@@ -15,7 +15,7 @@ export async function populateVoucherFormOptions() {
     const role = window.state.currentUser?.role;
     const acctGroup = document.getElementById('accountingFieldsGroup');
     if (acctGroup) {
-        acctGroup.style.display = ['accounting', 'admin'].includes(role) ? 'flex' : 'none';
+        acctGroup.style.display = ['accounting', 'admin', 'super_admin'].includes(role) ? 'flex' : 'none';
     }
 
     // 初始進入此頁面時，預設給 5 個空列

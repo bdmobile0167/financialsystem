@@ -1,6 +1,6 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { STATUS_LABELS, buildMiniStepperDots, getStatusBadge } from '../utils/uiHelpers.js';
-import { fetchMyVouchers } from '../voucherApi.js';
+import { fetchMyVouchers } from './voucherApi.js';
 
 function renderVoucherCard(v) {
   const role = window.state.currentUser?.role;
@@ -10,11 +10,11 @@ function renderVoucherCard(v) {
   if (isMine && ['pending_review', 'manager_rejected', 'accounting_rejected'].includes(v.status)) {
     actions += `<span class="muted" style="font-size:12px;">可修改後重送（下一階段補上編輯介面）</span>`;
   }
-  if (['manager', 'admin'].includes(role) && v.status === 'pending_review') {
+  if (['manager', 'admin', 'super_admin'].includes(role) && v.status === 'pending_review') {
     actions += `<button class="primary-btn" onclick="viewVoucherDetail('${v.id}')">查看並審核</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="manager">退件</button>`;
   }
-  if (['accounting', 'admin'].includes(role) && v.status === 'pending_accounting') {
+  if (['accounting', 'admin', 'super_admin'].includes(role) && v.status === 'pending_accounting') {
     actions += `<button class="primary-btn approve-voucher-btn" data-id="${v.id}" data-stage="accounting">核准入帳</button>
                 <button class="danger reject-voucher-btn" data-id="${v.id}" data-stage="accounting">退件</button>`;
   }
@@ -70,7 +70,7 @@ async function renderVoucherWorkflowList() {
           `;
         }
       } 
-      else if (['accounting', 'admin'].includes(currentUserRole)) {
+      else if (['accounting', 'admin', 'super_admin'].includes(currentUserRole)) {
         if (vStatus === 'pending_accounting') {
           actionButtons = `
             <button class="btn-small success" onclick="openAccountingReviewModal('${row.id}')">
@@ -78,7 +78,7 @@ async function renderVoucherWorkflowList() {
             </button>
             <button class="btn-small warning reject-voucher-btn" data-id="${row.id}" data-stage="accounting">退件</button>
           `;
-        } else if (vStatus === 'approved') {
+        } else if (['approved', 'partially_paid'].includes(vStatus)) {
           actionButtons = `
             <button class="btn-small success close-voucher-btn" data-id="${row.id}" onclick="openCloseVoucherModal('${row.id}')">
               執行付款銷案

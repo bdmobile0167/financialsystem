@@ -253,6 +253,11 @@
                 <input type="text" id="bankNickname" placeholder="例如：玉山187" />
                 <label for="bankOpeningBalance">期初餘額</label>
                 <input type="number" id="bankOpeningBalance" value="0" />
+                <label for="bankCurrency">幣別</label>
+                <select id="bankCurrency" required>
+                  <option value="TWD">TWD - New Taiwan Dollar</option>
+                </select>
+                <small id="bankCurrencyHint" class="muted"></small>
                 <label for="bankLedgerAccountId">綁定會計科目</label>
                 <select id="bankLedgerAccountId">
                   <option value="">未綁定</option>
@@ -1042,8 +1047,8 @@
                 </div>
                 <label for="inviteDepartment">部門</label>
                 <select id="inviteDepartment"></select>
-                <label for="invitePassword">初始密碼（留空使用系統預設）</label>
-                <input type="text" id="invitePassword" placeholder="留空則自動使用 Bd@1234" />
+                <label for="invitePassword">初始密碼（僅 Gmail 備援模式）</label>
+                <input type="password" id="invitePassword" minlength="12" autocomplete="new-password" placeholder="Supabase invite 可留空；Gmail 模式留空時由伺服器產生" />
                 <button type="submit" class="primary-btn" style="margin-top:10px;">開通帳號</button>
               </form>
               <div id="inviteResultBox" class="message" style="display:none; margin-top:10px;"></div>
