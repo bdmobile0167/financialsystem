@@ -5,6 +5,7 @@ import { mountArInvoiceManagement } from '../src/modules/receivables/arInvoiceMa
 import { mountArReceiptManagement } from '../src/modules/receivables/arReceiptManagement.js';
 import { mountArAgingReport } from '../src/modules/receivables/arAgingReport.js';
 import { mountVoucherPaymentSplitEditor } from '../src/modules/payment/voucherPaymentSplits.js';
+import { calculatePayrollAmounts, validatePayrollItems, summarizePayrollItems, formatPayrollMoney, getPayrollAgencySetupIssues, createPayrollRequestTracker } from '../src/modules/payment/payrollPayment.js';
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
@@ -12,7 +13,7 @@ import { importBankStatementRows } from '../src/modules/bank/bankStatementImport
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildEquityOverview, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
 import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
 import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
@@ -26,6 +27,7 @@ import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
 import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
 import { getCompanyDataBundle, saveCompanyInfo, saveCompanyBusinessItems, saveCompanyShareholders } from './companyContext.js';
+import { applyPaidInCapitalTotal, getCapitalComparison, getPaidInCapital, getShareholderContributionTotal, parseCapitalAmount } from '../src/modules/company/capital.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
@@ -1177,8 +1179,59 @@ function fillCompanyInfoForm() {
   setVal('companyRepresentative', info.representativeName);
   setVal('companyBoardCount', info.boardCount);
   setVal('companyTotalCapital', info.totalCapital);
-  setVal('companyPaidInCapital', Number(info.capitalCash || 0) + Number(info.capitalProperty || 0) + Number(info.capitalTechnology || 0) + Number(info.capitalMergeNew || 0));
+  setVal('companyCapitalCash', info.capitalCash);
+  setVal('companyCapitalProperty', info.capitalProperty);
+  setVal('companyCapitalTechnology', info.capitalTechnology);
+  setVal('companyCapitalMergeNew', info.capitalMergeNew);
+  setVal('companyPaidInCapital', getPaidInCapital(info));
   setVal('companyOpenDate', info.plannedOpenDate);
+  refreshCompanyCapitalSummary();
+}
+
+function readCompanyCapitalForm() {
+  return {
+    totalCapital: parseCapitalAmount(document.getElementById('companyTotalCapital')?.value, '資本總額'),
+    capitalCash: parseCapitalAmount(document.getElementById('companyCapitalCash')?.value, '現金出資'),
+    capitalProperty: parseCapitalAmount(document.getElementById('companyCapitalProperty')?.value, '財產出資'),
+    capitalTechnology: parseCapitalAmount(document.getElementById('companyCapitalTechnology')?.value, '技術出資'),
+    capitalMergeNew: parseCapitalAmount(document.getElementById('companyCapitalMergeNew')?.value, '合併新設出資')
+  };
+}
+
+function syncPaidInCapitalTotalToSources() {
+  const paidInInput = document.getElementById('companyPaidInCapital');
+  const cashInput = document.getElementById('companyCapitalCash');
+  if (!paidInInput || !cashInput) return null;
+
+  const capital = applyPaidInCapitalTotal(readCompanyCapitalForm(), paidInInput.value);
+  cashInput.value = capital.capitalCash;
+  paidInInput.setCustomValidity('');
+  return capital;
+}
+
+function refreshCompanyCapitalSummary() {
+  const output = document.getElementById('companyCapitalValidationMessage');
+  const paidInInput = document.getElementById('companyPaidInCapital');
+  if (!output || !paidInInput) return null;
+  try {
+    const capital = readCompanyCapitalForm();
+    const comparison = getCapitalComparison(capital, state.directorShareholders || []);
+    paidInInput.value = comparison.paidInCapital;
+    paidInInput.setCustomValidity('');
+    output.className = comparison.paidInExceedsTotal ? 'message error' : 'muted';
+    if (comparison.paidInExceedsTotal) {
+      output.textContent = `已投入股本 ${comparison.paidInCapital.toLocaleString()} 高於資本總額 ${comparison.totalCapital.toLocaleString()}，請調整後再儲存。`;
+    } else if ((state.directorShareholders || []).length && comparison.shareholderDifference !== 0) {
+      output.textContent = `董監名單出資合計 ${comparison.shareholderTotal.toLocaleString()}，與已投入股本相差 ${Math.abs(comparison.shareholderDifference).toLocaleString()}。兩者不會自動互相覆寫。`;
+    } else {
+      output.textContent = `目前已投入股本：${comparison.paidInCapital.toLocaleString()}。`;
+    }
+    return comparison;
+  } catch (error) {
+    output.className = 'message error';
+    output.textContent = error.message;
+    return null;
+  }
 }
 
 function canManageCompanyData() {
@@ -1214,6 +1267,9 @@ function renderBusinessData() {
   const canEdit = canManageCompanyData();
   const businessItems = state.businessItems || [];
   const directors = state.directorShareholders || [];
+  const shareholderTotal = getShareholderContributionTotal(directors);
+  const paidInCapital = getPaidInCapital(state.companyInfo || {});
+  const capitalMatches = shareholderTotal === paidInCapital;
   const businessRows = businessItems.map(item => canEdit
     ? buildBusinessItemRow(item)
     : `<li>${escapeHtml(item.code)} - ${escapeHtml(item.item)}</li>`
@@ -1237,6 +1293,9 @@ function renderBusinessData() {
       </div>
       <div class="info-block" style="margin-top:16px;">
         <h4>董監名單</h4>
+        <div id="directorCapitalSummary" class="${capitalMatches ? 'muted' : 'message error'}" aria-live="polite" style="margin-bottom:8px;">
+          董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}${capitalMatches ? '' : '｜兩者不同，請確認資本設定'}
+        </div>
         <div class="table-scroll">
           <table>
             <thead><tr><th>姓名</th><th>職務</th><th>身分證/統編</th><th style="width:140px;">出資</th><th>地址</th><th style="width:90px;">操作</th></tr></thead>
@@ -1244,6 +1303,7 @@ function renderBusinessData() {
           </table>
         </div>
         <button type="button" id="addDirectorShareholderRowBtn" class="secondary" style="width:auto; margin-top:8px;">新增董監</button>
+        <button type="button" id="useShareholderContributionsAsCashCapitalBtn" class="secondary" style="width:auto; margin-top:8px;">將出資合計帶入現金出資</button>
       </div>
       <button type="button" id="saveBusinessInfoBtn" class="primary-btn" style="width:auto; margin-top:14px;">儲存事業項目與董監名單</button>
     `;
@@ -1257,6 +1317,7 @@ function renderBusinessData() {
     </div>
     <div class="info-block">
       <h4>董監名單</h4>
+      <p class="muted">董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}</p>
       <ul>${directorRows || '<li>尚未設定</li>'}</ul>
     </div>
   `;
@@ -1281,6 +1342,16 @@ function collectDirectorShareholderRows() {
       address: row.querySelector('.director-address')?.value.trim() || ''
     }))
     .filter(row => row.name || row.role || row.idNumber || row.amount || row.address);
+}
+
+function refreshDirectorCapitalSummary() {
+  const output = document.getElementById('directorCapitalSummary');
+  if (!output) return;
+  const shareholderTotal = getShareholderContributionTotal(collectDirectorShareholderRows());
+  const paidInCapital = getPaidInCapital(state.companyInfo || {});
+  const matches = shareholderTotal === paidInCapital;
+  output.className = matches ? 'muted' : 'message error';
+  output.textContent = `董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}${matches ? '' : '｜兩者不同，請確認資本設定'}`;
 }
 
 let transactionRenderGeneration = 0;
@@ -1464,16 +1535,21 @@ async function fetchPayeeDetails() {
   return data || [];
 }
 
-async function fetchPayrollAgencyIdentifiers() {
+async function fetchPayrollAgencyMappings() {
   const { data, error } = await supabase
     .from('payroll_agency_mappings')
-    .select('payee_identifier')
-    .eq('active', true);
+    .select('item_key, payee_identifier, label, sort_order')
+    .eq('active', true)
+    .order('sort_order');
   if (error) {
     console.warn('載入薪資代收機構設定失敗，使用預設排除清單：', error.message);
-    return ['24616337-1', '24616337-2', '24616337-3'];
+    return [
+      { item_key: 'labor_insurance', payee_identifier: '24616337-1', label: '勞保' },
+      { item_key: 'health_insurance', payee_identifier: '24616337-2', label: '健保' },
+      { item_key: 'pension', payee_identifier: '24616337-3', label: '勞退' }
+    ];
   }
-  return (data || []).map(item => item.payee_identifier).filter(Boolean);
+  return data || [];
 }
 
 function recipientSummary(recipient, line, splits = []) {
@@ -1691,15 +1767,53 @@ window.viewPayeePaymentHistory = async (payeeId) => {
   }
 };
 
+let payrollBanksCache = [];
+const payrollRequestTracker = createPayrollRequestTracker();
+
+function getPayrollCurrency() {
+  const bankId = document.getElementById('payrollBankAccount')?.value;
+  return payrollBanksCache.find(bank => bank.id === bankId)?.currency || 'TWD';
+}
+
 function calculatePayrollRow(row) {
-  const gross = Number(row.querySelector('.payroll-gross')?.value || 0);
-  const labor = Number(row.querySelector('.payroll-labor')?.value || 0);
-  const health = Number(row.querySelector('.payroll-health')?.value || 0);
-  const pension = Number(row.querySelector('.payroll-pension')?.value || 0);
-  const net = Math.max(0, gross - labor - health);
   const netCell = row.querySelector('.payroll-net');
-  if (netCell) netCell.textContent = `NT$ ${net.toLocaleString()}`;
-  return { gross, labor, health, pension, net };
+  try {
+    const amounts = calculatePayrollAmounts({
+      gross: row.querySelector('.payroll-gross')?.value || 0,
+      labor: row.querySelector('.payroll-labor')?.value || 0,
+      health: row.querySelector('.payroll-health')?.value || 0,
+      pension: row.querySelector('.payroll-pension')?.value || 0
+    });
+    row.removeAttribute('data-payroll-invalid');
+    if (netCell) {
+      netCell.textContent = formatPayrollMoney(amounts.net, getPayrollCurrency());
+      netCell.removeAttribute('title');
+    }
+    return amounts;
+  } catch (error) {
+    row.dataset.payrollInvalid = 'true';
+    if (netCell) {
+      netCell.textContent = '金額錯誤';
+      netCell.title = error.message;
+    }
+    throw error;
+  }
+}
+
+function populatePayrollBankSelect(select, banks) {
+  const previous = select.value;
+  select.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = banks.length ? '請選擇出款銀行' : '尚無銀行帳戶';
+  select.appendChild(placeholder);
+  banks.forEach(bank => {
+    const option = document.createElement('option');
+    option.value = bank.id;
+    option.textContent = `${bank.nickname || bank.bank_name || bank.account_number || '銀行帳戶'}｜${bank.currency || 'TWD'}`;
+    select.appendChild(option);
+  });
+  if (banks.some(bank => bank.id === previous)) select.value = previous;
 }
 
 async function renderPayrollPaymentPanel() {
@@ -1708,13 +1822,15 @@ async function renderPayrollPaymentPanel() {
   if (!list || !bankSelect || !isFinanceOperator()) return;
 
   try {
-    const [payees, banks, agencyIdentifiers] = await Promise.all([
+    const [payees, banks, agencyMappings] = await Promise.all([
       fetchPayeeDetails(),
       fetchBankAccounts(),
-      fetchPayrollAgencyIdentifiers()
+      fetchPayrollAgencyMappings()
     ]);
-    const agencyIdentifierSet = new Set(agencyIdentifiers);
-    populateBankSelect(bankSelect, banks || []);
+    const agencyIdentifierSet = new Set(agencyMappings.map(item => item.payee_identifier).filter(Boolean));
+    const agencySetupIssues = getPayrollAgencySetupIssues(agencyMappings, payees);
+    payrollBanksCache = banks || [];
+    populatePayrollBankSelect(bankSelect, payrollBanksCache);
     const dateInput = document.getElementById('payrollPaymentDate');
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
     const summaryInput = document.getElementById('payrollSummary');
@@ -1726,7 +1842,10 @@ async function renderPayrollPaymentPanel() {
       .filter(payee => payee.is_active !== false && !agencyIdentifierSet.has(payee.identifier))
       .filter(payee => (payee.type || 'individual') === 'individual');
 
-    list.innerHTML = employeePayees.length ? `
+    const agencyNotice = agencySetupIssues.length
+      ? `<p class="message warning">${escapeHtml(agencySetupIssues.map(item => item.label || item.item_key).join('、'))}代收付款人或銀行資料尚未完整；輸入相關扣款前，請先到「所有付款人」完成主檔。</p>`
+      : '';
+    list.innerHTML = employeePayees.length ? `${agencyNotice}
       <table>
         <thead><tr><th>選取</th><th>員工</th><th>薪資</th><th>勞保</th><th>健保</th><th>勞退</th><th>實領</th></tr></thead>
         <tbody>${employeePayees.map(payee => {
@@ -1734,19 +1853,28 @@ async function renderPayrollPaymentPanel() {
           return `<tr class="payroll-row" data-payee-id="${payee.id}">
             <td><input type="checkbox" class="payroll-selected" aria-label="選取 ${escapeHtml(payee.name)}"></td>
             <td><strong>${escapeHtml(payee.name)}</strong><br><span class="muted">${escapeHtml(payee.identifier || '')}｜${escapeHtml(payee.bank_name || '')} ${escapeHtml(account)}</span></td>
-            <td><input type="number" min="0" class="payroll-gross" placeholder="0"></td>
-            <td><input type="number" min="0" class="payroll-labor" placeholder="0"></td>
-            <td><input type="number" min="0" class="payroll-health" placeholder="0"></td>
-            <td><input type="number" min="0" class="payroll-pension" placeholder="0"></td>
-            <td class="payroll-net">NT$ 0</td>
+            <td><input type="number" min="0" step="0.01" inputmode="decimal" class="payroll-gross" placeholder="0"></td>
+            <td><input type="number" min="0" step="0.01" inputmode="decimal" class="payroll-labor" placeholder="0"></td>
+            <td><input type="number" min="0" step="0.01" inputmode="decimal" class="payroll-health" placeholder="0"></td>
+            <td><input type="number" min="0" step="0.01" inputmode="decimal" class="payroll-pension" placeholder="0"></td>
+            <td class="payroll-net">${formatPayrollMoney(0, getPayrollCurrency())}</td>
           </tr>`;
         }).join('')}</tbody>
-      </table>` : '<p class="muted">尚未建立員工付款人主檔。</p>';
+      </table>` : `${agencyNotice}<p class="muted">尚未建立員工付款人主檔。</p>`;
 
     list.querySelectorAll('.payroll-row input').forEach(input => {
-      input.addEventListener('input', () => calculatePayrollRow(input.closest('.payroll-row')));
-      input.addEventListener('change', () => calculatePayrollRow(input.closest('.payroll-row')));
+      const updatePayrollRow = () => {
+        try { calculatePayrollRow(input.closest('.payroll-row')); } catch (_) { /* The row shows the validation error. */ }
+      };
+      input.addEventListener('input', updatePayrollRow);
+      input.addEventListener('change', updatePayrollRow);
     });
+    bankSelect.onchange = () => {
+      payrollRequestTracker.reset();
+      list.querySelectorAll('.payroll-row').forEach(row => {
+        try { calculatePayrollRow(row); } catch (_) { /* The row already shows its validation error. */ }
+      });
+    };
     await renderPayrollBatchList();
   } catch (error) {
     console.error('載入薪資付款失敗:', error);
@@ -1755,19 +1883,16 @@ async function renderPayrollPaymentPanel() {
 }
 
 function collectPayrollItems() {
-  return Array.from(document.querySelectorAll('.payroll-row'))
+  const items = Array.from(document.querySelectorAll('.payroll-row'))
     .filter(row => row.querySelector('.payroll-selected')?.checked)
-    .map(row => {
-      const totals = calculatePayrollRow(row);
-      return {
-        payee_id: row.dataset.payeeId,
-        gross_salary: totals.gross,
-        labor_insurance: totals.labor,
-        health_insurance: totals.health,
-        pension: totals.pension,
-        net_pay: totals.net
-      };
-    });
+    .map(row => ({
+      payee_id: row.dataset.payeeId,
+      gross_salary: row.querySelector('.payroll-gross')?.value || 0,
+      labor_insurance: row.querySelector('.payroll-labor')?.value || 0,
+      health_insurance: row.querySelector('.payroll-health')?.value || 0,
+      pension: row.querySelector('.payroll-pension')?.value || 0
+    }));
+  return validatePayrollItems(items);
 }
 
 async function renderPayrollBatchList() {
@@ -1775,7 +1900,7 @@ async function renderPayrollBatchList() {
   if (!container || !isFinanceOperator()) return;
   const { data, error } = await supabase
     .from('payroll_batches')
-    .select('id, summary, payment_date, total_gross_salary, total_labor_insurance, total_health_insurance, total_pension, total_employee_net, total_cash_out, created_at, bank:bank_accounts(bank_name, nickname, account_number), items:payroll_batch_items(id)')
+    .select('id, summary, payment_date, currency, exchange_rate, status, total_gross_salary, total_labor_insurance, total_health_insurance, total_pension, total_employee_net, total_cash_out, total_cash_out_base, created_at, bank:bank_accounts(bank_name, nickname, account_number, currency), items:payroll_batch_items(id)')
     .order('created_at', { ascending: false })
     .limit(10);
   if (error) {
@@ -1785,16 +1910,17 @@ async function renderPayrollBatchList() {
   container.innerHTML = `
     <h4>最近薪資批次</h4>
     <table>
-      <thead><tr><th>付款日</th><th>摘要</th><th>人數</th><th>員工實領</th><th>勞保/健保/勞退</th><th>總出款</th><th>銀行</th></tr></thead>
+      <thead><tr><th>付款日</th><th>摘要</th><th>狀態</th><th>人數</th><th>員工實領</th><th>勞保/健保/勞退</th><th>總出款</th><th>銀行</th></tr></thead>
       <tbody>${(data || []).map(batch => `<tr>
         <td>${escapeHtml(batch.payment_date || '')}</td>
         <td>${escapeHtml(batch.summary || '')}</td>
+        <td><span class="badge ${batch.status === 'posted' ? 'success' : 'warning'}">${batch.status === 'reversed' ? '已全數反轉' : batch.status === 'partially_reversed' ? '部分反轉' : '已付款'}</span></td>
         <td>${Number(batch.items?.length || 0)}</td>
-        <td>NT$ ${Number(batch.total_employee_net || 0).toLocaleString()}</td>
-        <td>NT$ ${Number(batch.total_labor_insurance || 0).toLocaleString()} / NT$ ${Number(batch.total_health_insurance || 0).toLocaleString()} / NT$ ${Number(batch.total_pension || 0).toLocaleString()}</td>
-        <td><strong>NT$ ${Number(batch.total_cash_out || 0).toLocaleString()}</strong></td>
-        <td>${escapeHtml(batch.bank?.nickname || batch.bank?.bank_name || '-')}</td>
-      </tr>`).join('') || '<tr><td colspan="7" class="muted">尚無薪資批次。</td></tr>'}</tbody>
+        <td>${formatPayrollMoney(batch.total_employee_net, batch.currency)}</td>
+        <td>${formatPayrollMoney(batch.total_labor_insurance, batch.currency)} / ${formatPayrollMoney(batch.total_health_insurance, batch.currency)} / ${formatPayrollMoney(batch.total_pension, batch.currency)}</td>
+        <td><strong>${formatPayrollMoney(batch.total_cash_out, batch.currency)}</strong>${batch.currency !== 'TWD' ? `<br><span class="muted">匯率 ${Number(batch.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 6 })}｜TWD ${Number(batch.total_cash_out_base || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>` : ''}</td>
+        <td>${escapeHtml(batch.bank?.nickname || batch.bank?.bank_name || '-')}<br><span class="muted">${escapeHtml(batch.currency || 'TWD')}</span></td>
+      </tr>`).join('') || '<tr><td colspan="8" class="muted">尚無薪資批次。</td></tr>'}</tbody>
     </table>`;
 }
 
@@ -2676,7 +2802,7 @@ function updateSettings() {
   }
   if (companyCard) {
     companyCard.querySelectorAll('input').forEach(input => {
-      input.disabled = !canEditCompany || input.id === 'companyPaidInCapital';
+      input.disabled = !canEditCompany;
     });
     const submitButton = companyCard.querySelector('button[type="submit"]');
     if (submitButton) submitButton.style.display = canEditCompany ? '' : 'none';
@@ -3304,7 +3430,7 @@ async function renderEquityTab() {
 
     try {
 
-        const rows = await buildEquityStatement(
+        const rows = await buildEquityOverview(
             state.transactions
         );
 
@@ -4148,6 +4274,10 @@ function initializeEventsInternal() {
       return;
     }
     try {
+      syncPaidInCapitalTotalToSources();
+      const capital = readCompanyCapitalForm();
+      const comparison = getCapitalComparison(capital, state.directorShareholders || []);
+      if (comparison.paidInExceedsTotal) throw new Error('已投入股本不可高於資本總額');
       state.companyInfo = await saveCompanyInfo({
         ...state.companyInfo,
         companyNameZh: document.getElementById('companyNameZh').value.trim(),
@@ -4157,7 +4287,7 @@ function initializeEventsInternal() {
         address: document.getElementById('companyAddress').value.trim(),
         representativeName: document.getElementById('companyRepresentative').value.trim(),
         boardCount: Number(document.getElementById('companyBoardCount').value || 0),
-        totalCapital: Number(document.getElementById('companyTotalCapital').value || 0),
+        ...capital,
         plannedOpenDate: document.getElementById('companyOpenDate').value
       });
       saveState(state);
@@ -4168,6 +4298,24 @@ function initializeEventsInternal() {
     } catch (error) {
       console.error('儲存公司資料失敗:', error);
       showMessage('公司資料儲存失敗：' + error.message, true);
+    }
+  });
+
+  safeListener('companyInfoForm', 'input', (event) => {
+    if (event.target?.matches('#companyPaidInCapital')) {
+      try {
+        syncPaidInCapitalTotalToSources();
+        refreshCompanyCapitalSummary();
+      } catch (error) {
+        event.target.setCustomValidity(error.message);
+        const output = document.getElementById('companyCapitalValidationMessage');
+        if (output) {
+          output.className = 'message error';
+          output.textContent = error.message;
+        }
+      }
+    } else if (event.target?.matches('#companyTotalCapital, #companyCapitalCash, #companyCapitalProperty, #companyCapitalTechnology, #companyCapitalMergeNew')) {
+      refreshCompanyCapitalSummary();
     }
   });
 
@@ -4209,6 +4357,7 @@ function initializeEventsInternal() {
 
     if (target.closest('#addDirectorShareholderRowBtn')) {
       document.getElementById('directorShareholdersEditorBody')?.insertAdjacentHTML('beforeend', buildDirectorShareholderRow());
+      refreshDirectorCapitalSummary();
       return;
     }
 
@@ -4219,6 +4368,17 @@ function initializeEventsInternal() {
 
     if (target.closest('.remove-director-shareholder-row')) {
       target.closest('.director-shareholder-row')?.remove();
+      refreshDirectorCapitalSummary();
+      return;
+    }
+
+    if (target.closest('#useShareholderContributionsAsCashCapitalBtn')) {
+      const cashInput = document.getElementById('companyCapitalCash');
+      if (!cashInput) return;
+      cashInput.value = getShareholderContributionTotal(collectDirectorShareholderRows());
+      refreshCompanyCapitalSummary();
+      document.getElementById('companyInfoForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showMessage('出資合計已帶入現金出資；請確認其他出資類別後儲存公司資料。');
       return;
     }
 
@@ -4239,17 +4399,19 @@ function initializeEventsInternal() {
         state.businessItems = await saveCompanyBusinessItems(businessItems);
         const result = await saveCompanyShareholders(shareholders);
         state.directorShareholders = result.shareholders;
-        state.companyInfo = result.companyInfo;
         saveState(state);
         renderBusinessData();
         renderCompanyData();
         fillCompanyInfoForm();
-        await renderReports();
-        showMessage('事業項目與董監名單已儲存。');
+        showMessage('事業項目與董監名單已儲存；資本設定未被變更。');
       });
     } catch (error) {
       showMessage('事業項目與董監名單儲存失敗：' + error.message, true);
     }
+  });
+
+  safeListener('businessInfoContent', 'input', (event) => {
+    if (event.target?.matches('.director-amount')) refreshDirectorCapitalSummary();
   });
 
   const bankForm = document.getElementById('bankAccountForm');
@@ -4643,6 +4805,7 @@ function initializeEventsInternal() {
     });
   });
 
+  safeListener('payrollPaymentForm', 'input', () => payrollRequestTracker.reset());
   safeListener('payrollPaymentForm', 'submit', async (event) => {
     event.preventDefault();
     const submitButton = event.submitter || event.target.querySelector('button[type="submit"]');
@@ -4655,23 +4818,20 @@ function initializeEventsInternal() {
       if (!paymentDate) throw new Error('請選擇付款日期');
       if (!bankAccountId) throw new Error('請選擇出款銀行');
       if (!items.length) throw new Error('請至少勾選一位員工');
-      const invalid = items.find(item => item.gross_salary <= 0 || item.net_pay < 0);
-      if (invalid) throw new Error('請確認每位員工薪資金額，實領不可為負數');
-      const totalNet = items.reduce((sum, item) => sum + item.net_pay, 0);
-      const totalLabor = items.reduce((sum, item) => sum + item.labor_insurance, 0);
-      const totalHealth = items.reduce((sum, item) => sum + item.health_insurance, 0);
-      const totalPension = items.reduce((sum, item) => sum + item.pension, 0);
-      const totalCashOut = totalNet + totalLabor + totalHealth + totalPension;
-      if (!confirm(`確認建立薪資付款？\n員工實領 NT$ ${totalNet.toLocaleString()}\n勞保 NT$ ${totalLabor.toLocaleString()}，健保 NT$ ${totalHealth.toLocaleString()}，勞退 NT$ ${totalPension.toLocaleString()}\n總出款 NT$ ${totalCashOut.toLocaleString()}`)) return;
+      const totals = summarizePayrollItems(items);
+      const currency = getPayrollCurrency();
+      if (!confirm(`確認建立薪資付款？\n員工實領 ${formatPayrollMoney(totals.net, currency)}\n勞保 ${formatPayrollMoney(totals.labor, currency)}，健保 ${formatPayrollMoney(totals.health, currency)}，勞退 ${formatPayrollMoney(totals.pension, currency)}\n總出款 ${formatPayrollMoney(totals.cashOut, currency)}`)) return;
 
       const { data, error } = await supabase.rpc('create_payroll_payment_batch', {
+        p_request_id: payrollRequestTracker.current(),
         p_summary: summary,
         p_payment_date: paymentDate,
         p_bank_account_id: bankAccountId,
         p_items: items
       });
       if (error) throw error;
-      showMessage(`薪資付款已建立：${Number(data?.employee_count || items.length)} 人，總出款 NT$ ${Number(data?.total_cash_out || totalCashOut).toLocaleString()}。`);
+      payrollRequestTracker.reset();
+      showMessage(`${data?.idempotent ? '薪資付款已存在，未重複建立' : '薪資付款已建立'}：${Number(data?.employee_count || items.length)} 人，總出款 ${formatPayrollMoney(data?.total_cash_out ?? totals.cashOut, data?.currency || currency)}。`);
       await Promise.all([renderPayrollPaymentPanel(), renderPaymentManagement(), renderTransactionTable(), renderVoucherCenter()]);
       renderDashboard();
     });

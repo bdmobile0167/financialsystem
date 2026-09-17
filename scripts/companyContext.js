@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { getCapitalComparison, parseCapitalAmount } from '../src/modules/company/capital.js';
 
 let companyInfoCache = null;
 
@@ -62,6 +63,17 @@ export async function getCompanyDataBundle() {
 }
 
 export async function saveCompanyInfo(companyInfo) {
+  const normalizedCapital = {
+    totalCapital: parseCapitalAmount(companyInfo.totalCapital, '資本總額'),
+    capitalCash: parseCapitalAmount(companyInfo.capitalCash, '現金出資'),
+    capitalProperty: parseCapitalAmount(companyInfo.capitalProperty, '財產出資'),
+    capitalTechnology: parseCapitalAmount(companyInfo.capitalTechnology, '技術出資'),
+    capitalMergeNew: parseCapitalAmount(companyInfo.capitalMergeNew, '合併新設出資')
+  };
+  const capitalComparison = getCapitalComparison(normalizedCapital);
+  if (capitalComparison.paidInExceedsTotal) {
+    throw new Error('已投入股本不可高於資本總額');
+  }
   const { data: authData } = await supabase.auth.getUser();
   const payload = {
     id: 1,
@@ -73,11 +85,11 @@ export async function saveCompanyInfo(companyInfo) {
     precheck_number: companyInfo.precheckNumber || null,
     representative_name: companyInfo.representativeName || null,
     board_count: Number(companyInfo.boardCount || 0),
-    total_capital: Number(companyInfo.totalCapital || 0),
-    capital_cash: Number(companyInfo.capitalCash || 0),
-    capital_property: Number(companyInfo.capitalProperty || 0),
-    capital_technology: Number(companyInfo.capitalTechnology || 0),
-    capital_merge_new: Number(companyInfo.capitalMergeNew || 0),
+    total_capital: normalizedCapital.totalCapital,
+    capital_cash: normalizedCapital.capitalCash,
+    capital_property: normalizedCapital.capitalProperty,
+    capital_technology: normalizedCapital.capitalTechnology,
+    capital_merge_new: normalizedCapital.capitalMergeNew,
     planned_open_date: companyInfo.plannedOpenDate || null,
     articles_date: companyInfo.articlesDate || null,
     updated_by: authData?.user?.id || null,
@@ -138,48 +150,26 @@ export async function saveCompanyShareholders(shareholders = []) {
       national_id: String(person.idNumber || '').trim() || null,
       contribution_amount: Number(person.amount || 0),
       address: String(person.address || '').trim() || null,
-      sort_order: index + 1,
-      updated_at: new Date().toISOString()
+      sort_order: index + 1
     }))
     .filter(person => person.full_name || person.role_title || person.national_id || person.contribution_amount || person.address);
 
   cleanShareholders.forEach(person => {
     if (!person.full_name) throw new Error('董監名單需填寫姓名');
-    if (person.contribution_amount < 0 || Number.isNaN(person.contribution_amount)) {
+    if (person.contribution_amount < 0 || !Number.isFinite(person.contribution_amount)) {
       throw new Error(`董監出資金額不正確：${person.full_name}`);
     }
   });
 
-  const { error: deleteError } = await supabase
-    .from('company_shareholders')
-    .delete()
-    .not('id', 'is', null);
-  if (deleteError) throw deleteError;
-
-  if (cleanShareholders.length) {
-    const { error: insertError } = await supabase
-      .from('company_shareholders')
-      .insert(cleanShareholders);
-    if (insertError) throw insertError;
-  }
-
-  const totalContribution = cleanShareholders.reduce((sum, person) => sum + Number(person.contribution_amount || 0), 0);
-  const { data: authData } = await supabase.auth.getUser();
-  const { data: companyRow, error: companyError } = await supabase
-    .from('company_settings')
-    .upsert({
-      id: 1,
-      capital_cash: totalContribution,
-      updated_by: authData?.user?.id || null,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' })
-    .select()
-    .single();
-  if (companyError) throw companyError;
-  companyInfoCache = mapCompanySettings(companyRow);
+  const { data, error } = await supabase.rpc('save_company_shareholders', {
+    p_shareholders: cleanShareholders
+  });
+  if (error) throw error;
+  const savedRows = Array.isArray(data?.shareholders) ? data.shareholders : [];
 
   return {
-    shareholders: cleanShareholders.map(person => ({
+    shareholders: savedRows.map(person => ({
+      id: person.id,
       role: person.role_title,
       name: person.full_name,
       idNumber: person.national_id,
@@ -187,7 +177,7 @@ export async function saveCompanyShareholders(shareholders = []) {
       address: person.address,
       sortOrder: person.sort_order
     })),
-    companyInfo: { ...companyInfoCache }
+    contributionTotal: Number(data?.contribution_total || 0)
   };
 }
 

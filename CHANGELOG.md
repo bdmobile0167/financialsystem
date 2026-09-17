@@ -1,5 +1,26 @@
 # 變更紀錄
 
+## 0.2.96 - 2026-09-17
+
+- Make paid-in capital directly editable while preserving non-cash contribution categories and applying the entered total through the cash-contribution residual.
+- Replace the ambiguous no-period equity statement on the fundraising tab with a capital/equity overview that separates registered, paid-in, uncommitted and ledger capital from accumulated profit or loss.
+- Keep the formal date-scoped statement-of-changes-in-equity logic unchanged, verify production aggregates without mutating them, and pass all 20 browser regressions.
+
+## 0.2.95 - 2026-09-17
+
+- Replace the broken payroll RPC values with an idempotent atomic entry point that reuses the standard voucher split payment flow, including ordered payment numbers, recipient snapshots, bank movements, journals and reversals.
+- Add payroll request IDs/hashes, finance-only read policies, revoked direct table writes, complete recipient validation and aggregate audit records without payroll personal details.
+- Snapshot bank currency and payment-date exchange rates on payroll batches/items and expose generated base amounts; update the payroll UI for currency labels, strict amount validation, retry-safe UUIDs and reversal status.
+- Pass remote USD/base/idempotency/rollback/audit/role/reversal tests with zero fixture residue and all 20 browser regressions. Production role acceptance remains pending, so the release is not `1.0.0`.
+
+## 0.2.94 - 2026-09-17
+
+- Add explicit cash, property, technology and merger contribution inputs; calculate paid-in capital from those four sources and reject amounts above total capital.
+- Separate shareholder contributions from company capital settings. Saving the director/shareholder list no longer silently rewrites cash capital; an explicit fill action is available for intentional synchronization.
+- Replace delete-then-insert shareholder writes with the role-restricted, audited `save_company_shareholders` atomic RPC and remove direct authenticated mutation grants.
+- Add a capital-only audit trigger that stores old/new capital amounts without duplicating company or shareholder personal data.
+- Pass Supabase rollback/permission/data-preservation checks and all 19 browser regressions. Production role acceptance remains pending, so the release is not `1.0.0`.
+
 ## 0.2.93 - 2026-09-17
 
 - Fix Excel financial-report export crashing when income statements and balance sheets return structured objects instead of arrays.

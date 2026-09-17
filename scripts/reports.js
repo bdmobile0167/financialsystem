@@ -126,6 +126,27 @@ export function createEquityStatementRows({
   ];
 }
 
+export function createEquityOverviewRows({
+  totalCapital = 0,
+  paidInCapital = 0,
+  ledgerCapital = 0,
+  retainedEarnings = 0
+} = {}) {
+  const registeredCapital = Number(totalCapital || 0);
+  const contributedCapital = Number(paidInCapital || 0);
+  const postedCapital = Number(ledgerCapital || 0);
+  const accumulatedResults = Number(retainedEarnings || 0);
+
+  return [
+    ['資本總額（登記）', registeredCapital],
+    ['已投入股本（實際到位）', contributedCapital],
+    ['尚未投入資本', Math.max(0, registeredCapital - contributedCapital)],
+    ['帳載股本（含期初設定）', postedCapital],
+    ['累積盈虧', accumulatedResults],
+    ['目前股東權益合計', postedCapital + accumulatedResults]
+  ];
+}
+
 export function flattenFinancialStatementRows(statement) {
   if (Array.isArray(statement)) {
     return statement
@@ -596,6 +617,29 @@ export async function buildEquityStatement(transactions = [], startDate = null, 
       openingCapital: analysis.openingCapital,
       capitalChange: analysis.capitalChange,
       netProfitThisPeriod: analysis.retainedEarnings
+    });
+  }
+}
+
+export async function buildEquityOverview(transactions = []) {
+  try {
+    const [{ rows }, company] = await Promise.all([
+      fetchSupabaseTrialBalance(),
+      getCompanyInfo()
+    ]);
+    const retainedEarnings = netCreditBalance(rows, '3310') + netIncomeFromRows(rows);
+    return createEquityOverviewRows({
+      totalCapital: company.totalCapital,
+      paidInCapital: getCompanyPaidInCapital(company),
+      ledgerCapital: netCreditBalance(rows, '3110'),
+      retainedEarnings
+    });
+  } catch (error) {
+    console.warn('Unable to load Supabase equity overview, using local transactions:', error.message);
+    const analysis = buildEquityAnalysis(transactions || [], 0);
+    return createEquityOverviewRows({
+      ledgerCapital: analysis.openingCapital + analysis.capitalChange,
+      retainedEarnings: analysis.retainedEarnings
     });
   }
 }

@@ -666,7 +666,7 @@
         <section id="equity" class="tab-panel" style="display:none;">
           <div class="panel">
             <h3>股東權益與募資健康度</h3>
-            <p class="muted">依實際分錄自動計算，判斷目前是否需要規劃增資。</p>
+            <p class="muted">依公司資本設定與帳務分錄匯總。</p>
             <table id="equityDetailTable"></table>
             <p id="fundraisingNoteDetail" class="muted" style="margin-top:16px; font-size:15px; font-weight:600;"></p>
           </div>
@@ -1172,12 +1172,33 @@
                 </div>
                 <div>
                   <label for="companyTotalCapital">資本總額</label>
-                  <input type="number" id="companyTotalCapital" min="0" />
+                  <input type="number" id="companyTotalCapital" min="0" step="0.01" />
                 </div>
                 <div>
-                  <label for="companyPaidInCapital">已投入股本</label>
-                  <input type="number" id="companyPaidInCapital" readonly />
+                  <label for="companyPaidInCapital">已投入股本（實際到位）</label>
+                  <input type="number" id="companyPaidInCapital" min="0" step="0.01" inputmode="decimal" />
                 </div>
+                <div class="full-width">
+                  <h4 style="margin:8px 0 2px;">實際出資組成</h4>
+                  <p class="muted" style="margin:0;">資本總額是登記金額；已投入股本是實際到位金額。</p>
+                </div>
+                <div>
+                  <label for="companyCapitalCash">現金出資</label>
+                  <input type="number" id="companyCapitalCash" min="0" step="0.01" inputmode="decimal" />
+                </div>
+                <div>
+                  <label for="companyCapitalProperty">財產出資</label>
+                  <input type="number" id="companyCapitalProperty" min="0" step="0.01" inputmode="decimal" />
+                </div>
+                <div>
+                  <label for="companyCapitalTechnology">技術出資</label>
+                  <input type="number" id="companyCapitalTechnology" min="0" step="0.01" inputmode="decimal" />
+                </div>
+                <div>
+                  <label for="companyCapitalMergeNew">合併新設出資</label>
+                  <input type="number" id="companyCapitalMergeNew" min="0" step="0.01" inputmode="decimal" />
+                </div>
+                <div class="full-width" id="companyCapitalValidationMessage" aria-live="polite"></div>
                 <div>
                   <label for="companyOpenDate">預定開業日期</label>
                   <input type="date" id="companyOpenDate" />
