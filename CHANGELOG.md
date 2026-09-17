@@ -1,5 +1,14 @@
 # 變更紀錄
 
+## 0.2.91 - 2026-09-15
+
+- Add currency selection to bank-account create/edit flows and lock the selector after the account has a balance or financial reference.
+- Apply `bank_statement_currency_import` and its FK index directly to Supabase. Store statement currency, transaction-date rate and generated expense/income/balance base amounts.
+- Replace browser-side statement inserts with atomic `import_bank_statement_rows`, database dedupe, full-batch rollback and one import audit event. Imported financial fields are immutable.
+- Restrict statement rows and RPC to accounting/admin/super_admin, revoke anon and direct authenticated insert, and escape parsed PDF text before preview rendering.
+- Pass remote USD/rate/base/dedupe/rollback/audit/role tests, preserve all 32 existing TWD rows with correct base values, and pass all 16 browser/API syntax regressions.
+- Production authenticated acceptance remains pending, so the release is not `1.0.0`.
+
 ## 0.2.90 - 2026-09-15
 
 - Apply `voucher_payment_splits_and_reversals` and `voucher_payment_audit_hardening` directly to Supabase, adding per-line recipient/bank splits, partial payment status, immutable recipient snapshots and reversal traceability.

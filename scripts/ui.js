@@ -9,6 +9,7 @@ import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { importBankStatementRows } from '../src/modules/bank/bankStatementImport.js';
+import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
 import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis } from './reports.js';
@@ -3128,10 +3129,7 @@ async function renderBankAccounts() {
       const currencies = window.__bankCurrencies.length
         ? window.__bankCurrencies
         : [{ code: 'TWD', name: 'New Taiwan Dollar', is_active: true }];
-      currencySelect.innerHTML = currencies.map(currency =>
-        `<option value="${escapeHtml(currency.code)}" ${currency.is_active ? '' : 'disabled'}>${escapeHtml(currency.code)} - ${escapeHtml(currency.name)}${currency.is_active ? '' : '（停用）'}</option>`
-      ).join('');
-      currencySelect.value = currencies.some(currency => currency.code === selectedValue) ? selectedValue : 'TWD';
+      populateBankCurrencySelect(currencySelect, currencies, selectedValue);
     }
     const ledgerSelect = document.getElementById('bankLedgerAccountId');
     if (ledgerSelect) {
@@ -6457,15 +6455,7 @@ window.editBankAccount = async (id) => {
     document.getElementById('bankLedgerAccountId').value = account.ledger_account_id || account.accounting_account_id || '';
     const currencySelect = document.getElementById('bankCurrency');
     const currencyHint = document.getElementById('bankCurrencyHint');
-    if (currencySelect) {
-      currencySelect.value = account.currency || 'TWD';
-      currencySelect.disabled = Boolean(account.currency_locked);
-    }
-    if (currencyHint) {
-      currencyHint.textContent = account.currency_locked
-        ? '此帳戶已有餘額或關聯資料，幣別不可變更。'
-        : '帳戶首次產生餘額或關聯資料後，幣別會鎖定。';
-    }
+    setBankCurrencyLock(currencySelect, currencyHint, account);
     // 記錄目前正在編輯的 ID
     state.editingBankId = id;
 
@@ -6502,11 +6492,8 @@ window.resetBankForm = () => {
   if (!form) return;
   form.reset();
   const currencySelect = document.getElementById('bankCurrency');
-  if (currencySelect) {
-    currencySelect.disabled = false;
-    currencySelect.value = 'TWD';
-  }
   const currencyHint = document.getElementById('bankCurrencyHint');
+  setBankCurrencyLock(currencySelect, currencyHint, { currency: 'TWD', locked: false });
   if (currencyHint) currencyHint.textContent = '';
 
   const submitBtn = form.querySelector('button[type="submit"]');
