@@ -1,6 +1,13 @@
 ﻿# 財務管理系統
 
-目前本機版本：`0.2.92`
+目前本機版本：`0.2.93`
+
+## 0.2.93 重點
+
+- 修正 Excel 匯出對結構化損益表／資產負債表呼叫 `rows.map` 而中斷；共用攤平規則支援大項、子分類、項目、小計、總計與本期淨利。
+- 匯出的四張財報及會計分錄都套用畫面選擇的起訖日期，表頭期間與內容不再不一致。
+- 新增 Excel 報表結構與日期參數回歸，完整 18 項瀏覽器測試通過；`.release-upload` 會在本版驗證後重新產生。
+- Production 真實登入及實際下載檔案驗收仍未完成，因此未升 `1.0.0`。
 
 ## 0.2.92 重點
 
@@ -197,7 +204,7 @@
 - 已修正銀行 PDF 解析 parser key 壞碼，`玉山187` 與 `兆豐` 系列 bankCode 不會再因檔案編碼損壞被判定不支援。
 - 已修正 `.gitignore`，移除 `/docs/` 忽略規則，docs 任務與版本紀錄會被 GitHub 追蹤。
 - 已補 `pdf-parse` dependency，修正銀行 PDF 解析 API 在 Vercel production 找不到 module 的 500。
-- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.92`。
+- 部署動作依使用者指示保留手動執行；目前需部署 `0.2.93`。
 
 
 - serverless API 已集中使用 `api/_supabaseServer.js` 驗證 Supabase admin key、登入 session 與角色。
@@ -205,7 +212,7 @@
 - 付款通知 API 已限制只有會計與管理角色可觸發。
 - AI 科目分類已補強，車馬費、住宿費、軟體授權等不應再一律落到雜項支出。
 - 付款通知、AI 憑證掃描與 AI 科目分類 API 已統一支援 `SUPABASE_SECRET_KEY`。
-- Vercel production 歷史檢查為 `0.2.62` `READY`；目前 `0.2.92` 仍需由使用者推送／部署後重新確認。
+- Vercel production 歷史檢查為 `0.2.62` `READY`；目前 `0.2.93` 仍需由使用者推送／部署後重新確認。
 - `docs/TASKS_PENDING.md` 已整理為單一待辦清單，完成項目移至 completed。
 - AR 客戶、發票、信用控管、收款反轉、帳齡及跨幣別收款均已完成；`TASK-022` 只保留正式環境真實角色端到端驗收。
 - 修正 production 入口 `scripts/main.js` 啟動語法錯誤，確保 `scripts/ui.js` 可正常載入。

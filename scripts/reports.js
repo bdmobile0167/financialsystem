@@ -126,6 +126,69 @@ export function createEquityStatementRows({
   ];
 }
 
+export function flattenFinancialStatementRows(statement) {
+  if (Array.isArray(statement)) {
+    return statement
+      .filter(Array.isArray)
+      .map(([label, amount, code = '-']) => ({
+        kind: 'item',
+        label: String(label ?? ''),
+        amount: Number(amount || 0),
+        code: code || '-'
+      }));
+  }
+
+  if (!statement || statement.type !== 'structured' || !Array.isArray(statement.sections)) return [];
+
+  const rows = [];
+  statement.sections.forEach(section => {
+    rows.push({ kind: 'section', label: String(section.title || ''), amount: null, code: '-' });
+
+    if (Array.isArray(section.subsections)) {
+      section.subsections.forEach(subsection => {
+        rows.push({ kind: 'subsection', label: `↳ ${subsection.title || ''}`, amount: null, code: '-' });
+        (subsection.items || []).forEach(([label, amount, code = '-']) => {
+          rows.push({ kind: 'item', label: String(label ?? ''), amount: Number(amount || 0), code: code || '-' });
+        });
+        rows.push({
+          kind: 'subtotal',
+          label: `${subsection.title || ''}小計`,
+          amount: Number(subsection.subtotal || 0),
+          code: '-'
+        });
+      });
+      rows.push({
+        kind: 'total',
+        label: `${section.title || ''}總計`,
+        amount: Number(section.total || 0),
+        code: '-'
+      });
+      return;
+    }
+
+    (section.items || []).forEach(([label, amount, code = '-']) => {
+      rows.push({ kind: 'item', label: String(label ?? ''), amount: Number(amount || 0), code: code || '-' });
+    });
+    rows.push({
+      kind: 'subtotal',
+      label: `${section.title || ''}小計`,
+      amount: Number(section.subtotal || 0),
+      code: '-'
+    });
+  });
+
+  if (statement.netProfit !== undefined) {
+    rows.push({
+      kind: 'net',
+      label: '本期淨利 (Net Profit)',
+      amount: Number(statement.netProfit || 0),
+      code: '-'
+    });
+  }
+
+  return rows;
+}
+
 function applyJournalEntryDateFilters(query, startDate, endDate) {
   let nextQuery = query;
   if (startDate) nextQuery = nextQuery.gte('entry_date', startDate);

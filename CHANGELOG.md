@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 0.2.93 - 2026-09-17
+
+- Fix Excel financial-report export crashing when income statements and balance sheets return structured objects instead of arrays.
+- Add a shared `flattenFinancialStatementRows` representation for sections, nested subsections, items, subtotals, totals and net profit; use it in both screen rendering and Excel export.
+- Pass the selected start/end dates to all four statement builders and the exported journal so workbook headings and values cover the same period.
+- Add structured/nested export and date-propagation regression coverage; pass all 18 browser regressions.
+- Regenerate the sanitized public-upload staging after the source change. Production authenticated download acceptance remains pending, so the release is not `1.0.0`.
+
 ## 0.2.92 - 2026-09-17
 
 - Fix the no-period equity overview so configured cash, property, technology and merger contributions appear as opening paid-in capital.

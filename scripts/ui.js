@@ -12,7 +12,7 @@ import { importBankStatementRows } from '../src/modules/bank/bankStatementImport
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
 import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
 import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
@@ -2512,6 +2512,7 @@ async function exportReportsToExcel() {
   const wb = XLSX.utils.book_new();
 
   function addStatementSheet(sheetName, title, rows) {
+    const flatRows = flattenFinancialStatementRows(rows);
     const aoa = [
       [company.companyNameZh || '（尚未設定公司名稱）'],
       [`統一編號：${company.taxId || '-'}`],
@@ -2520,19 +2521,19 @@ async function exportReportsToExcel() {
       [`列印日期：${printDate}`],
       [],
       ['項目', '金額'],
-      ...rows.map(([label, amount]) => [label, amount])
+      ...flatRows.map(row => [row.label, row.amount ?? ''])
     ];
     const sheet = XLSX.utils.aoa_to_sheet(aoa);
     sheet['!cols'] = [{ wch: 26 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, sheet, sheetName);
   }
 
-  addStatementSheet('損益表', '損益表', await buildIncomeStatement(periodTx));
-  addStatementSheet('資產負債表', '資產負債表', await buildBalanceSheet(periodTx));
-  addStatementSheet('現金流量表', '現金流量表', await buildCashflowStatement(periodTx));
-  addStatementSheet('權益變動表', '權益變動表', await buildEquityStatement(periodTx));
+  addStatementSheet('損益表', '損益表', await buildIncomeStatement(periodTx, start, end));
+  addStatementSheet('資產負債表', '資產負債表', await buildBalanceSheet(periodTx, start, end));
+  addStatementSheet('現金流量表', '現金流量表', await buildCashflowStatement(periodTx, start, end));
+  addStatementSheet('權益變動表', '權益變動表', await buildEquityStatement(periodTx, start, end));
 
-  const journal = await buildJournal(periodTx);
+  const journal = await buildJournal(periodTx, start, end);
   const journalAoa = [
     ['日期', '摘要', '銀行', '借方科目', '借方金額', '貸方科目', '貸方金額', '憑證', '狀態'],
     ...journal.map(row => [row.date, row.summary, row.bank, row.debitAccount, row.debitAmount, row.creditAccount, row.creditAmount, row.voucher || '-', row.status])
@@ -2588,82 +2589,28 @@ function renderTable(id, rows) {
 
   // ===== 支援結構化財報物件 (Structured Financial Statements) =====
   if (rows && !Array.isArray(rows) && rows.type === 'structured') {
-    let htmlContent = '';
-
-    rows.sections.forEach(section => {
-      // 渲染大項標題 (例如：一、營業收入 / 資產 / 負債及權益)
-      htmlContent += `
-        <tr class="section-header">
-          <td colspan="3" style="font-weight: bold; background-color: #f8fafc; padding-top: 10px;">${section.title}</td>
-        </tr>
-      `;
-
-      // 檢查是否有子分類 (針對資產負債表有 subsections 的情況)
-      if (section.subsections) {
-        section.subsections.forEach(sub => {
-          htmlContent += `
-            <tr class="sub-header">
-              <td colspan="3" style="font-weight: 600; padding-left: 15px; color: #475569;">↳ ${sub.title}</td>
-            </tr>
-          `;
-          sub.items.forEach(([label, amount, code = '-']) => {
-            htmlContent += `
-              <tr>
-                <td style="padding-left: 30px;">${label}</td>
-                <td style="text-align: right;">${Number(amount || 0).toLocaleString()}</td>
-                <td style="color: #64748b; font-size: 12px;">${code}</td>
-              </tr>
-            `;
-          });
-          // 子分類小計
-          htmlContent += `
-            <tr style="border-bottom: 1px dashed #cbd5e1;">
-              <td style="padding-left: 15px; font-weight: 600;">${sub.title}小計</td>
-              <td style="text-align: right; font-weight: 600;">${Number(sub.subtotal || 0).toLocaleString()}</td>
-              <td>-</td>
-            </tr>
-          `;
-        });
-        // 總計列
-        htmlContent += `
-          <tr style="border-top: 2px solid #0f172a; font-weight: bold;">
-            <td>${section.title}總計</td>
-            <td style="text-align: right;">${Number(section.total || 0).toLocaleString()}</td>
-            <td>-</td>
-          </tr>
-        `;
-      } 
-      // 針對一般損益表直接帶 items 的情況
-      else if (section.items) {
-        section.items.forEach(([label, amount, code = '-']) => {
-          htmlContent += `
-            <tr>
-              <td style="padding-left: 20px;">${label}</td>
-              <td style="text-align: right;">${Number(amount || 0).toLocaleString()}</td>
-              <td style="color: #64748b; font-size: 12px;">${code}</td>
-            </tr>
-          `;
-        });
-        htmlContent += `
-          <tr style="border-top: 1px solid #cbd5e1; font-weight: bold;">
-            <td style="padding-left: 10px;">${section.title}小計</td>
-            <td style="text-align: right;">${Number(section.subtotal || 0).toLocaleString()}</td>
-            <td>-</td>
-          </tr>
-        `;
+    let htmlContent = flattenFinancialStatementRows(rows).map(row => {
+      const label = escapeHtml(row.label);
+      const code = escapeHtml(row.code || '-');
+      const amount = row.amount === null ? '' : Number(row.amount || 0).toLocaleString();
+      if (row.kind === 'section') {
+        return `<tr class="section-header"><td colspan="3" style="font-weight:bold; background-color:#f8fafc; padding-top:10px;">${label}</td></tr>`;
       }
-    });
-
-    // 如果有本期淨利（損益表專用結算）
-    if (rows.netProfit !== undefined) {
-      htmlContent += `
-        <tr style="border-top: 2px double #0f172a; font-weight: bold; background-color: #f1f5f9;">
-          <td>本期淨利 (Net Profit)</td>
-          <td style="text-align: right; color: ${rows.netProfit >= 0 ? '#16a34a' : '#dc2626'};">${Number(rows.netProfit || 0).toLocaleString()}</td>
-          <td>-</td>
-        </tr>
-      `;
-    }
+      if (row.kind === 'subsection') {
+        return `<tr class="sub-header"><td colspan="3" style="font-weight:600; padding-left:15px; color:#475569;">${label}</td></tr>`;
+      }
+      if (row.kind === 'subtotal') {
+        return `<tr style="border-bottom:1px dashed #cbd5e1;"><td style="padding-left:15px; font-weight:600;">${label}</td><td style="text-align:right; font-weight:600;">${amount}</td><td>-</td></tr>`;
+      }
+      if (row.kind === 'total') {
+        return `<tr style="border-top:2px solid #0f172a; font-weight:bold;"><td>${label}</td><td style="text-align:right;">${amount}</td><td>-</td></tr>`;
+      }
+      if (row.kind === 'net') {
+        const color = Number(row.amount || 0) >= 0 ? '#16a34a' : '#dc2626';
+        return `<tr style="border-top:2px double #0f172a; font-weight:bold; background-color:#f1f5f9;"><td>${label}</td><td style="text-align:right; color:${color};">${amount}</td><td>-</td></tr>`;
+      }
+      return `<tr><td style="padding-left:20px;">${label}</td><td style="text-align:right;">${amount}</td><td style="color:#64748b; font-size:12px;">${code}</td></tr>`;
+    }).join('');
 
     if (rows.reconciliation) {
       const r = rows.reconciliation;
