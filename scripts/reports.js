@@ -89,6 +89,43 @@ function netIncomeFromRows(rows) {
   return revenue - expense;
 }
 
+export function getCompanyPaidInCapital(company = {}) {
+  return Number(company.capitalCash || 0)
+    + Number(company.capitalProperty || 0)
+    + Number(company.capitalTechnology || 0)
+    + Number(company.capitalMergeNew || 0);
+}
+
+export function isPaidInCapitalInPeriod(plannedOpenDate, startDate = null, endDate = null) {
+  if (!plannedOpenDate) return !startDate;
+  if (startDate && plannedOpenDate < startDate) return false;
+  if (endDate && plannedOpenDate > endDate) return false;
+  return true;
+}
+
+export function createEquityStatementRows({
+  openingCapital = 0,
+  openingRetainedEarnings = 0,
+  capitalChange = 0,
+  retainedAccountChange = 0,
+  netProfitThisPeriod = 0
+} = {}) {
+  const endingCapital = Number(openingCapital || 0) + Number(capitalChange || 0);
+  const endingRetainedEarnings = Number(openingRetainedEarnings || 0)
+    + Number(retainedAccountChange || 0)
+    + Number(netProfitThisPeriod || 0);
+
+  return [
+    [LABELS.openingCapital, Number(openingCapital || 0)],
+    [LABELS.openingRetainedEarnings, Number(openingRetainedEarnings || 0)],
+    [LABELS.capitalChange, Number(capitalChange || 0)],
+    [LABELS.netIncome, Number(netProfitThisPeriod || 0)],
+    [LABELS.endingCapital, endingCapital],
+    [LABELS.endingRetainedEarnings, endingRetainedEarnings],
+    [LABELS.endingEquity, endingCapital + endingRetainedEarnings]
+  ];
+}
+
 function applyJournalEntryDateFilters(query, startDate, endDate) {
   let nextQuery = query;
   if (startDate) nextQuery = nextQuery.gte('entry_date', startDate);
@@ -194,11 +231,8 @@ async function fetchSupabaseTrialBalance(startDate = null, endDate = null) {
 
   try {
     const company = await getCompanyInfo();
-    const paidInCapital = Number(company.capitalCash || 0)
-      + Number(company.capitalProperty || 0)
-      + Number(company.capitalTechnology || 0)
-      + Number(company.capitalMergeNew || 0);
-    const openingDateIsInScope = !endDate || !company.plannedOpenDate || company.plannedOpenDate <= endDate;
+    const paidInCapital = getCompanyPaidInCapital(company);
+    const openingDateIsInScope = isPaidInCapitalInPeriod(company.plannedOpenDate, startDate, endDate);
     const capitalAccount = (accounts || []).find(account => account.code === '3110');
     const cashAccount = (accounts || []).find(account => account.code === '1102');
 
@@ -462,6 +496,20 @@ export async function buildCashflowStatementByLinkedBanks(transactions = [], sta
 
 export async function buildEquityStatement(transactions = [], startDate = null, endDate = null) {
   try {
+    if (!startDate && !endDate) {
+      const { rows } = await fetchSupabaseTrialBalance();
+      const company = await getCompanyInfo();
+      const openingCapital = getCompanyPaidInCapital(company);
+      const endingCapital = netCreditBalance(rows, '3110');
+
+      return createEquityStatementRows({
+        openingCapital,
+        capitalChange: endingCapital - openingCapital,
+        retainedAccountChange: netCreditBalance(rows, '3310'),
+        netProfitThisPeriod: netIncomeFromRows(rows)
+      });
+    }
+
     const openingCutoff = dayBefore(startDate);
     const openingTrialBalance = startDate ? await fetchSupabaseTrialBalance(null, openingCutoff) : { rows: [] };
     const openingCapital = netCreditBalance(openingTrialBalance.rows, '3110');
@@ -471,33 +519,21 @@ export async function buildEquityStatement(transactions = [], startDate = null, 
     const capitalChange = netCreditBalance(rows, '3110');
     const retainedAccountChange = netCreditBalance(rows, '3310');
     const netProfitThisPeriod = netIncomeFromRows(rows);
-    const retainedEarningsChange = retainedAccountChange + netProfitThisPeriod;
-    const endingCapital = openingCapital + capitalChange;
-    const endingRetainedEarnings = openingRetainedEarnings + retainedEarningsChange;
-    const endingEquity = endingCapital + endingRetainedEarnings;
-
-    return [
-      [LABELS.openingCapital, openingCapital],
-      [LABELS.openingRetainedEarnings, openingRetainedEarnings],
-      [LABELS.capitalChange, capitalChange],
-      [LABELS.netIncome, netProfitThisPeriod],
-      [LABELS.endingCapital, endingCapital],
-      [LABELS.endingRetainedEarnings, endingRetainedEarnings],
-      [LABELS.endingEquity, endingEquity]
-    ];
+    return createEquityStatementRows({
+      openingCapital,
+      openingRetainedEarnings,
+      capitalChange,
+      retainedAccountChange,
+      netProfitThisPeriod
+    });
   } catch (error) {
     console.warn('Unable to load Supabase equity statement, using local transactions:', error.message);
     const analysis = buildEquityAnalysis(transactions || [], 0);
-    const endingCapital = Number(analysis.openingCapital || 0) + Number(analysis.capitalChange || 0);
-    return [
-      [LABELS.openingCapital, analysis.openingCapital],
-      [LABELS.openingRetainedEarnings, 0],
-      [LABELS.capitalChange, analysis.capitalChange],
-      [LABELS.netIncome, analysis.retainedEarnings],
-      [LABELS.endingCapital, endingCapital],
-      [LABELS.endingRetainedEarnings, analysis.retainedEarnings],
-      [LABELS.endingEquity, analysis.endingEquity]
-    ];
+    return createEquityStatementRows({
+      openingCapital: analysis.openingCapital,
+      capitalChange: analysis.capitalChange,
+      netProfitThisPeriod: analysis.retainedEarnings
+    });
   }
 }
 

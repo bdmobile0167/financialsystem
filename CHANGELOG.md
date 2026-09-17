@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 0.2.92 - 2026-09-17
+
+- Fix the no-period equity overview so configured cash, property, technology and merger contributions appear as opening paid-in capital.
+- Scope the synthetic paid-in-capital journal supplement to the selected reporting period, preventing capital before the start date from being counted again as a current-period change.
+- Centralize the seven equity-statement rows and add regression coverage for contribution totals, date boundaries and ending-equity reconciliation; pass all 17 browser regressions.
+- Keep Chrome test profiles inside the disposable test output directory and remove each profile in `finally`; delete 379 stale `.tmp-*` directories totaling about 4.08 GiB.
+- Add government-grant recognition and traceability requirements to the existing deferred-revenue task. Production authenticated acceptance remains pending, so the release is not `1.0.0`.
+
 ## 0.2.91 - 2026-09-15
 
 - Add currency selection to bank-account create/edit flows and lock the selector after the account has a balance or financial reference.
