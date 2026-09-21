@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 0.2.97 - 2026-09-21
+
+- Add voucher date/currency selection, exchange-rate/base previews, and preservation of department budgets during rejected-voucher resubmission.
+- Make voucher create/update RPCs snapshot the authoritative transaction-date rate, enforce atomic line totals and prevent applicant/status spoofing; disable the legacy non-atomic resubmit RPC.
+- Consume and restore project or department budgets in base currency, reject insufficient budgets atomically, and extend receipt-type compatibility to the existing voucher UI.
+- Apply the changes directly to Supabase, pass rollback/security/currency/budget/reversal tests with zero fixture residue and pass all 21 browser regressions.
+
 ## 0.2.96 - 2026-09-17
 
 - Make paid-in capital directly editable while preserving non-cash contribution categories and applying the entered total through the cash-contribution residual.

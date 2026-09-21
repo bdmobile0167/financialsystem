@@ -112,7 +112,8 @@ export async function fetchWorkflowLogs(voucherId) {
 export async function createVoucher(payload) {
   const {
     txDate,
-    category = 'General reimbursement',
+    currency = 'TWD',
+    category = '營業',
     summary,
     departmentId,
     currentManagerId,
@@ -139,6 +140,7 @@ export async function createVoucher(payload) {
     p_voucher: {
       voucher_no: voucherNo,
       tx_date: txDate,
+      currency,
       category,
       summary,
       department_id: departmentId,
@@ -176,7 +178,7 @@ export async function createVoucher(payload) {
   await notifyUser(
     currentManagerId,
     'New voucher pending review',
-    `${summary || voucherNo}, amount $${Number(totalAmount || 0).toLocaleString()}`,
+    `${summary || voucherNo}, amount ${currency} ${Number(totalAmount || 0).toLocaleString()}`,
     voucher.id
   );
 
@@ -193,14 +195,14 @@ export async function managerApprove(voucher) {
 
   const { data: full } = await supabase
     .from('vouchers')
-    .select('voucher_no, summary, total_amount')
+    .select('voucher_no, summary, total_amount, currency')
     .eq('id', voucher.id)
     .single();
 
   await notifyRoles(
     'accounting',
     'Voucher approved; pending accounting review',
-    `${full?.summary || full?.voucher_no || ''}, amount $${Number(full?.total_amount || 0).toLocaleString()}`,
+    `${full?.summary || full?.voucher_no || ''}, amount ${full?.currency || 'TWD'} ${Number(full?.total_amount || 0).toLocaleString()}`,
     voucher.id
   );
 }
@@ -284,19 +286,10 @@ export async function accountingReject(voucher, reason) {
   );
 }
 
-export async function resubmitVoucher(voucher, { summary, amount }) {
-  const { error } = await supabase.rpc('resubmit_voucher', {
-    p_voucher_id: voucher.id,
-    p_summary: summary,
-    p_total_amount: amount
-  });
-
-  if (error) throw error;
-}
-
 export async function updateVoucher(voucherId, payload) {
   const {
     txDate,
+    currency,
     category,
     summary,
     departmentId,
@@ -315,6 +308,7 @@ export async function updateVoucher(voucherId, payload) {
 
   const updateData = {};
   if (txDate !== undefined) updateData.tx_date = txDate;
+  if (currency !== undefined) updateData.currency = currency;
   if (category !== undefined) updateData.category = category;
   if (summary !== undefined) updateData.summary = summary;
   if (departmentId !== undefined) updateData.department_id = departmentId;

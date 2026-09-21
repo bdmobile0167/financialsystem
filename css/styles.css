@@ -588,7 +588,7 @@ button.danger:hover {
 }
 
 .payment-split-editable {
-  grid-template-columns: 92px 126px minmax(150px, .8fr) minmax(220px, 1.2fr) minmax(210px, 1fr) 38px;
+  grid-template-columns: 80px 110px minmax(130px, .7fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(170px, .9fr) 38px;
 }
 
 .payment-split-readonly {
@@ -609,6 +609,16 @@ button.danger:hover {
 .payment-split-row select {
   width: 100%;
   min-width: 0;
+}
+
+.payment-fx-preview {
+  display: block;
+  min-height: 30px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .payment-split-check {

@@ -7,6 +7,7 @@ import { mountArAgingReport } from '../src/modules/receivables/arAgingReport.js'
 import { mountVoucherPaymentSplitEditor } from '../src/modules/payment/voucherPaymentSplits.js';
 import { calculatePayrollAmounts, validatePayrollItems, summarizePayrollItems, formatPayrollMoney, getPayrollAgencySetupIssues, createPayrollRequestTracker } from '../src/modules/payment/payrollPayment.js';
 import { handleInvoiceBatchUpload } from '../src/modules/voucher/invoiceBatch.js';
+import { buildVoucherRatePreview, fetchActiveVoucherCurrencies, fetchVoucherExchangeRate, formatVoucherMoney, populateVoucherCurrencySelect } from '../src/modules/voucher/voucherCurrency.js';
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { importBankStatementRows } from '../src/modules/bank/bankStatementImport.js';
@@ -1640,7 +1641,7 @@ async function renderPaymentManagement() {
     const filter = document.getElementById('paymentStatusFilter')?.value || 'approved';
     let query = supabase
       .from('vouchers')
-.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, currency, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, payment_assignment_revision, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(id, description, amount, payee_name, payee_identifier, account_code, created_at), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number, currency), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(voucher_payment_split_id, payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, amount, paid_at, reversal_date, reversal_reason, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number, currency)), payment_splits:voucher_payment_splits(id, amount, amount_base, currency, exchange_rate, payment_status, payment_no, payment_sequence_no, paid_at, reversal_date, reversal_reason, recipient_snapshot, recipient:payment_recipients(display_name, identifier, bank_name, bank_branch, account_name, account_number), bank:bank_accounts(bank_name, nickname, account_number, currency)))')
+.select('id, voucher_no, request_voucher_no, accounting_voucher_no, accounting_sequence_no, summary, total_amount, total_amount_base, currency, exchange_rate, status, payment_date, accounting_note, accounting_account_id, payment_bank_account_id, payment_recipient_id, payment_assignment_revision, primary_payee_id, applicant:profiles!applicant_id(full_name, email), project:projects(project_code, name, default_bank_account_id), voucher_lines(id, description, amount, payee_name, payee_identifier, account_code, created_at), payment_recipient:payment_recipients(*), payment_bank:bank_accounts!payment_bank_account_id(bank_name, nickname, account_number, currency), accounting_account:accounts!accounting_account_id(code, name), payment:voucher_payments(voucher_payment_split_id, payment_no, payment_sequence_no, status, currency, exchange_rate, amount_base, voucher_exchange_rate, voucher_amount_base, amount, settlement_amount, settlement_currency, settlement_exchange_rate, settlement_amount_base, realized_fx_base, paid_at, reversal_date, reversal_reason, recipient_snapshot, bank:bank_accounts!bank_account_id(bank_name, nickname, account_number, currency)), payment_splits:voucher_payment_splits(id, amount, amount_base, currency, exchange_rate, voucher_exchange_rate, voucher_amount_base, settlement_amount, settlement_currency, settlement_exchange_rate, settlement_amount_base, realized_fx_base, payment_status, payment_no, payment_sequence_no, paid_at, reversal_date, reversal_reason, recipient_snapshot, recipient:payment_recipients(display_name, identifier, bank_name, bank_branch, account_name, account_number), bank:bank_accounts(bank_name, nickname, account_number, currency)))')
       .in('status', filter === 'all' ? ['approved', 'partially_paid', 'closed', 'voided'] : [filter])
       .order('accounting_approved_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
@@ -2011,8 +2012,8 @@ window.openPaymentEditor = async (voucherId) => {
   document.body.appendChild(modal);
 
   try {
-    const [recipients, banks] = await withTimeout(
-      Promise.all([fetchPaymentRecipients(), fetchBankAccounts()]),
+    const [recipients, banks, currencies] = await withTimeout(
+      Promise.all([fetchPaymentRecipients(), fetchBankAccounts(), fetchActiveVoucherCurrencies(supabase)]),
       '付款設定資料載入逾時，請確認付款人主檔與銀行帳戶是否可正常讀取。'
     );
     const card = modal.querySelector('.payment-editor-modal');
@@ -2023,6 +2024,7 @@ window.openPaymentEditor = async (voucherId) => {
       voucher,
       recipients,
       banks,
+      currencies,
       confirmAction: message => confirm(message),
       onCancel: () => modal.remove(),
       onSaved: async () => {
@@ -3537,6 +3539,36 @@ function showForcePasswordView() {
 
 let excelRowCounter = 0;
 const voucherLineAttachments = {}; // { rowId: File }
+let activeVoucherCurrencies = [];
+let voucherRateRequestId = 0;
+
+function getVoucherLineTotal(selector = '#excelLinesBody .grid-amount') {
+  return Array.from(document.querySelectorAll(selector))
+    .reduce((sum, input) => sum + (Number(input.value) || 0), 0);
+}
+
+async function refreshVoucherCurrencyPreview({ prefix = '', total = null } = {}) {
+  const dateInput = document.getElementById(`${prefix}vDate`);
+  const currencySelect = document.getElementById(`${prefix}vCurrency`);
+  const preview = document.getElementById(prefix ? 'resubCurrencyPreview' : 'voucherCurrencyPreview');
+  if (!dateInput || !currencySelect || !preview) return;
+
+  const requestId = ++voucherRateRequestId;
+  preview.textContent = '正在查詢匯率...';
+  preview.style.color = '';
+  try {
+    const rate = await fetchVoucherExchangeRate(supabase, currencySelect.value, dateInput.value);
+    if (requestId !== voucherRateRequestId) return;
+    currencySelect.dataset.exchangeRate = String(rate);
+    const amount = total ?? getVoucherLineTotal(prefix ? '#resubExcelLinesBody .grid-amount' : '#excelLinesBody .grid-amount');
+    preview.textContent = buildVoucherRatePreview(amount, currencySelect.value, rate, activeVoucherCurrencies);
+  } catch (error) {
+    if (requestId !== voucherRateRequestId) return;
+    delete currencySelect.dataset.exchangeRate;
+    preview.textContent = error.message;
+    preview.style.color = '#b91c1c';
+  }
+}
 
 window.toggleInvoiceRequired = (selectEl) => {
   const input = selectEl.closest('tr').querySelector('.grid-inv-num');
@@ -3553,10 +3585,16 @@ window.toggleInvoiceRequired = (selectEl) => {
 };
 
 window.calculateVoucherTotal = () => {
-  const amounts = Array.from(document.querySelectorAll('.grid-amount')).map(el => Number(el.value) || 0);
-  const total = amounts.reduce((a, b) => a + b, 0);
+  const total = getVoucherLineTotal();
+  const currencySelect = document.getElementById('vCurrency');
+  const currency = currencySelect?.value || 'TWD';
   const display = document.getElementById('voucherTotalDisplay');
-  if (display) display.innerText = `$${total.toLocaleString()}`;
+  if (display) display.innerText = formatVoucherMoney(total, currency, activeVoucherCurrencies);
+  const preview = document.getElementById('voucherCurrencyPreview');
+  const rate = Number(currencySelect?.dataset.exchangeRate);
+  if (preview && Number.isFinite(rate) && rate > 0) {
+    preview.textContent = buildVoucherRatePreview(total, currency, rate, activeVoucherCurrencies);
+  }
 };
 
 window.clearPayeeName = (inputEl) => {
@@ -4879,6 +4917,7 @@ function initializeEventsInternal() {
 
       try {
         const txDate = document.getElementById('vDate')?.value || new Date().toISOString().split('T')[0];
+        const currency = document.getElementById('vCurrency')?.value || 'TWD';
         const projectId = document.getElementById('vProject')?.value || null;
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
         const departmentId = document.getElementById('vDepartment')?.value || null;
@@ -4941,6 +4980,7 @@ function initializeEventsInternal() {
           const rowId = row.dataset.rowId;
           const invType = invTypeInput ? invTypeInput.value : '無';
           const invNumber = invNumInput?.value.trim() || '';
+          const receiptMonth = row.querySelector('.grid-month')?.value || null;
           const hasInvoiceRecord = invType !== '無';
           const hasAttachment = !!(rowId && voucherLineAttachments[rowId]);
           if (!hasInvoiceRecord && !hasAttachment) {
@@ -4958,6 +4998,9 @@ function initializeEventsInternal() {
             item_category_note: categoryNote,
             account_code: accountSelect ? (accountSelect.value || null) : null,
             amount: amt,
+            receipt_month: receiptMonth,
+            receipt_type: invType,
+            invoice_number: invNumber || null,
             payee_identifier: payeeIdentifier || null,
             payee_name: payeeName || null,
             is_proxy_payment: proxyCheck?.checked || false,
@@ -4993,6 +5036,7 @@ function initializeEventsInternal() {
 
         const voucherPayload = {
           txDate: txDate,
+          currency: currency,
           projectId: projectId && projectId !== 'all' ? projectId : null,
           departmentBudgetId: projectId && projectId !== 'all' ? null : departmentBudgetId,
           applicantId: state.currentUser?.id,
@@ -5016,9 +5060,15 @@ function initializeEventsInternal() {
           throw new Error(result?.error || '建立報支單失敗');
         }
 
-        alert(`✅ 送出成功！總計金額：$${calculatedTotal.toLocaleString()}`);
+        alert(`送出成功！總計金額：${formatVoucherMoney(calculatedTotal, currency, activeVoucherCurrencies)}`);
 
         excelVoucherForm.reset();
+        const resetVoucherDate = document.getElementById('vDate');
+        if (resetVoucherDate) resetVoucherDate.value = new Date().toISOString().slice(0, 10);
+        const resetVoucherCurrency = document.getElementById('vCurrency');
+        if (resetVoucherCurrency) resetVoucherCurrency.value = 'TWD';
+        window.calculateVoucherTotal();
+        refreshVoucherCurrencyPreview();
 
         if (typeof renderVoucherLines === 'function') {
           renderVoucherLines();
@@ -5160,11 +5210,12 @@ async function initialize() {
 
 async function populateVoucherFormOptions() {
   try {
-    const [accounts, banks, departments] = await Promise.all([
-      fetchAccounts(), fetchBankAccounts(), fetchDepartments()
+    const [accounts, banks, departments, currencies] = await Promise.all([
+      fetchAccounts(), fetchBankAccounts(), fetchDepartments(), fetchActiveVoucherCurrencies(supabase)
     ]);
 
     window.__cachedAccounts = accounts;
+    activeVoucherCurrencies = currencies;
     window.__cachedPayees = [];
     if (isFinanceOperator()) {
       const { data: payees, error: payeesError } = await supabase
@@ -5206,6 +5257,19 @@ async function populateVoucherFormOptions() {
       bankSelect.innerHTML = '<option value="">（現金支付免選）</option>' + 
         banks.map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('');
     }
+
+    const voucherDate = document.getElementById('vDate');
+    if (voucherDate && !voucherDate.value) voucherDate.value = new Date().toISOString().slice(0, 10);
+    const voucherCurrency = document.getElementById('vCurrency');
+    populateVoucherCurrencySelect(voucherCurrency, currencies, voucherCurrency?.value || 'TWD');
+    if (voucherDate) voucherDate.onchange = () => refreshVoucherCurrencyPreview();
+    if (voucherCurrency) {
+      voucherCurrency.onchange = () => {
+        window.calculateVoucherTotal();
+        refreshVoucherCurrencyPreview();
+      };
+    }
+    await refreshVoucherCurrencyPreview();
     
     await populateManagerPickerGrouped();
     // 部門 - 避免重複宣告
@@ -7258,12 +7322,16 @@ window.openResubmitModal = async (voucherId) => {
       { data: vch, error: vErr },
       { data: lines, error: lErr },
       { data: invoices, error: iErr },
-      { data: depts, error: dErr }
+      { data: depts, error: dErr },
+      { data: departmentBudgets, error: bErr },
+      currencies
     ] = await Promise.all([
       supabase.from('vouchers').select('*').eq('id', voucherId).single(),
       supabase.from('voucher_lines').select('*').eq('voucher_id', voucherId),
       supabase.from('invoices').select('*').eq('voucher_id', voucherId),
-      supabase.from('departments').select('id, name')
+      supabase.from('departments').select('id, name'),
+      supabase.from('department_budgets').select('id, department_id, fiscal_year, amount, remaining_amount').order('fiscal_year', { ascending: false }),
+      fetchActiveVoucherCurrencies(supabase)
     ]);
 
     // 抓取既有附件（顯示於 Modal，可標記移除）
@@ -7275,6 +7343,8 @@ window.openResubmitModal = async (voucherId) => {
     }
 
     if (vErr || !vch) throw new Error('無法取得報支單資料');
+    if (lErr || iErr || dErr || bErr) throw (lErr || iErr || dErr || bErr);
+    activeVoucherCurrencies = currencies;
 
     // B. 根據使用者權限取得專案清單（非 Admin/會計只能看到自己被指派的專案）
     let projectsData = [];
@@ -7314,7 +7384,7 @@ window.openResubmitModal = async (voucherId) => {
         <form id="resubmitFormElement" onsubmit="submitFullResubmission(event, '${vch.id}')" class="form-container">
           <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
             <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
-            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+            <div style="display: flex; flex-wrap:wrap; gap: 15px; margin-bottom: 10px;">
               <div style="flex: 1;">
                 <label for="resub-vTitle">報支主旨 (必填)：</label>
                 <input type="text" id="resub-vTitle" value="${vch.summary || ''}" required style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
@@ -7331,13 +7401,17 @@ window.openResubmitModal = async (voucherId) => {
               </div>
             </div>
 
-            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+            <div style="display: flex; flex-wrap:wrap; gap: 15px; margin-bottom: 10px;">
               <div style="flex: 1;">
                 <label for="resub-vProject">專案：</label>
                 <select id="resub-vProject" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
                   <option value="">無專案</option>
                   ${(projectsData || []).map(p => `<option value="${p.id}" ${p.id === vch.project_id ? 'selected' : ''}>${p.project_code ? p.project_code + ' - ' : ''}${p.name}</option>`).join('')}
                 </select>
+              </div>
+              <div style="flex: 1; min-width:180px;">
+                <label for="resub-vDepartmentBudget">部門年度預算：</label>
+                <select id="resub-vDepartmentBudget" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px;"></select>
               </div>
               <div style="flex: 1;">
                 <label for="resub-vTripStart">行程起日：</label>
@@ -7346,6 +7420,15 @@ window.openResubmitModal = async (voucherId) => {
               <div style="flex: 1;">
                 <label for="resub-vTripEnd">行程迄日：</label>
                 <input type="date" id="resub-vTripEnd" value="${vch.trip_end_date || ''}" style="width: 100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              </div>
+              <div style="flex: 1; min-width:160px;">
+                <label for="resub-vDate">報支日期：</label>
+                <input type="date" id="resub-vDate" value="${vch.tx_date || ''}" required style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px;">
+              </div>
+              <div style="flex: 1; min-width:180px;">
+                <label for="resub-vCurrency">幣別：</label>
+                <select id="resub-vCurrency" required style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px;"></select>
+                <p id="resubCurrencyPreview" class="muted" role="status" style="font-size:12px; margin:4px 0 0;"></p>
               </div>
             </div>
           </div>
@@ -7448,7 +7531,7 @@ window.openResubmitModal = async (voucherId) => {
               <tfoot>
                 <tr>
                   <td colspan="4" style="text-align: right; padding: 8px; font-weight: bold; border: 1px solid #ddd;">總計金額：</td>
-                  <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="resubTotalDisplay">$${Number(vch.total_amount || 0).toLocaleString()}</td>
+                  <td colspan="3" style="padding: 8px; font-weight: bold; color: #d9534f; border: 1px solid #ddd;" id="resubTotalDisplay">${formatVoucherMoney(vch.total_amount, vch.currency || 'TWD', currencies)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -7478,6 +7561,51 @@ window.openResubmitModal = async (voucherId) => {
         </form>
       </div>
     `;
+
+    const resubCurrency = document.getElementById('resub-vCurrency');
+    populateVoucherCurrencySelect(resubCurrency, currencies, vch.currency || 'TWD');
+    const resubDate = document.getElementById('resub-vDate');
+    if (resubDate) resubDate.onchange = () => refreshVoucherCurrencyPreview({ prefix: 'resub-' });
+    if (resubCurrency) {
+      resubCurrency.onchange = () => {
+        window.calculateResubTotal();
+        refreshVoucherCurrencyPreview({ prefix: 'resub-' });
+      };
+    }
+    await refreshVoucherCurrencyPreview({ prefix: 'resub-' });
+
+    const resubDepartment = document.getElementById('resub-vDepartment');
+    const resubProject = document.getElementById('resub-vProject');
+    const resubBudget = document.getElementById('resub-vDepartmentBudget');
+    const syncResubBudgetOptions = (selectedId = '') => {
+      const rows = (departmentBudgets || []).filter((item) => item.department_id === resubDepartment?.value);
+      if (resubBudget) {
+        resubBudget.replaceChildren();
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = rows.length ? '請選擇部門年度預算' : '此部門尚無年度預算';
+        resubBudget.appendChild(empty);
+        for (const item of rows) {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `${item.fiscal_year} 年｜剩餘 TWD ${Number(item.remaining_amount || 0).toLocaleString()}`;
+          resubBudget.appendChild(option);
+        }
+        resubBudget.value = rows.some((item) => item.id === selectedId) ? selectedId : '';
+        resubBudget.disabled = Boolean(resubProject?.value);
+        if (resubBudget.disabled) resubBudget.value = '';
+      }
+    };
+    syncResubBudgetOptions(vch.department_budget_id || '');
+    if (resubDepartment) {
+      resubDepartment.onchange = () => {
+        loadResubManagers(resubDepartment.value);
+        syncResubBudgetOptions();
+      };
+    }
+    if (resubProject) {
+      resubProject.onchange = () => syncResubBudgetOptions(resubBudget?.value || '');
+    }
 
     // D. 自動載入當前部門的主管清單並選取原本指定的主管
     if (vch.department_id) {
@@ -7561,8 +7689,15 @@ window.calculateResubTotal = () => {
   amounts.forEach(input => {
     total += Number(input.value) || 0;
   });
+  const currencySelect = document.getElementById('resub-vCurrency');
+  const currency = currencySelect?.value || 'TWD';
   const display = document.getElementById('resubTotalDisplay');
-  if (display) display.textContent = '$' + total.toLocaleString();
+  if (display) display.textContent = formatVoucherMoney(total, currency, activeVoucherCurrencies);
+  const preview = document.getElementById('resubCurrencyPreview');
+  const rate = Number(currencySelect?.dataset.exchangeRate);
+  if (preview && Number.isFinite(rate) && rate > 0) {
+    preview.textContent = buildVoucherRatePreview(total, currency, rate, activeVoucherCurrencies);
+  }
 };
 
 // 6. 提交全部修改資料並將單據重新送審
@@ -7570,11 +7705,19 @@ window.submitFullResubmission = async (e, voucherId) => {
   e.preventDefault();
 
   const title = document.getElementById('resub-vTitle').value.trim();
+  const txDate = document.getElementById('resub-vDate').value;
+  const currency = document.getElementById('resub-vCurrency').value;
   const departmentId = document.getElementById('resub-vDepartment').value;
   const managerId = document.getElementById('resub-vManagerPicker').value || null;
   const projectId = document.getElementById('resub-vProject').value || null;
+  const departmentBudgetId = document.getElementById('resub-vDepartmentBudget').value || null;
   const tripStart = document.getElementById('resub-vTripStart').value || null;
   const tripEnd = document.getElementById('resub-vTripEnd').value || null;
+
+  if (!projectId && !departmentBudgetId) {
+    alert('非專案報支請選擇部門年度預算。');
+    return;
+  }
 
   const rows = document.querySelectorAll('#resubExcelLinesBody tr');
   const newLines = [];
@@ -7596,7 +7739,8 @@ window.submitFullResubmission = async (e, voucherId) => {
       || row.querySelector('.grid-payee-name')?.innerText.trim()
       || ''
     ).replace(/^付款人：/, '').trim();
-    if (amount > 0 && (!payeeId || !payeeName || payeeName.includes('查無') || payeeName.includes('查詢中'))) {
+    if (amount <= 0) return;
+    if (!payeeId || !payeeName || payeeName.includes('查無') || payeeName.includes('查詢中')) {
       missingPayeeRows.push(index + 1);
     }
 
@@ -7608,6 +7752,8 @@ window.submitFullResubmission = async (e, voucherId) => {
       item_category: categorySelect,
       item_category_note: categoryNote,
       amount: amount,
+      receipt_type: invType,
+      invoice_number: invNum || null,
       payee_identifier: payeeId,
       payee_name: payeeName.includes('查無') || payeeName.includes('查詢中') ? null : payeeName
     });
@@ -7635,10 +7781,13 @@ window.submitFullResubmission = async (e, voucherId) => {
   try {
     // 1. 透過共用 API 一次完成：更新主檔＋替換明細＋替換發票＋重送 workflow log＋附件
     const updateResult = await updateVoucher(voucherId, {
+      txDate: txDate,
+      currency: currency,
       summary: title,
       departmentId: departmentId,
       currentManagerId: managerId,
       projectId: projectId,
+      departmentBudgetId: departmentBudgetId,
       totalAmount: totalAmount,
       status: 'pending_review',
       detailLines: newLines,
