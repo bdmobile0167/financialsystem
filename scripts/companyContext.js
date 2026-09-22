@@ -18,6 +18,7 @@ function mapCompanySettings(row = {}) {
     capitalProperty: Number(row.capital_property || 0),
     capitalTechnology: Number(row.capital_technology || 0),
     capitalMergeNew: Number(row.capital_merge_new || 0),
+    capitalEffectiveDate: row.capital_effective_date || row.planned_open_date || '',
     plannedOpenDate: row.planned_open_date || '',
     articlesDate: row.articles_date || ''
   };
@@ -90,6 +91,7 @@ export async function saveCompanyInfo(companyInfo) {
     capital_property: normalizedCapital.capitalProperty,
     capital_technology: normalizedCapital.capitalTechnology,
     capital_merge_new: normalizedCapital.capitalMergeNew,
+    capital_effective_date: companyInfo.capitalEffectiveDate || companyInfo.plannedOpenDate || null,
     planned_open_date: companyInfo.plannedOpenDate || null,
     articles_date: companyInfo.articlesDate || null,
     updated_by: authData?.user?.id || null,

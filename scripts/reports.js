@@ -96,10 +96,10 @@ export function getCompanyPaidInCapital(company = {}) {
     + Number(company.capitalMergeNew || 0);
 }
 
-export function isPaidInCapitalInPeriod(plannedOpenDate, startDate = null, endDate = null) {
-  if (!plannedOpenDate) return !startDate;
-  if (startDate && plannedOpenDate < startDate) return false;
-  if (endDate && plannedOpenDate > endDate) return false;
+export function isPaidInCapitalInPeriod(capitalEffectiveDate, startDate = null, endDate = null) {
+  if (!capitalEffectiveDate) return !startDate;
+  if (startDate && capitalEffectiveDate < startDate) return false;
+  if (endDate && capitalEffectiveDate > endDate) return false;
   return true;
 }
 
@@ -134,17 +134,21 @@ export function createEquityOverviewRows({
 } = {}) {
   const registeredCapital = Number(totalCapital || 0);
   const contributedCapital = Number(paidInCapital || 0);
-  const postedCapital = Number(ledgerCapital || 0);
+  const postedCapital = Number(ledgerCapital ?? contributedCapital);
   const accumulatedResults = Number(retainedEarnings || 0);
-
-  return [
+  const rows = [
     ['資本總額（登記）', registeredCapital],
-    ['已投入股本（實際到位）', contributedCapital],
+    ['期初／已投入股本（實際到位）', contributedCapital],
     ['尚未投入資本', Math.max(0, registeredCapital - contributedCapital)],
-    ['帳載股本（含期初設定）', postedCapital],
     ['累積盈虧', accumulatedResults],
     ['目前股東權益合計', postedCapital + accumulatedResults]
   ];
+
+  const ledgerDifference = postedCapital - contributedCapital;
+  if (Math.abs(ledgerDifference) >= 0.01) {
+    rows.splice(3, 0, ['其他帳載股本調整（請確認）', ledgerDifference]);
+  }
+  return rows;
 }
 
 export function flattenFinancialStatementRows(statement) {
@@ -316,7 +320,8 @@ async function fetchSupabaseTrialBalance(startDate = null, endDate = null) {
   try {
     const company = await getCompanyInfo();
     const paidInCapital = getCompanyPaidInCapital(company);
-    const openingDateIsInScope = isPaidInCapitalInPeriod(company.plannedOpenDate, startDate, endDate);
+    const capitalEffectiveDate = company.capitalEffectiveDate || company.plannedOpenDate;
+    const openingDateIsInScope = isPaidInCapitalInPeriod(capitalEffectiveDate, startDate, endDate);
     const capitalAccount = (accounts || []).find(account => account.code === '3110');
     const cashAccount = (accounts || []).find(account => account.code === '1102');
 
@@ -434,37 +439,78 @@ export async function buildIncomeStatement(transactions = [], startDate = null, 
 }
 
 export async function getBankReconciliationStatus(startDate = null, endDate = null) {
-  const { data: banks, error: banksError } = await supabase
-    .from('bank_accounts')
-    .select('id, bank_name, nickname, account_number, opening_balance, balance, current_balance, currency')
-    .order('created_at', { ascending: true });
-  if (banksError) throw banksError;
+  const asOfDate = endDate || new Date().toISOString().slice(0, 10);
+  const [banks, bankTxs, fxLines, fxEntries] = await Promise.all([
+    fetchAllSupabaseRows(
+      () => supabase.from('bank_accounts')
+        .select('id, bank_name, nickname, account_number, opening_balance, opening_balance_date, opening_exchange_rate, opening_balance_base, balance, currency, ledger_account_id, accounting_account_id')
+        .order('created_at', { ascending: true }),
+      {
+        label: 'bank_accounts reconciliation',
+        buildCountQuery: () => supabase.from('bank_accounts').select('id', { count: 'exact', head: true })
+      }
+    ),
+    fetchAllSupabaseRows(
+      () => buildBankTransactionsQuery('id, bank_account_id, tx_date, type, amount, amount_base, balance_after, balance_after_base', null, asOfDate),
+      {
+        label: 'bank_transactions reconciliation',
+        buildCountQuery: () => buildBankTransactionsQuery('id', null, asOfDate, { count: 'exact', head: true })
+      }
+    ),
+    fetchAllSupabaseRows(
+      () => supabase.from('fx_revaluation_lines').select('id, source_id, account_id').eq('source_type', 'bank_account'),
+      {
+        label: 'FX revaluation bank lines',
+        buildCountQuery: () => supabase.from('fx_revaluation_lines')
+          .select('id', { count: 'exact', head: true }).eq('source_type', 'bank_account')
+      }
+    ),
+    fetchAllSupabaseRows(
+      () => buildJournalEntriesQuery('id, source_id, entry_date, debit_account_id, credit_account_id, debit_amount_base, credit_amount_base', null, asOfDate)
+        .eq('source_type', 'fx_revaluation'),
+      {
+        label: 'FX revaluation reconciliation entries',
+        buildCountQuery: () => buildJournalEntriesQuery('id', null, asOfDate, { count: 'exact', head: true })
+          .eq('source_type', 'fx_revaluation')
+      }
+    )
+  ]);
 
-  const bankTxs = await fetchAllSupabaseRows(
-    () => buildBankTransactionsQuery('id, bank_account_id, tx_date, type, amount, amount_base, balance_after, balance_after_base', startDate, endDate),
-    {
-      label: 'bank_transactions reconciliation',
-      buildCountQuery: () => buildBankTransactionsQuery('id', startDate, endDate, { count: 'exact', head: true })
-    }
-  );
+  const fxLineById = new Map(fxLines.map(line => [line.id, line]));
+  const fxByBank = new Map();
+  fxEntries.forEach(entry => {
+    const line = fxLineById.get(entry.source_id);
+    if (!line) return;
+    const effect = (entry.debit_account_id === line.account_id ? debitBase(entry) : 0)
+      - (entry.credit_account_id === line.account_id ? creditBase(entry) : 0);
+    fxByBank.set(line.source_id, Number(fxByBank.get(line.source_id) || 0) + effect);
+  });
 
   const balanceRows = (banks || []).map(bank => {
     const txs = bankTxs.filter(tx => tx.bank_account_id === bank.id);
+    const includeOpening = !bank.opening_balance_date || bank.opening_balance_date <= asOfDate;
     const calculatedBalance = txs.reduce((sum, tx) => {
+      const amount = Number(tx.amount || 0);
+      return normalizeType(tx.type) === 'expense' ? sum - amount : sum + amount;
+    }, includeOpening ? Number(bank.opening_balance || 0) : 0);
+    const calculatedBalanceBase = txs.reduce((sum, tx) => {
       return normalizeType(tx.type) === 'expense' ? sum - amountBase(tx) : sum + amountBase(tx);
-    }, Number(bank.opening_balance || 0));
+    }, includeOpening ? Number(bank.opening_balance_base || 0) : 0) + Number(fxByBank.get(bank.id) || 0);
 
     return {
       ...bank,
       calculated_balance: calculatedBalance,
-      display_balance: bank.current_balance ?? bank.balance ?? calculatedBalance
+      calculated_balance_base: calculatedBalanceBase,
+      current_balance: calculatedBalance,
+      current_balance_base: calculatedBalanceBase,
+      display_balance: calculatedBalanceBase
     };
   });
 
   const actualBalance = balanceRows.reduce((sum, row) => sum + Number(row.display_balance || 0), 0);
   let ledgerBalance = null;
   try {
-    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
+    const { rows } = await fetchSupabaseTrialBalance(null, asOfDate);
     const bankRow = rows.find(row => row.code === '1102');
     ledgerBalance = bankRow ? Number(bankRow.debitTotal || 0) - Number(bankRow.creditTotal || 0) : 0;
   } catch (error) {

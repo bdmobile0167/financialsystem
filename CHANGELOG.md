@@ -1,5 +1,19 @@
 # 變更紀錄
 
+## 0.2.99 - 2026-09-21
+
+- Complete period-end unrealized FX revaluation for foreign bank and AR balances, with preview, atomic posting, next-day automatic reversal, idempotency, void audit and finance-only access.
+- Add authoritative bank opening-balance dates, exchange-rate snapshots and generated TWD base amounts; compare bank reconciliation to the cumulative TWD ledger as of the report date.
+- Apply the schema directly to Supabase and pass remote rollback, role, missing-rate, gain/loss and zero-residue checks plus all 25 browser regressions.
+- Record the existing TWD 28,616,697 bank-opening-to-ledger gap as TASK-030; no unverified opening journal or capital entry was created.
+
+## 0.2.98 - 2026-09-21
+
+- Simplify capital setup around registered and paid-in totals, move contribution composition into an optional disclosure, and add a cash-only reset that changes the form without saving implicitly.
+- Add an independent paid-in-capital effective date and use it for opening/current-period equity classification; remove the duplicate ledger-capital row unless a real reconciliation difference exists.
+- Support cross-currency AP settlement with separate voucher and bank amounts, authoritative payment-date rates, realized FX gain/loss journals, idempotent payment and complete reversal.
+- Apply both schema updates directly to Supabase, add covering indexes for the new payment currency foreign keys, and pass remote rollback plus all 23 browser regressions.
+
 ## 0.2.97 - 2026-09-21
 
 - Add voucher date/currency selection, exchange-rate/base previews, and preservation of department budgets during rejected-voucher resubmission.

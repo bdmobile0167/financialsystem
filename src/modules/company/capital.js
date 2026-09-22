@@ -40,6 +40,17 @@ export function applyPaidInCapitalTotal(companyInfo = {}, paidInCapital = 0) {
   };
 }
 
+export function useCashOnlyCapital(companyInfo = {}, paidInCapital = 0) {
+  const targetTotal = parseCapitalAmount(paidInCapital, '已投入股本');
+  return {
+    ...companyInfo,
+    capitalCash: targetTotal,
+    capitalProperty: 0,
+    capitalTechnology: 0,
+    capitalMergeNew: 0
+  };
+}
+
 export function getShareholderContributionTotal(shareholders = []) {
   return (shareholders || []).reduce(
     (total, person) => total + parseCapitalAmount(person?.amount, '股東出資'),

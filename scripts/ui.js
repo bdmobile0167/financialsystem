@@ -28,7 +28,8 @@ import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
 import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
 import { getCompanyDataBundle, saveCompanyInfo, saveCompanyBusinessItems, saveCompanyShareholders } from './companyContext.js';
-import { applyPaidInCapitalTotal, getCapitalComparison, getPaidInCapital, getShareholderContributionTotal, parseCapitalAmount } from '../src/modules/company/capital.js';
+import { applyPaidInCapitalTotal, getCapitalComparison, getPaidInCapital, getShareholderContributionTotal, parseCapitalAmount, useCashOnlyCapital } from '../src/modules/company/capital.js';
+import { mountFxRevaluation } from '../src/modules/accounting/fxRevaluation.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
@@ -1149,7 +1150,9 @@ function renderCompanyData() {
     ['統一編號', info.taxId],
     ['預查編號', info.precheckNumber],
     ['預定開業日期', info.plannedOpenDate],
+    ['已投入股本生效日', info.capitalEffectiveDate],
     ['資本總額', info.totalCapital?.toLocaleString()],
+    ['已投入股本', getPaidInCapital(info).toLocaleString()],
     ['董事人數', info.boardCount],
     ['代表人', info.representativeName],
     ['章程訂定日期', info.articlesDate],
@@ -1185,6 +1188,7 @@ function fillCompanyInfoForm() {
   setVal('companyCapitalTechnology', info.capitalTechnology);
   setVal('companyCapitalMergeNew', info.capitalMergeNew);
   setVal('companyPaidInCapital', getPaidInCapital(info));
+  setVal('companyCapitalEffectiveDate', info.capitalEffectiveDate || info.plannedOpenDate);
   setVal('companyOpenDate', info.plannedOpenDate);
   refreshCompanyCapitalSummary();
 }
@@ -2747,10 +2751,10 @@ function renderTable(id, rows) {
           <td colspan="3">
             <div class="reconciliation-box">
               <strong>銀行餘額勾稽</strong>
-              <span>實際銀行餘額：${Number(r.actualBalance || 0).toLocaleString()}</span>
-              ${(r.balanceRows || []).map(b => `<span class="reconcile-detail">${b.nickname || b.bank_name || '銀行帳戶'}：${Number(b.current_balance ?? b.balance ?? b.ending_balance ?? 0).toLocaleString()}</span>`).join('')}
-              <span>總帳銀行科目餘額：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
-              <span class="${Number(r.difference || 0) === 0 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異：${Number(r.difference || 0).toLocaleString()}</span>
+              <span>實際銀行餘額（TWD 基準）：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              ${(r.balanceRows || []).map(b => `<span class="reconcile-detail">${escapeHtml(b.nickname || b.bank_name || '銀行帳戶')}：${escapeHtml(b.currency || 'TWD')} ${Number(b.current_balance ?? 0).toLocaleString()} / TWD ${Number(b.current_balance_base ?? b.display_balance ?? 0).toLocaleString()}</span>`).join('')}
+              <span>總帳銀行科目餘額（TWD）：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
+              <span class="${Math.abs(Number(r.difference || 0)) < 0.01 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異（TWD）：${Number(r.difference || 0).toLocaleString()}</span>
               ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}
             </div>
           </td>
@@ -2824,6 +2828,19 @@ function updateSettings() {
   if (exchangeRatesCard) {
     exchangeRatesCard.style.display = isFinanceOperator() ? '' : 'none';
     if (isFinanceOperator()) renderExchangeRates();
+  }
+
+  const fxRevaluationCard = document.getElementById('fxRevaluationCard');
+  if (fxRevaluationCard) {
+    if (isFinanceOperator()) {
+      mountFxRevaluation(fxRevaluationCard, {
+        client: supabase,
+        currentRole: () => state.currentUser?.role,
+        showMessage
+      });
+    } else {
+      fxRevaluationCard.hidden = true;
+    }
   }
 
   ['systemSettingsCard'].forEach(id => {
@@ -3199,6 +3216,8 @@ async function renderBankAccounts() {
     window.__bankAccountsForTransaction = accounts;
     window.__bankCurrencies = currencyResult.data || [];
     const currencySelect = document.getElementById('bankCurrency');
+    const openingDateInput = document.getElementById('bankOpeningBalanceDate');
+    if (openingDateInput && !openingDateInput.value) openingDateInput.value = new Date().toISOString().slice(0, 10);
     if (currencySelect) {
       const selectedValue = currencySelect.value || 'TWD';
       const currencies = window.__bankCurrencies.length
@@ -3233,6 +3252,7 @@ async function renderBankAccounts() {
             <span>帳號末碼：${escapeHtml(accountTail)}</span>
             <span>完整帳號：${escapeHtml(a.account_number || a.accountNumber || '-')}</span>
             <span>幣別：${escapeHtml(a.currency || 'TWD')}${a.currency_locked ? '（已鎖定）' : ''}</span>
+            <span>期初基準：${escapeHtml(a.opening_balance_date || '-')} / 匯率 ${Number(a.opening_exchange_rate || 1).toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
             <span>綁定科目：${linkedAccount ? `${escapeHtml(linkedAccount.code)} ${escapeHtml(linkedAccount.name)}` : '<em>未綁定</em>'}</span>
           </div>
           <div class="bank-account-balance">${escapeHtml(a.currency || 'TWD')} ${balanceDisplay}</div>
@@ -4326,6 +4346,7 @@ function initializeEventsInternal() {
         representativeName: document.getElementById('companyRepresentative').value.trim(),
         boardCount: Number(document.getElementById('companyBoardCount').value || 0),
         ...capital,
+        capitalEffectiveDate: document.getElementById('companyCapitalEffectiveDate').value,
         plannedOpenDate: document.getElementById('companyOpenDate').value
       });
       saveState(state);
@@ -4354,6 +4375,21 @@ function initializeEventsInternal() {
       }
     } else if (event.target?.matches('#companyTotalCapital, #companyCapitalCash, #companyCapitalProperty, #companyCapitalTechnology, #companyCapitalMergeNew')) {
       refreshCompanyCapitalSummary();
+    }
+  });
+
+  safeListener('useCashOnlyCapitalBtn', 'click', () => {
+    try {
+      const paidInInput = document.getElementById('companyPaidInCapital');
+      const capital = useCashOnlyCapital(readCompanyCapitalForm(), paidInInput?.value);
+      document.getElementById('companyCapitalCash').value = capital.capitalCash;
+      document.getElementById('companyCapitalProperty').value = 0;
+      document.getElementById('companyCapitalTechnology').value = 0;
+      document.getElementById('companyCapitalMergeNew').value = 0;
+      refreshCompanyCapitalSummary();
+      showMessage('出資方式已在表單中改為全部現金；按下「儲存公司資料」後才會生效。');
+    } catch (error) {
+      showMessage(error.message, true);
     }
   });
 
@@ -4464,6 +4500,7 @@ function initializeEventsInternal() {
         account_number: document.getElementById('bankAccountNumber').value.trim(),
         nickname: document.getElementById('bankNickname').value.trim(),
         opening_balance: parseFloat(document.getElementById('bankOpeningBalance').value) || 0,
+        opening_balance_date: document.getElementById('bankOpeningBalanceDate').value,
         currency: document.getElementById('bankCurrency')?.value || 'TWD',
         ledger_account_id: document.getElementById('bankLedgerAccountId').value || null,
         accounting_account_id: document.getElementById('bankLedgerAccountId').value || null
@@ -6623,6 +6660,7 @@ window.editBankAccount = async (id) => {
     document.getElementById('bankAccountNumber').value = account.account_number || '';
     document.getElementById('bankNickname').value = account.nickname || '';
     document.getElementById('bankOpeningBalance').value = account.opening_balance || 0; // 確保期初餘額正確帶入
+    document.getElementById('bankOpeningBalanceDate').value = account.opening_balance_date || new Date().toISOString().slice(0, 10);
     document.getElementById('bankLedgerAccountId').value = account.ledger_account_id || account.accounting_account_id || '';
     const currencySelect = document.getElementById('bankCurrency');
     const currencyHint = document.getElementById('bankCurrencyHint');
@@ -6662,6 +6700,8 @@ window.resetBankForm = () => {
   const form = document.getElementById('bankAccountForm');
   if (!form) return;
   form.reset();
+  const openingDate = document.getElementById('bankOpeningBalanceDate');
+  if (openingDate) openingDate.value = new Date().toISOString().slice(0, 10);
   const currencySelect = document.getElementById('bankCurrency');
   const currencyHint = document.getElementById('bankCurrencyHint');
   setBankCurrencyLock(currencySelect, currencyHint, { currency: 'TWD', locked: false });

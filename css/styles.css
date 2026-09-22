@@ -421,6 +421,31 @@ button.danger:hover {
   line-height: 1.6;
 }
 
+.company-capital-help {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.company-capital-breakdown {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0 12px;
+}
+
+.company-capital-breakdown summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.company-capital-breakdown > .muted {
+  margin: 8px 0 12px;
+}
+
+.company-capital-breakdown .secondary {
+  margin-top: 10px;
+  width: auto;
+}
+
 .payment-accounting-lines {
   margin-top: 6px;
   color: var(--muted);
@@ -3133,3 +3158,46 @@ button.dashboard-link {
 #arReceipts > .table-wrapper { overflow-x: auto; }
 #arReceipts > .table-wrapper > table { min-width: 980px; }
 #arReceipts [role="status"], #arReceipts td { overflow-wrap: anywhere; }
+
+.fx-revaluation-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+.fx-revaluation-toolbar label { display: grid; gap: 4px; min-width: 190px; }
+.fx-revaluation-toolbar button { width: auto; }
+.fx-revaluation-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid #d4dde7;
+  margin: 12px 0;
+}
+.fx-revaluation-summary > div { padding: 12px; min-width: 0; }
+.fx-revaluation-summary span,
+.fx-revaluation-summary strong { display: block; overflow-wrap: anywhere; }
+.fx-revaluation-summary span { color: #526175; font-size: 13px; }
+.fx-revaluation-summary strong { margin-top: 4px; font-variant-numeric: tabular-nums; }
+.fx-revaluation-table,
+.fx-revaluation-runs { overflow-x: auto; }
+.fx-revaluation-table table { min-width: 860px; }
+.fx-revaluation-runs table { min-width: 760px; }
+.fx-revaluation-table .numeric,
+.fx-revaluation-runs .numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fx-revaluation-table .fx-gain { color: #166534; }
+.fx-revaluation-table .fx-loss { color: #b91c1c; }
+.fx-revaluation-issues {
+  margin: 12px 0;
+  padding: 10px 10px 10px 32px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+@media (max-width: 700px) {
+  .fx-revaluation-toolbar label,
+  .fx-revaluation-toolbar button { width: 100%; }
+  .fx-revaluation-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
