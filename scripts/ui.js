@@ -30,6 +30,7 @@ import { userHasPermission as hasUserPermission } from '../src/modules/utils/per
 import { getCompanyDataBundle, saveCompanyInfo, saveCompanyBusinessItems, saveCompanyShareholders } from './companyContext.js';
 import { applyPaidInCapitalTotal, getCapitalComparison, getPaidInCapital, getShareholderContributionTotal, parseCapitalAmount, useCashOnlyCapital } from '../src/modules/company/capital.js';
 import { mountFxRevaluation } from '../src/modules/accounting/fxRevaluation.js';
+import { mountBankOpeningReconciliation } from '../src/modules/bank/bankOpeningReconciliation.js';
 
 // Import modular components
 import { renderDashboard } from '../src/modules/dashboard/dashboard.js';
@@ -3269,6 +3270,20 @@ async function renderBankAccounts() {
     populateTransactionAccountSelects(ledgerAccounts || [], accounts);
     const txDate = document.getElementById('txDate');
     if (txDate && !txDate.value) txDate.value = new Date().toISOString().slice(0, 10);
+    const openingRoot = document.getElementById('bankOpeningReconciliationCard');
+    if (openingRoot) {
+      await mountBankOpeningReconciliation(openingRoot, {
+        client: supabase,
+        currentRole: () => state.currentUser?.role,
+        bankAccounts: accounts,
+        accounts: ledgerAccounts || [],
+        showMessage,
+        onChanged: async () => {
+          await renderBankAccounts();
+          await renderEquityTab();
+        }
+      });
+    }
   } catch (e) {
     console.error(e);
     body.innerHTML = '<p class="muted">載入失敗</p>';

@@ -17,6 +17,7 @@ export async function addBankAccount(account) {
       account_number: account.account_number,
       nickname: account.nickname,
       opening_balance: account.opening_balance,
+      opening_balance_date: account.opening_balance_date,
       currency: account.currency || 'TWD',
       ledger_account_id: account.ledger_account_id || null,
       accounting_account_id: account.accounting_account_id || account.ledger_account_id || null,

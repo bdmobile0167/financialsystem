@@ -1000,6 +1000,247 @@ button.danger:hover {
   justify-content: flex-end;
 }
 
+#bankOpeningReconciliationCard {
+  margin-top: 18px;
+}
+
+.bank-opening-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 16px 0;
+  border-block: 1px solid var(--border);
+}
+
+.bank-opening-summary > div {
+  min-width: 0;
+  padding: 12px;
+}
+
+.bank-opening-summary span,
+.bank-opening-summary strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.bank-opening-summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bank-opening-summary strong {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bank-opening-warning,
+.bank-opening-unbalanced {
+  color: var(--danger);
+}
+
+.bank-opening-balanced {
+  color: var(--success);
+}
+
+.bank-opening-list {
+  display: grid;
+  gap: 12px;
+}
+
+.bank-opening-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.bank-opening-card-header,
+.bank-opening-actions,
+.bank-opening-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bank-opening-card-header > div,
+.bank-opening-card-header strong,
+.bank-opening-card-header span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bank-opening-card-header strong,
+.bank-opening-card-header span {
+  display: block;
+}
+
+.bank-opening-card-header span:not(.bank-opening-status) {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bank-opening-status {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bank-opening-status.success {
+  color: var(--success);
+  background: var(--success-light);
+}
+
+.bank-opening-status.warning {
+  color: var(--warning);
+  background: var(--warning-light);
+}
+
+.bank-opening-status.neutral {
+  color: var(--muted);
+  background: var(--surface-strong);
+}
+
+.bank-opening-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.bank-opening-facts div,
+.bank-opening-facts dt,
+.bank-opening-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.bank-opening-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bank-opening-facts dd {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.bank-opening-posted {
+  margin: 12px 0;
+  padding-block: 12px;
+  border-block: 1px solid var(--border);
+}
+
+.bank-opening-posted ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bank-opening-posted li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bank-opening-posted li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bank-opening-posted li strong {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.bank-opening-posted small {
+  color: var(--muted);
+}
+
+.bank-opening-editor {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.bank-opening-editor h4 {
+  margin: 0;
+}
+
+.bank-opening-line-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.bank-opening-line {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 0.7fr) minmax(200px, 1fr) 42px;
+  gap: 10px;
+  align-items: end;
+}
+
+.bank-opening-line label,
+.bank-opening-reversal label,
+.bank-opening-editor > form > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bank-opening-line input,
+.bank-opening-line select,
+.bank-opening-reversal input,
+.bank-opening-reversal textarea,
+.bank-opening-editor > form > label input {
+  width: 100%;
+  min-width: 0;
+}
+
+.bank-opening-line .icon-button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  font-size: 20px;
+}
+
+.bank-opening-editor-footer {
+  margin: 12px 0;
+}
+
+.bank-opening-editor-footer > div {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bank-opening-editor > form > .primary-btn {
+  margin-top: 12px;
+}
+
+.bank-opening-reversal {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(260px, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.bank-opening-reversal textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.bank-opening-reversal .button-row {
+  grid-column: 1 / -1;
+}
+
 .payee-history-backdrop {
   background: rgba(15, 23, 42, 0.68);
 }
@@ -1046,8 +1287,59 @@ button.danger:hover {
     justify-content: flex-start;
   }
 
+  .bank-opening-summary,
+  .bank-opening-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bank-opening-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .payee-history-header {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  #bankOpeningReconciliationCard > .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #bankOpeningReconciliationCard > .panel-header > button {
+    width: 100%;
+  }
+
+  .bank-opening-summary,
+  .bank-opening-facts,
+  .bank-opening-line,
+  .bank-opening-reversal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bank-opening-card-header,
+  .bank-opening-actions,
+  .bank-opening-editor-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bank-opening-card-header .bank-opening-status {
+    align-self: flex-start;
+  }
+
+  .bank-opening-actions button,
+  .bank-opening-editor-footer button {
+    width: 100%;
+  }
+
+  .bank-opening-editor-footer > div {
+    text-align: left;
+  }
+
+  .bank-opening-reversal .button-row {
+    grid-column: auto;
   }
 }
 
