@@ -675,8 +675,14 @@
         <section id="equity" class="tab-panel" style="display:none;">
           <div class="panel">
             <h3>股東權益與募資健康度</h3>
-            <p class="muted">依公司資本設定與帳務分錄匯總。</p>
-            <table id="equityDetailTable"></table>
+            <p class="muted">公司登記資料與正式總帳分開顯示；財報只採計已入帳的 3110 股本，不會自動製造分錄。</p>
+            <div class="table-scroll"><table id="equityDetailTable"></table></div>
+            <div id="equityReconciliationStatus" class="message" aria-live="polite"></div>
+            <div id="equityCapitalActions" class="button-row">
+              <button type="button" class="secondary" id="editCompanyCapitalBtn">修改公司資本資料</button>
+              <button type="button" class="primary-btn" id="recordCapitalContributionBtn">新增本期股本入帳</button>
+            </div>
+            <p class="muted">若既有股本已包含在銀行「期初餘額」，請勿當成本期新收款重複入帳；應在銀行開帳勾稽時把對應來源指定為 3110 股本。</p>
             <p id="fundraisingNoteDetail" class="muted" style="margin-top:16px; font-size:15px; font-weight:600;"></p>
           </div>
         </section>
@@ -1197,20 +1203,20 @@
                   <input type="number" id="companyBoardCount" min="0" />
                 </div>
                 <div>
-                  <label for="companyTotalCapital">資本總額</label>
+                  <label for="companyTotalCapital">資本總額（公司登記）</label>
                   <input type="number" id="companyTotalCapital" min="0" step="0.01" aria-describedby="companyCapitalHelp" />
                 </div>
                 <div>
-                  <label for="companyPaidInCapital">已投入股本（實際到位）</label>
+                  <label for="companyPaidInCapital">實收資本額（公司資料）</label>
                   <input type="number" id="companyPaidInCapital" min="0" step="0.01" inputmode="decimal" aria-describedby="companyCapitalHelp" />
                 </div>
                 <div class="full-width">
-                  <p id="companyCapitalHelp" class="muted company-capital-help">資本總額是公司登記金額；已投入股本只填股東已實際交付的金額。若全部以現金投入，只需要填上面兩個金額。</p>
+                  <p id="companyCapitalHelp" class="muted company-capital-help">資本總額是公司登記上限；實收資本額填股東已實際交付且公司資料確認的金額。這裡只修改公司資料，不會自動產生銀行流水或 3110 股本分錄；正式財報以總帳為準。</p>
                 </div>
                 <div>
-                  <label for="companyCapitalEffectiveDate">已投入股本生效日</label>
+                  <label for="companyCapitalEffectiveDate">實收資本生效日</label>
                   <input type="date" id="companyCapitalEffectiveDate" aria-describedby="companyCapitalEffectiveDateHelp" />
-                  <small id="companyCapitalEffectiveDateHelp" class="muted">決定權益變動表列為期初或本期。</small>
+                  <small id="companyCapitalEffectiveDateHelp" class="muted">供公司資料與開帳勾稽使用；權益變動表的期初／本期仍以正式分錄日期判斷。</small>
                 </div>
                 <div>
                   <label for="companyOpenDate">預定開業日期</label>
@@ -1218,7 +1224,7 @@
                 </div>
                 <details class="full-width company-capital-breakdown" id="companyCapitalBreakdown">
                   <summary>出資方式明細（選填）</summary>
-                  <p class="muted">只有包含財產、技術或合併新設出資時才需要調整；四項合計必須等於已投入股本。</p>
+                  <p class="muted">只有包含財產、技術或合併新設出資時才需要調整；四項合計必須等於實收資本額。</p>
                   <div class="form-grid">
                     <div>
                       <label for="companyCapitalCash">現金出資</label>
@@ -1237,7 +1243,7 @@
                       <input type="number" id="companyCapitalMergeNew" min="0" step="0.01" inputmode="decimal" />
                     </div>
                   </div>
-                  <button type="button" class="secondary" id="useCashOnlyCapitalBtn">將已投入股本全部列為現金出資</button>
+                  <button type="button" class="secondary" id="useCashOnlyCapitalBtn">將實收資本額全部列為現金出資</button>
                 </details>
                 <div class="full-width" id="companyCapitalValidationMessage" aria-live="polite"></div>
               </div>

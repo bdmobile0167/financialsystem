@@ -134,21 +134,18 @@ export function createEquityOverviewRows({
 } = {}) {
   const registeredCapital = Number(totalCapital || 0);
   const contributedCapital = Number(paidInCapital || 0);
-  const postedCapital = Number(ledgerCapital ?? contributedCapital);
+  const postedCapital = Number(ledgerCapital || 0);
   const accumulatedResults = Number(retainedEarnings || 0);
-  const rows = [
-    ['資本總額（登記）', registeredCapital],
-    ['期初／已投入股本（實際到位）', contributedCapital],
-    ['尚未投入資本', Math.max(0, registeredCapital - contributedCapital)],
+  const reconciliationDifference = contributedCapital - postedCapital;
+  return [
+    ['資本總額（公司登記）', registeredCapital],
+    ['實收資本額（公司資料）', contributedCapital],
+    ['帳載股本（3110）', postedCapital],
+    ['尚未實收資本', Math.max(0, registeredCapital - contributedCapital)],
+    ['公司資料與總帳勾稽差額', reconciliationDifference],
     ['累積盈虧', accumulatedResults],
-    ['目前股東權益合計', postedCapital + accumulatedResults]
+    ['目前帳載股東權益合計', postedCapital + accumulatedResults]
   ];
-
-  const ledgerDifference = postedCapital - contributedCapital;
-  if (Math.abs(ledgerDifference) >= 0.01) {
-    rows.splice(3, 0, ['其他帳載股本調整（請確認）', ledgerDifference]);
-  }
-  return rows;
 }
 
 export function flattenFinancialStatementRows(statement) {
@@ -316,24 +313,6 @@ async function fetchSupabaseTrialBalance(startDate = null, endDate = null) {
     if (ledger[entry.debit_account_id]) ledger[entry.debit_account_id].debitTotal += debitBase(entry);
     if (ledger[entry.credit_account_id]) ledger[entry.credit_account_id].creditTotal += creditBase(entry);
   });
-
-  try {
-    const company = await getCompanyInfo();
-    const paidInCapital = getCompanyPaidInCapital(company);
-    const capitalEffectiveDate = company.capitalEffectiveDate || company.plannedOpenDate;
-    const openingDateIsInScope = isPaidInCapitalInPeriod(capitalEffectiveDate, startDate, endDate);
-    const capitalAccount = (accounts || []).find(account => account.code === '3110');
-    const cashAccount = (accounts || []).find(account => account.code === '1102');
-
-    if (openingDateIsInScope && paidInCapital > 0 && capitalAccount && cashAccount) {
-      const postedCapital = ledger[capitalAccount.id].creditTotal - ledger[capitalAccount.id].debitTotal;
-      const openingSupplement = Math.max(0, paidInCapital - postedCapital);
-      ledger[capitalAccount.id].creditTotal += openingSupplement;
-      ledger[cashAccount.id].debitTotal += openingSupplement;
-    }
-  } catch (error) {
-    console.warn('Unable to apply company paid-in capital supplement:', error.message);
-  }
 
   const rows = Object.values(ledger)
     .filter(item => item.debitTotal > 0 || item.creditTotal > 0)
@@ -628,13 +607,9 @@ export async function buildEquityStatement(transactions = [], startDate = null, 
   try {
     if (!startDate && !endDate) {
       const { rows } = await fetchSupabaseTrialBalance();
-      const company = await getCompanyInfo();
-      const openingCapital = getCompanyPaidInCapital(company);
-      const endingCapital = netCreditBalance(rows, '3110');
-
       return createEquityStatementRows({
-        openingCapital,
-        capitalChange: endingCapital - openingCapital,
+        openingCapital: 0,
+        capitalChange: netCreditBalance(rows, '3110'),
         retainedAccountChange: netCreditBalance(rows, '3310'),
         netProfitThisPeriod: netIncomeFromRows(rows)
       });
@@ -667,27 +642,42 @@ export async function buildEquityStatement(transactions = [], startDate = null, 
   }
 }
 
-export async function buildEquityOverview(transactions = []) {
+export async function buildEquityOverviewSnapshot(transactions = []) {
   try {
     const [{ rows }, company] = await Promise.all([
       fetchSupabaseTrialBalance(),
       getCompanyInfo()
     ]);
+    const totalCapital = Number(company.totalCapital || 0);
+    const paidInCapital = getCompanyPaidInCapital(company);
+    const ledgerCapital = netCreditBalance(rows, '3110');
     const retainedEarnings = netCreditBalance(rows, '3310') + netIncomeFromRows(rows);
-    return createEquityOverviewRows({
-      totalCapital: company.totalCapital,
-      paidInCapital: getCompanyPaidInCapital(company),
-      ledgerCapital: netCreditBalance(rows, '3110'),
-      retainedEarnings
-    });
+    return {
+      totalCapital,
+      paidInCapital,
+      ledgerCapital,
+      reconciliationDifference: paidInCapital - ledgerCapital,
+      retainedEarnings,
+      rows: createEquityOverviewRows({ totalCapital, paidInCapital, ledgerCapital, retainedEarnings })
+    };
   } catch (error) {
     console.warn('Unable to load Supabase equity overview, using local transactions:', error.message);
     const analysis = buildEquityAnalysis(transactions || [], 0);
-    return createEquityOverviewRows({
-      ledgerCapital: analysis.openingCapital + analysis.capitalChange,
-      retainedEarnings: analysis.retainedEarnings
-    });
+    const ledgerCapital = analysis.openingCapital + analysis.capitalChange;
+    return {
+      totalCapital: 0,
+      paidInCapital: 0,
+      ledgerCapital,
+      reconciliationDifference: -ledgerCapital,
+      retainedEarnings: analysis.retainedEarnings,
+      rows: createEquityOverviewRows({ ledgerCapital, retainedEarnings: analysis.retainedEarnings })
+    };
   }
+}
+
+export async function buildEquityOverview(transactions = []) {
+  const snapshot = await buildEquityOverviewSnapshot(transactions);
+  return snapshot.rows;
 }
 
 export async function buildTrialBalance(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {

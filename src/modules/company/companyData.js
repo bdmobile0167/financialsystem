@@ -12,7 +12,7 @@ export function renderCompanyData() {
     ['統一編號', info.taxId],
     ['預查編號', info.precheckNumber],
     ['預定開業日期', info.plannedOpenDate],
-    ['已投入股本生效日', info.capitalEffectiveDate],
+    ['實收資本生效日', info.capitalEffectiveDate],
     ['資本總額', info.totalCapital?.toLocaleString()],
     ['董事人數', info.boardCount],
     ['代表人', info.representativeName],

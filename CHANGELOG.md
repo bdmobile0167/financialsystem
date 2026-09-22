@@ -1,6 +1,14 @@
 # 變更紀錄
 
-## 0.2.99 - 2026-09-21
+## 0.3.0 - 2026-09-22
+
+- Separate registered capital, company-profile paid-in capital and the actual 3110 ledger balance in every equity overview, with an always-visible reconciliation difference.
+- Remove the synthetic report-only debit to bank and credit to capital. Financial statements now use posted journal entries only and can no longer appear balanced through data that does not exist in the ledger.
+- Add finance-only shortcuts from the equity page to edit company capital metadata or prefill a real current-period financing receipt against account 3110, with an explicit warning not to duplicate amounts already included in bank opening balances.
+- Preserve the current remote test fixture for continued regression (registered capital TWD 10,000,000; company-profile paid-in capital TWD 900,000) and expose its TWD 900,000 unposted reconciliation gap instead of silently posting it.
+- Pass all 25 browser regressions, including company capital, equity statements, report export and application bootstrap. Production authenticated acceptance and opening-balance allocation remain pending.
+
+## 0.2.99 - 2026-09-22
 
 - Complete period-end unrealized FX revaluation for foreign bank and AR balances, with preview, atomic posting, next-day automatic reversal, idempotency, void audit and finance-only access.
 - Add authoritative bank opening-balance dates, exchange-rate snapshots and generated TWD base amounts; compare bank reconciliation to the cumulative TWD ledger as of the report date.

@@ -73,7 +73,7 @@ export async function saveCompanyInfo(companyInfo) {
   };
   const capitalComparison = getCapitalComparison(normalizedCapital);
   if (capitalComparison.paidInExceedsTotal) {
-    throw new Error('已投入股本不可高於資本總額');
+    throw new Error('實收資本額不可高於資本總額');
   }
   const { data: authData } = await supabase.auth.getUser();
   const payload = {

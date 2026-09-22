@@ -21,14 +21,14 @@ export function getPaidInCapital(companyInfo = {}) {
 }
 
 export function applyPaidInCapitalTotal(companyInfo = {}, paidInCapital = 0) {
-  const targetTotal = parseCapitalAmount(paidInCapital, '已投入股本');
+  const targetTotal = parseCapitalAmount(paidInCapital, '實收資本額');
   const capitalProperty = parseCapitalAmount(companyInfo.capitalProperty, '財產出資');
   const capitalTechnology = parseCapitalAmount(companyInfo.capitalTechnology, '技術出資');
   const capitalMergeNew = parseCapitalAmount(companyInfo.capitalMergeNew, '合併新設出資');
   const nonCashTotal = capitalProperty + capitalTechnology + capitalMergeNew;
 
   if (targetTotal < nonCashTotal) {
-    throw new Error(`已投入股本不可低於非現金出資合計 ${nonCashTotal.toLocaleString()}`);
+    throw new Error(`實收資本額不可低於非現金出資合計 ${nonCashTotal.toLocaleString()}`);
   }
 
   return {
@@ -41,7 +41,7 @@ export function applyPaidInCapitalTotal(companyInfo = {}, paidInCapital = 0) {
 }
 
 export function useCashOnlyCapital(companyInfo = {}, paidInCapital = 0) {
-  const targetTotal = parseCapitalAmount(paidInCapital, '已投入股本');
+  const targetTotal = parseCapitalAmount(paidInCapital, '實收資本額');
   return {
     ...companyInfo,
     capitalCash: targetTotal,

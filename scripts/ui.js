@@ -14,7 +14,7 @@ import { importBankStatementRows } from '../src/modules/bank/bankStatementImport
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildEquityOverview, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildEquityOverviewSnapshot, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
 import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
 import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
@@ -1150,9 +1150,9 @@ function renderCompanyData() {
     ['統一編號', info.taxId],
     ['預查編號', info.precheckNumber],
     ['預定開業日期', info.plannedOpenDate],
-    ['已投入股本生效日', info.capitalEffectiveDate],
-    ['資本總額', info.totalCapital?.toLocaleString()],
-    ['已投入股本', getPaidInCapital(info).toLocaleString()],
+    ['實收資本生效日', info.capitalEffectiveDate],
+    ['資本總額（公司登記）', info.totalCapital?.toLocaleString()],
+    ['實收資本額（公司資料）', getPaidInCapital(info).toLocaleString()],
     ['董事人數', info.boardCount],
     ['代表人', info.representativeName],
     ['章程訂定日期', info.articlesDate],
@@ -1225,11 +1225,11 @@ function refreshCompanyCapitalSummary() {
     paidInInput.setCustomValidity('');
     output.className = comparison.paidInExceedsTotal ? 'message error' : 'muted';
     if (comparison.paidInExceedsTotal) {
-      output.textContent = `已投入股本 ${comparison.paidInCapital.toLocaleString()} 高於資本總額 ${comparison.totalCapital.toLocaleString()}，請調整後再儲存。`;
+      output.textContent = `實收資本額 ${comparison.paidInCapital.toLocaleString()} 高於資本總額 ${comparison.totalCapital.toLocaleString()}，請調整後再儲存。`;
     } else if ((state.directorShareholders || []).length && comparison.shareholderDifference !== 0) {
-      output.textContent = `董監名單出資合計 ${comparison.shareholderTotal.toLocaleString()}，與已投入股本相差 ${Math.abs(comparison.shareholderDifference).toLocaleString()}。兩者不會自動互相覆寫。`;
+      output.textContent = `董監名單出資合計 ${comparison.shareholderTotal.toLocaleString()}，與實收資本額相差 ${Math.abs(comparison.shareholderDifference).toLocaleString()}。兩者不會自動互相覆寫。`;
     } else {
-      output.textContent = `目前已投入股本：${comparison.paidInCapital.toLocaleString()}。`;
+      output.textContent = `目前實收資本額：${comparison.paidInCapital.toLocaleString()}。`;
     }
     return comparison;
   } catch (error) {
@@ -1299,7 +1299,7 @@ function renderBusinessData() {
       <div class="info-block" style="margin-top:16px;">
         <h4>董監名單</h4>
         <div id="directorCapitalSummary" class="${capitalMatches ? 'muted' : 'message error'}" aria-live="polite" style="margin-bottom:8px;">
-          董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}${capitalMatches ? '' : '｜兩者不同，請確認資本設定'}
+          董監出資合計：${shareholderTotal.toLocaleString()}｜公司實收資本額：${paidInCapital.toLocaleString()}${capitalMatches ? '' : '｜兩者不同，請確認資本設定'}
         </div>
         <div class="table-scroll">
           <table>
@@ -1322,7 +1322,7 @@ function renderBusinessData() {
     </div>
     <div class="info-block">
       <h4>董監名單</h4>
-      <p class="muted">董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}</p>
+      <p class="muted">董監出資合計：${shareholderTotal.toLocaleString()}｜公司實收資本額：${paidInCapital.toLocaleString()}</p>
       <ul>${directorRows || '<li>尚未設定</li>'}</ul>
     </div>
   `;
@@ -1356,7 +1356,7 @@ function refreshDirectorCapitalSummary() {
   const paidInCapital = getPaidInCapital(state.companyInfo || {});
   const matches = shareholderTotal === paidInCapital;
   output.className = matches ? 'muted' : 'message error';
-  output.textContent = `董監出資合計：${shareholderTotal.toLocaleString()}｜公司已投入股本：${paidInCapital.toLocaleString()}${matches ? '' : '｜兩者不同，請確認資本設定'}`;
+  output.textContent = `董監出資合計：${shareholderTotal.toLocaleString()}｜公司實收資本額：${paidInCapital.toLocaleString()}${matches ? '' : '｜兩者不同，請確認資本設定'}`;
 }
 
 let transactionRenderGeneration = 0;
@@ -3294,6 +3294,7 @@ function getSelectedOptionText(selectEl) {
 function updateTransactionAccountSummary() {
   const bankId = document.getElementById('txBankAccount')?.value;
   const bank = (window.__bankAccountsForTransaction || []).find(item => item.id === bankId);
+  const accounts = window.__transactionAccounts || [];
   const amountLabel = document.querySelector('label[for="txAmount"]');
   if (amountLabel) amountLabel.textContent = `金額（${bank?.currency || 'TWD'}）`;
   const summary = document.getElementById('txAccountSummary');
@@ -3304,7 +3305,11 @@ function updateTransactionAccountSummary() {
 
   const debitText = getSelectedOptionText(debitSelect) || '尚未選擇';
   const creditText = getSelectedOptionText(creditSelect) || '尚未選擇';
-  const ruleText = type === '收入'
+  const creditAccount = accounts.find(account => account.id === creditSelect.value);
+  const isCapitalContribution = type === '收入' && String(creditAccount?.code || '') === '3110';
+  const ruleText = isCapitalContribution
+    ? '股本入帳：借記銀行存款、貸記 3110 股本；屬融資活動，不列為營業收入。'
+    : type === '收入'
     ? '收入入帳：借方通常是銀行/現金，貸方是收入科目。'
     : '支出入帳：借方通常是費用/成本，貸方是銀行/現金。';
   summary.innerHTML = `
@@ -3443,23 +3448,44 @@ function renderBudget() {
   renderProjectList();
 }
 
+let latestEquityOverviewSnapshot = null;
+
 async function renderEquityTab() {
 
     const table = document.getElementById("equityDetailTable");
     const note = document.getElementById("fundraisingNoteDetail");
+    const status = document.getElementById('equityReconciliationStatus');
+    const actions = document.getElementById('equityCapitalActions');
 
     if (!table) return;
 
     try {
 
-        const rows = await buildEquityOverview(
+        latestEquityOverviewSnapshot = await buildEquityOverviewSnapshot(
             state.transactions
         );
 
         renderTable(
             "equityDetailTable",
-            rows
+            latestEquityOverviewSnapshot.rows
         );
+
+        if (status) {
+          const configured = Number(latestEquityOverviewSnapshot.paidInCapital || 0);
+          const posted = Number(latestEquityOverviewSnapshot.ledgerCapital || 0);
+          const difference = Number(latestEquityOverviewSnapshot.reconciliationDifference || 0);
+          const reconciled = Math.abs(difference) < 0.01;
+          status.className = reconciled ? 'message success' : 'message warning';
+          if (reconciled) {
+            status.textContent = `資本已勾稽：公司資料與 3110 帳載股本均為 NT$ ${posted.toLocaleString()}。`;
+          } else if (difference > 0) {
+            status.textContent = `尚有 NT$ ${difference.toLocaleString()} 未反映在 3110 股本。公司資料為 NT$ ${configured.toLocaleString()}，帳載為 NT$ ${posted.toLocaleString()}。`;
+          } else {
+            status.textContent = `3110 帳載股本比公司資料多 NT$ ${Math.abs(difference).toLocaleString()}。請先確認公司資本資料或檢查資本分錄。`;
+          }
+        }
+
+        if (actions) actions.hidden = !isFinanceOperator();
 
         if (note) {
 
@@ -3479,9 +3505,74 @@ async function renderEquityTab() {
     } catch(err){
 
         console.error(err);
+        if (status) {
+          status.className = 'message error';
+          status.textContent = `股本勾稽載入失敗：${err.message}`;
+        }
 
     }
 
+}
+
+function openCompanyCapitalSettings() {
+  const settingsTab = document.querySelector('.tab-btn[data-tab="settings"]');
+  if (!settingsTab) return;
+  settingsTab.click();
+  window.setTimeout(() => {
+    document.getElementById('companyPaidInCapital')?.focus();
+    document.getElementById('companyInfoForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 0);
+}
+
+function prefillCapitalContribution() {
+  if (!isFinanceOperator()) {
+    showMessage('只有會計部門與管理員可以建立股本入帳。', true);
+    return;
+  }
+
+  const transactionTab = document.querySelector('.tab-btn[data-tab="transactions"]');
+  if (!transactionTab) return;
+  transactionTab.click();
+
+  window.setTimeout(() => {
+    const accounts = window.__transactionAccounts || [];
+    const capitalAccount = accounts.find(account => String(account.code || '') === '3110');
+    const typeInput = document.getElementById('txType');
+    const categoryInput = document.getElementById('txCategory');
+    const amountInput = document.getElementById('txAmount');
+    const dateInput = document.getElementById('txDate');
+    const detailInput = document.getElementById('txDetail');
+    const customerInput = document.getElementById('txCustomer');
+    const remarkInput = document.getElementById('txRemark');
+    const creditInput = document.getElementById('txCreditAccount');
+
+    if (!capitalAccount || !typeInput || !categoryInput || !creditInput) {
+      showMessage('找不到 3110 股本科目，請先在會計科目管理確認。', true);
+      return;
+    }
+
+    typeInput.value = '收入';
+    categoryInput.value = '融資';
+    updateTransactionAccountDefaults();
+    creditInput.value = capitalAccount.id;
+
+    const difference = Number(latestEquityOverviewSnapshot?.reconciliationDifference || 0);
+    if (amountInput) amountInput.value = difference > 0 ? String(difference) : '';
+    if (dateInput && !dateInput.value) {
+      const now = new Date();
+      const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      dateInput.value = localDate;
+    }
+    if (detailInput) detailInput.value = '股東投入股本';
+    if (customerInput) customerInput.value = '股東';
+    if (remarkInput) remarkInput.value = '資本異動：借記實際收款銀行，貸記 3110 股本';
+    updateTransactionAccountSummary();
+    document.getElementById('txBankAccount')?.focus();
+
+    showMessage(difference > 0
+      ? `已帶入待勾稽差額 NT$ ${difference.toLocaleString()}。只有本期實際新收到股款才可送出；若該金額已包含在銀行期初餘額，請勿重複入帳。`
+      : '已帶入股本入帳格式。請先確認公司實收資本額需要增加，再填入本期實際收到的金額。');
+  }, 0);
 }
 
 async function renderJournalFiltered() {
@@ -4335,7 +4426,7 @@ function initializeEventsInternal() {
       syncPaidInCapitalTotalToSources();
       const capital = readCompanyCapitalForm();
       const comparison = getCapitalComparison(capital, state.directorShareholders || []);
-      if (comparison.paidInExceedsTotal) throw new Error('已投入股本不可高於資本總額');
+      if (comparison.paidInExceedsTotal) throw new Error('實收資本額不可高於資本總額');
       state.companyInfo = await saveCompanyInfo({
         ...state.companyInfo,
         companyNameZh: document.getElementById('companyNameZh').value.trim(),
@@ -4392,6 +4483,9 @@ function initializeEventsInternal() {
       showMessage(error.message, true);
     }
   });
+
+  safeListener('editCompanyCapitalBtn', 'click', openCompanyCapitalSettings);
+  safeListener('recordCapitalContributionBtn', 'click', prefillCapitalContribution);
 
   safeListener('accountManagementForm', 'submit', saveAccountManagementForm);
   safeListener('resetAccountManagementForm', 'click', resetAccountManagementForm);
