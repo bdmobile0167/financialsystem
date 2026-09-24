@@ -48,6 +48,15 @@ function amountBase(row) {
   return Number(row?.amount_base ?? row?.amount ?? 0);
 }
 
+export async function fetchProjectExpenseReport(startDate = null, endDate = null) {
+  const { data, error } = await supabase.rpc('project_expense_report', {
+    p_start_date: startDate,
+    p_end_date: endDate
+  });
+  if (error) throw error;
+  return data || [];
+}
+
 function normalizeType(type) {
   if (type === LABELS.income || type === 'income' || type === 'deposit') return 'income';
   if (type === LABELS.expense || type === 'expense' || type === 'withdrawal') return 'expense';

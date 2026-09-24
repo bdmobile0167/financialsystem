@@ -14,7 +14,7 @@ import { importBankStatementRows } from '../src/modules/bank/bankStatementImport
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
-import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildEquityOverviewSnapshot, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows } from './reports.js';
+import { summarizeTransactions, buildJournal, buildIncomeStatement, buildBalanceSheet, buildCashflowStatement, buildEquityStatement, buildEquityOverviewSnapshot, buildTrialBalance, buildFundraisingSnapshot, fetchAccountBalancesByCode, getEquityAnalysis, flattenFinancialStatementRows, fetchProjectExpenseReport } from './reports.js';
 import { fetchIfrsAdjustments, createIfrsAdjustment, approveIfrsAdjustment, reverseIfrsAdjustment, deleteIfrsAdjustmentDraft } from '../src/modules/ifrsAdjustments/ifrsAdjustmentsApi.js';
 import { fetchFinancialReportNotes, updateFinancialReportNote } from '../src/modules/notes/financialNotesApi.js';
 import { getAttachmentsByVoucherId, saveAttachment, deleteAttachment, uploadAttachmentFile, openAttachment } from '../src/modules/voucher/attachments.js';
@@ -2575,10 +2575,82 @@ function switchReportTab(tab) {
   }
 }
 
+let projectExpenseRows = [];
+const PROJECT_EXPENSE_COLORS = ['#2563eb', '#0f766e', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#65a30d', '#be185d'];
+const projectExpenseMoney = new Intl.NumberFormat('zh-TW', {
+  style: 'currency', currency: 'TWD', minimumFractionDigits: 2, maximumFractionDigits: 2
+});
+
+function renderProjectExpenseChart() {
+  const target = document.getElementById('projectExpenseChart');
+  if (!target) return;
+  const selectedProject = document.getElementById('projectExpenseSelect')?.value || 'all';
+  const rows = projectExpenseRows.filter(row => selectedProject === 'all' || row.project_id === selectedProject);
+  const byAccount = new Map();
+  rows.forEach(row => {
+    const key = `${row.account_code}\u0000${row.account_name}`;
+    byAccount.set(key, (byAccount.get(key) || 0) + Number(row.amount_base || 0));
+  });
+  const items = [...byAccount.entries()].map(([key, amount]) => {
+    const [code, name] = key.split('\u0000');
+    return { code, name, amount };
+  }).sort((a, b) => b.amount - a.amount);
+  if (!items.length) {
+    target.innerHTML = '<p class="muted">此期間沒有已入帳的專案費用。</p>';
+    return;
+  }
+  const netTotal = items.reduce((sum, item) => sum + item.amount, 0);
+  const positiveItems = items.filter(item => item.amount > 0);
+  const pieTotal = positiveItems.reduce((sum, item) => sum + item.amount, 0);
+  let angle = 0;
+  const stops = positiveItems.map((item, index) => {
+    const next = angle + item.amount / pieTotal * 360;
+    const stop = `${PROJECT_EXPENSE_COLORS[index % PROJECT_EXPENSE_COLORS.length]} ${angle}deg ${next}deg`;
+    angle = next;
+    return stop;
+  });
+  const pie = pieTotal > 0
+    ? `<div class="project-expense-pie" role="img" aria-label="費用科目占比圓餅圖" style="background:conic-gradient(${stops.join(',')})"></div>`
+    : '<p class="muted">此期間只有費用沖回，沒有可呈現的正值占比。</p>';
+  const tableRows = items.map((item, index) => `<tr>
+    <td><span class="project-expense-dot" style="background:${PROJECT_EXPENSE_COLORS[index % PROJECT_EXPENSE_COLORS.length]}"></span>${escapeHtml(item.code)} ${escapeHtml(item.name)}</td>
+    <td>${projectExpenseMoney.format(item.amount)}</td>
+    <td>${item.amount > 0 && pieTotal > 0 ? `${(item.amount / pieTotal * 100).toFixed(1)}%` : '—'}</td>
+  </tr>`).join('');
+  target.innerHTML = `<div class="project-expense-layout">${pie}<div class="project-expense-detail">
+    <strong>費用淨額：${projectExpenseMoney.format(netTotal)}</strong>
+    <table><thead><tr><th>費用科目</th><th>淨額 TWD</th><th>正值占比</th></tr></thead><tbody>${tableRows}</tbody></table>
+    ${items.some(item => item.amount < 0) ? '<small class="muted">沖回以負數列於表格，不納入圓餅圖占比。</small>' : ''}
+  </div></div>`;
+}
+
+async function renderProjectExpenseReport(startDate, endDate) {
+  const target = document.getElementById('projectExpenseChart');
+  const select = document.getElementById('projectExpenseSelect');
+  if (!target || !select) return;
+  if (!isFinanceOperator()) {
+    target.textContent = '僅會計及管理員可查看專案費用。';
+    return;
+  }
+  try {
+    projectExpenseRows = await fetchProjectExpenseReport(startDate, endDate);
+    const previous = select.value || state.currentProjectId || 'all';
+    const projects = [...new Map(projectExpenseRows.map(row => [row.project_id, row.project_name])).entries()];
+    select.innerHTML = '<option value="all">所有專案</option>'
+      + projects.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
+    select.value = projects.some(([id]) => id === previous) ? previous : 'all';
+    renderProjectExpenseChart();
+  } catch (error) {
+    target.innerHTML = `<p class="message error">專案費用載入失敗：${escapeHtml(error.message)}</p>`;
+  }
+}
+
 async function renderReports() {
   let periodTx = getReportPeriodTransactions();
   const startDate = document.getElementById('reportPeriodStart')?.value || null;
   const endDate = document.getElementById('reportPeriodEnd')?.value || null;
+
+  await renderProjectExpenseReport(startDate, endDate);
 
   // 專案過濾
   if (state.currentProjectId && state.currentProjectId !== 'all') {
@@ -2733,14 +2805,14 @@ function renderTable(id, rows) {
         return `<tr class="sub-header"><td colspan="3" style="font-weight:600; padding-left:15px; color:#475569;">${label}</td></tr>`;
       }
       if (row.kind === 'subtotal') {
-        return `<tr style="border-bottom:1px dashed #cbd5e1;"><td style="padding-left:15px; font-weight:600;">${label}</td><td style="text-align:right; font-weight:600;">${amount}</td><td>-</td></tr>`;
+        return `<tr class="statement-subtotal"><td>${label}</td><td>${amount}</td><td>-</td></tr>`;
       }
       if (row.kind === 'total') {
-        return `<tr style="border-top:2px solid #0f172a; font-weight:bold;"><td>${label}</td><td style="text-align:right;">${amount}</td><td>-</td></tr>`;
+        return `<tr class="statement-total"><td>${label}</td><td>${amount}</td><td>-</td></tr>`;
       }
       if (row.kind === 'net') {
-        const color = Number(row.amount || 0) >= 0 ? '#16a34a' : '#dc2626';
-        return `<tr style="border-top:2px double #0f172a; font-weight:bold; background-color:#f1f5f9;"><td>${label}</td><td style="text-align:right; color:${color};">${amount}</td><td>-</td></tr>`;
+        const tone = Number(row.amount || 0) >= 0 ? 'positive' : 'negative';
+        return `<tr class="statement-net statement-net-${tone}"><td>${label}</td><td>${amount}</td><td>-</td></tr>`;
       }
       return `<tr><td style="padding-left:20px;">${label}</td><td style="text-align:right;">${amount}</td><td style="color:#64748b; font-size:12px;">${code}</td></tr>`;
     }).join('');
@@ -4749,7 +4821,7 @@ function initializeEventsInternal() {
   function printReports(mode = 'current') {
     state.activeTab = 'reports';
     renderTabs();
-    const financialReportTabs = ['income', 'balance', 'cashflow', 'equity'];
+    const financialReportTabs = ['income', 'balance', 'cashflow', 'equity', 'project-expense'];
     const selectedTab = document.querySelector('.report-tab-btn.active-tab')?.dataset.reportTab || 'income';
     const activeTab = financialReportTabs.includes(selectedTab) ? selectedTab : 'income';
     document.body.classList.add(mode === 'all' ? 'report-print-all' : 'report-print-single');
@@ -4794,6 +4866,7 @@ function initializeEventsInternal() {
 
   // 試算表：切換是否納入已核准的 IFRS 調整分錄
   safeListener('includeIfrsAdjustmentsToggle', 'change', () => renderReports());
+  safeListener('projectExpenseSelect', 'change', renderProjectExpenseChart);
 
   // 平行帳簿：核准／沖銷／刪除草稿（事件委派，因為列表是動態產生的）
   document.addEventListener('click', async (e) => {
@@ -4932,15 +5005,7 @@ function initializeEventsInternal() {
         identifier: document.getElementById('recipientIdentifier').value.trim(),
         phone: document.getElementById('recipientPhone').value.trim() || null,
         email: document.getElementById('recipientEmail').value.trim() || null,
-        bank_account: document.getElementById('recipientAccountNumber').value.trim(),
-        bank_name: document.getElementById('recipientBankName').value.trim(),
-        bank_branch: document.getElementById('recipientBankBranch').value.trim() || null,
-        account_name: document.getElementById('recipientAccountName').value.trim(),
-        account_number: document.getElementById('recipientAccountNumber').value.trim(),
-        note: document.getElementById('recipientNote').value.trim() || null,
-        is_active: true,
-        updated_by: state.currentUser?.id || null,
-        updated_at: new Date().toISOString()
+        note: document.getElementById('recipientNote').value.trim() || null
       };
       const recipientPayload = {
         display_name: document.getElementById('recipientDisplayName').value.trim(),
@@ -4952,37 +5017,23 @@ function initializeEventsInternal() {
         contact_name: document.getElementById('recipientContactName').value.trim() || null,
         phone: document.getElementById('recipientPhone').value.trim() || null,
         email: document.getElementById('recipientEmail').value.trim() || null,
-        note: document.getElementById('recipientNote').value.trim() || null,
-        updated_by: state.currentUser?.id,
-        updated_at: new Date().toISOString()
+        note: document.getElementById('recipientNote').value.trim() || null
       };
       if (!payeePayload.name || !payeePayload.identifier) {
         throw new Error('請填寫付款人名稱與身分證／統編');
       }
-      let savedPayeeId = payeeId;
-      if (savedPayeeId) {
-        const { error } = await supabase.from('payees').update(payeePayload).eq('id', savedPayeeId);
-        if (error) throw error;
-      } else {
-        const { data: payee, error } = await supabase
-          .from('payees')
-          .upsert(payeePayload, { onConflict: 'identifier' })
-          .select('id')
-          .single();
-        if (error) throw error;
-        savedPayeeId = payee.id;
-      }
-      recipientPayload.payee_id = savedPayeeId;
       const existingRecipientId = id || (window.__payeeDetailsCache || [])
-        .find(payee => payee.id === savedPayeeId)
+        .find(payee => payee.id === payeeId || payee.identifier === payeePayload.identifier)
         ?.payment_recipients
         ?.find(recipient => recipient.active !== false)
         ?.id;
-      const query = existingRecipientId
-        ? supabase.from('payment_recipients').update(recipientPayload).eq('id', existingRecipientId)
-        : supabase.from('payment_recipients').insert(recipientPayload);
-      const { error: recipientError } = await query;
-      if (recipientError) throw recipientError;
+      const { error } = await supabase.rpc('save_payee_recipient', {
+        p_payee_id: payeeId,
+        p_recipient_id: existingRecipientId || null,
+        p_payee: payeePayload,
+        p_recipient: recipientPayload
+      });
+      if (error) throw error;
       resetPaymentRecipientForm();
       showMessage('付款人主檔已儲存。');
       await renderPaymentManagement();

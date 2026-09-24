@@ -702,22 +702,16 @@ export async function mountVoucherPaymentSplitEditor({
           return;
         }
         setBusy(container, true, '付款處理中...');
-        const saveResponse = await client.rpc('save_voucher_payment_splits', {
+        const payResponse = await client.rpc('save_and_pay_voucher_splits', {
           p_voucher_id: voucher.id,
           p_expected_revision: Number(state.voucher.payment_assignment_revision || 0),
           p_splits: assignedPayload(state.splits),
-          p_accounting_note: state.note.trim() || null
-        });
-        if (saveResponse.error) throw saveResponse.error;
-        state.voucher.payment_assignment_revision = saveResponse.data.revision;
-
-        const payResponse = await client.rpc('pay_voucher_splits', {
-          p_voucher_id: voucher.id,
-          p_expected_revision: saveResponse.data.revision,
+          p_accounting_note: state.note.trim() || null,
           p_payment_date: state.paymentDate,
           p_split_ids: selectedIds
         });
         if (payResponse.error) throw payResponse.error;
+        state.voucher.payment_assignment_revision = payResponse.data.revision;
         try {
           await onPaid(payResponse.data);
         } catch (refreshError) {

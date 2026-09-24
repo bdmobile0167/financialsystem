@@ -181,7 +181,7 @@ export async function renderDashboard() {
         <section class="dashboard-hero">
           <div class="dashboard-hero-main">
             <span class="dashboard-role">目前角色：${escapeHtml(user.name || user.full_name || user.email || '使用者')}（${escapeHtml(ROLE_LABELS[role] || role)}）</span>
-            <h1>IFRS 智慧財務報表與憑證稽核中心</h1>
+            <h1>總覽</h1>
             <p>${isEmployee ? '填報專案費用、追蹤主管與會計審核進度，並查看個人憑證狀態。' : '集中掌握單據簽核、會計過帳、專案預算與財務報表狀態。'}</p>
           </div>
           <div class="dashboard-actions">

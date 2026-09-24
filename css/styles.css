@@ -2344,6 +2344,11 @@ button.audit-voucher-link {
 }
 
 .report-card h4 { margin: 0; font-size: 15px; font-weight: 700; }
+.project-expense-layout { display: grid; grid-template-columns: minmax(160px, 240px) 1fr; align-items: center; gap: 24px; margin-top: 18px; }
+.project-expense-pie { width: min(100%, 240px); aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--border); }
+.project-expense-detail { min-width: 0; overflow-x: auto; }
+.project-expense-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+@media (max-width: 640px) { .project-expense-layout { grid-template-columns: 1fr; justify-items: center; } .project-expense-detail { width: 100%; } }
 .report-card table { margin-top: 8px; }
 .report-letterhead {
   display: grid;

@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>財務管理系統</title>
   <link rel="stylesheet" href="./css/styles.css" />
+  <link rel="stylesheet" href="./css/editorial-theme.css" />
 </head>
 <body>
   <div id="loginView" class="login-shell">
     <div class="card login-card">
       <h2>財務管理系統登入</h2>
-      <p class="muted">請輸入電子郵件與密碼進行登入。若本地測試，可使用任意帳號密碼。</p>
+      <p class="muted">請使用已開通的電子郵件與密碼登入。</p>
       <div id="loginMessage" class="message">登入後即可使用系統功能。</div>
       <form id="loginForm">
         <label for="username">電子郵件</label>
@@ -43,41 +44,50 @@
         <aside class="sidebar" id="sidebar">
         <button id="sidebarCollapseBtn" class="sidebar-collapse-button" type="button" title="收合側欄" aria-label="收合側欄" aria-expanded="true">&lsaquo;</button>
         <div class="sidebar-brand">
-          <h2>財務系統</h2>
-          <p class="muted">直覺式管理頁面</p>
+          <span class="sidebar-brand-mark" aria-hidden="true">帳</span>
+          <div>
+            <h2>財務管理系統</h2>
+            <p class="muted">單一公司 · 財務管理</p>
+          </div>
         </div>
         <nav class="side-nav">
           <div class="nav-group">
             <div class="nav-group-title">總覽</div>
-            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn active" data-tab="dashboard" data-access="登入者">Dashboard</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">記帳作業</div>
-            <button class="tab-btn" data-tab="transactions">交易管理</button>
-            <button class="tab-btn" data-tab="bankAccounts">銀行帳戶</button>
-            <button class="tab-btn" data-tab="paymentManagement" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
-            <button class="tab-btn" data-tab="customers" style="display:none;">客戶管理</button>
-            <button class="tab-btn" data-tab="arInvoices" style="display:none;">應收發票</button>
-            <button class="tab-btn" data-tab="arReceipts" style="display:none;">AR 收款</button>
-            <button class="tab-btn" data-tab="arAging" style="display:none;">應收帳齡</button>
-            <button class="tab-btn" data-tab="voucherWorkflow">報支申請</button>
+            <div class="nav-group-title">日常帳務</div>
+            <button class="tab-btn" data-tab="transactions" data-access="會計/管理員">交易管理</button>
+            <button class="tab-btn" data-tab="bankAccounts" data-access="會計/管理員">銀行帳戶</button>
+            <button class="tab-btn" data-tab="bankReconcile" data-access="會計/管理員">銀行對帳</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">財務報表</div>
-            <button class="tab-btn" data-tab="bankReconcile">銀行對帳</button>
-            <button class="tab-btn" data-tab="reports">四大財報</button>
-            <button class="tab-btn" data-tab="auditTrail">Audit Trail</button>
-            <button class="tab-btn" data-tab="voucherCenter">憑證中心</button>
+            <div class="nav-group-title">應收帳款</div>
+            <button class="tab-btn" data-tab="customers" data-access="會計/管理員" style="display:none;">客戶管理</button>
+            <button class="tab-btn" data-tab="arInvoices" data-access="會計/管理員" style="display:none;">應收發票</button>
+            <button class="tab-btn" data-tab="arReceipts" data-access="會計/管理員" style="display:none;">AR 收款</button>
+            <button class="tab-btn" data-tab="arAging" data-access="會計/管理員" style="display:none;">應收帳齡</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">規劃分析</div>
-            <button class="tab-btn" data-tab="budget">預算管理</button>
-            <button class="tab-btn" data-tab="equity">股東權益／募資</button>
+            <div class="nav-group-title">報支與付款</div>
+            <button class="tab-btn" data-tab="voucherWorkflow" data-access="員工/主管/會計">報支申請</button>
+            <button class="tab-btn" data-tab="paymentManagement" data-access="會計/管理員" id="paymentManagementNavBtn" style="display:none;">付款管理</button>
+            <button class="tab-btn" data-tab="voucherCenter" data-access="依權限">憑證中心</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">系統</div>
-            <button class="tab-btn" data-tab="settings">設定</button>
-            <button class="tab-btn" data-tab="adminUsers" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
+            <div class="nav-group-title">財報與稽核</div>
+            <button class="tab-btn" data-tab="reports" data-access="會計/管理員">財務報表</button>
+            <button class="tab-btn" data-tab="auditTrail" data-access="依權限">Audit Trail</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">預算與權益</div>
+            <button class="tab-btn" data-tab="budget" data-access="會計/主管">預算管理</button>
+            <button class="tab-btn" data-tab="equity" data-access="會計/管理員">股東權益／募資</button>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">系統設定</div>
+            <button class="tab-btn" data-tab="settings" data-access="依權限">設定</button>
+            <button class="tab-btn" data-tab="adminUsers" data-access="管理員" id="adminUsersNavBtn" style="display:none;">帳號管理</button>
           </div>
         </nav>
         <div class="sidebar-footer">
@@ -760,6 +770,9 @@
               <button type="button" class="report-tab-btn" data-report-tab="trial">
                 <span class="report-tab-dot" style="background:#475569;"></span>試算表
               </button>
+              <button type="button" class="report-tab-btn" data-report-tab="project-expense">
+                <span class="report-tab-dot" style="background:#b45309;"></span>專案費用
+              </button>
               <button type="button" class="report-tab-btn" data-report-tab="fundraising">
                 <span class="report-tab-dot" style="background:#9333ea;"></span>募資精算
               </button>
@@ -829,6 +842,13 @@
                 </label>
                 <table id="trialTable"></table>
                 <div id="trialSignature" class="report-signature-row"></div>
+              </div>
+              <div class="report-card" data-report-tab="project-expense" style="--accent-color:#b45309;">
+                <div class="report-card-header"><span class="dot" style="background:#b45309;"></span><h4>專案費用報表</h4></div>
+                <p class="muted">依已入帳分錄的費用科目計算台幣淨額，期間沿用上方報表日期。</p>
+                <label for="projectExpenseSelect">專案</label>
+                <select id="projectExpenseSelect" aria-label="選擇專案"><option value="all">所有專案</option></select>
+                <div id="projectExpenseChart" aria-live="polite"><p class="muted">載入中…</p></div>
               </div>
               <div class="report-card" data-report-tab="fundraising" style="--accent-color:#9333ea;">
                 <div class="report-card-header"><span class="dot" style="background:#9333ea;"></span><h4>股東權益與募資精算</h4></div>

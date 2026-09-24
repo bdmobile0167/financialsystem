@@ -1,11 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const LOCAL_FALLBACK_CONFIG = {
-  supabaseUrl: 'https://imlmclalgbfxhhnpsyam.supabase.co',
-  supabaseAnonKey: 'sb_publishable__kSnn2khITxrH5iYh6J72g_zxRDbfHU',
-  source: 'local-fallback'
-};
-
 async function loadPublicConfig() {
   try {
     const response = await fetch('/api/public-config', { cache: 'no-store' });
@@ -16,8 +10,12 @@ async function loadPublicConfig() {
     }
     return { ...config, source: config.source || 'api' };
   } catch (error) {
-    console.warn('Using local Supabase fallback config:', error.message);
-    return LOCAL_FALLBACK_CONFIG;
+    const message = document.getElementById('loginMessage');
+    if (message) {
+      message.className = 'message error';
+      message.textContent = '系統連線設定未就緒，請聯絡管理員。';
+    }
+    throw new Error(`Supabase public config unavailable: ${error.message}`);
   }
 }
 

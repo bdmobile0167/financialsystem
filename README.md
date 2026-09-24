@@ -284,7 +284,7 @@
 
 ## 目前重點
 
-- 前端 Supabase URL / anon key 已改由 `/api/public-config` 讀取 Vercel env，本機靜態測試才使用 fallback。
+- 前端 Supabase URL / anon key 由 `/api/public-config` 讀取 Vercel env；本機測試須啟動可提供該 API 的開發環境。
 - Supabase Auth invite 已改為正確語意：API 成功只代表 Supabase 接受邀請請求，實際 SMTP 投遞需看 Supabase Auth logs 或 SMTP test email。
 - 財報與 journal 明細已對 `journal_entries` 分頁查詢，避免超過 1000 筆後漏算。
 - 付款銷帳已依 `voucher_lines.account_code` 逐科目建立分錄，支援同一張 voucher 多個會計科目。
