@@ -1,5 +1,23 @@
 # 變更紀錄
 
+## 0.5.3 - 2026-09-24
+
+- Added transactional audit rows to employee payee self-creation and default-recipient creation/update, including lookup of an existing payee.
+- Revoked direct `INSERT`, `UPDATE` and `DELETE` on payees and payment recipients from API roles; the employee self-create and finance edit RPCs remain the write paths.
+- Passed remote rollback tests for employee creation with and without bank details, existing-payee lookup, finance edits, foreign-currency voucher payment and payroll payment. Migration lint passed; test fixtures left no persistent rows.
+
+## 0.5.2 - 2026-09-24
+
+- Revoked `TRUNCATE` from `anon` and `authenticated` on all current public tables and from future tables created by the `postgres` role. The remote privilege check found zero exposed tables with `TRUNCATE` access afterward.
+- Revoked direct mutation privileges on transactions, bank transactions and journal entries. Authenticated users retain read grants; all supported postings and reversals continue through validated atomic RPCs.
+- Passed remote rollback tests for direct ledger denial, three-table manual transaction FX snapshots, account edits, voucher payment, bank opening, AR invoice issue and AR receipts. Adjusted fixture setup that previously depended on direct authenticated ledger writes.
+
+## 0.5.1 - 2026-09-24
+
+- Revoked direct authenticated and anonymous mutation privileges on vouchers, voucher lines, invoices and voucher workflow logs. This prevents status, detail and history changes that bypass the atomic RPC flow; `TRUNCATE` is also denied.
+- Kept validated manager, accounting and voucher edit RPCs working as `SECURITY DEFINER` functions with role checks; added an explicit finance role guard to accounting rejection.
+- Passed remote rollback tests for direct write denial, manager approval and rejection, accounting rejection, voucher detail edits, foreign currency budgets, payment and reversal. Fixture data did not persist.
+
 ## 0.5.0 - 2026-09-24
 
 - 依新版美編提案調整實際 Dashboard 的角色列、簽核步驟、指標卡、側欄權限圖例與響應式版面；所有數值仍來自現有資料查詢。
