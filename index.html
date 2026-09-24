@@ -372,8 +372,8 @@
             
             <!-- 補上完整的 form 標籤與新的表單結構 -->
             <form id="voucherCreateForm" class="form-container">
-              <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
-                <h4 style="margin-top:0; color:#0f172a;">報支基本資訊</h4>
+              <div class="voucher-basic-fields">
+                <h4>報支基本資訊</h4>
                 <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
                   <div style="flex: 2 1 360px;">
                     <label for="vTitle">報支主旨 (必填)：</label>
@@ -415,7 +415,7 @@
 
               <div class="panel">
                 <h4>核銷明細</h4>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                <table class="voucher-entry-table" style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
                   <thead>
                     <tr style="background: #f1f5f9;">
                       <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">單據年月</th>
@@ -442,7 +442,7 @@
                   📎 批次上傳發票/收據（依順序自動分配到各列）
                   <input type="file" id="bulkVoucherUpload" accept="image/*,.pdf" multiple style="display:none;">
                 </label>
-                <label for="aiScanReceiptUpload" class="secondary" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;">
+                <label for="aiScanReceiptUpload" class="secondary voucher-ai-upload" style="display:inline-block; padding:6px 12px; cursor:pointer; margin-left:8px;">
                   發票批次辨識
                   <input type="file" id="aiScanReceiptUpload" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;">
                 </label>

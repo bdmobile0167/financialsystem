@@ -260,6 +260,33 @@
   .report-card .statement-net td { font-weight: 700; border-top: 1px solid var(--text); border-bottom: 3px double var(--text); }
   .report-card .statement-net-positive td:nth-child(2) { color: var(--success); }
   .report-card .statement-net-negative td:nth-child(2) { color: var(--danger); }
+
+  /* Voucher form and ledger surfaces follow the supplied editorial palette. */
+  #voucherWorkflow > .panel + .panel { margin-top: 22px; }
+  .voucher-basic-fields {
+    margin-bottom: 20px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .voucher-basic-fields h4 { margin: 0 0 18px; color: var(--text); font: 600 16px var(--font-serif); }
+  .voucher-basic-fields label { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .voucher-basic-fields input,
+  .voucher-basic-fields select { background: var(--bg); border-color: var(--border); }
+  #voucherCreateForm > .panel { overflow-x: auto; }
+  .voucher-entry-table { min-width: 900px; }
+  .voucher-entry-table thead tr { background: var(--surface-strong) !important; }
+  .voucher-entry-table th { color: var(--muted); border-color: var(--border) !important; }
+  .voucher-entry-table td { border-color: var(--border) !important; }
+  .voucher-entry-table input,
+  .voucher-entry-table select { min-width: 0; background: var(--bg); border-color: var(--border); }
+  #voucherTotalDisplay { color: var(--danger) !important; font-family: var(--font-mono); }
+  .voucher-ai-upload { background: var(--primary) !important; border: 1px solid var(--primary) !important; color: #fff !important; }
+  .voucher-ai-upload:hover { background: var(--primary-strong) !important; }
+  .bank-account-card { box-shadow: none; border-color: var(--border); }
+  .bank-account-balance { font: 500 19px var(--font-mono); font-variant-numeric: tabular-nums; }
+  .bank-account-meta em { color: var(--warning); }
 }
 
 @media screen and (max-width: 1080px) {
@@ -273,6 +300,9 @@
   .main-header { position: static; padding: 14px 16px; }
   .tab-panel { padding: 20px 16px 48px; }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .voucher-basic-fields { padding: 16px; }
+  .voucher-basic-fields > div { flex-wrap: wrap !important; }
+  .voucher-basic-fields > div > div { min-width: min(100%, 220px); }
 }
 
 /* Dashboard layout from the revised design reference; values remain live data. */

@@ -1,10 +1,17 @@
 # 變更紀錄
 
+## 0.5.4 - 2026-09-24
+
+- 報支新建與修改重送在送出前再次核對主管的角色與部門；主管已調整時清除舊選項並顯示可操作的中文提示，避免直接顯示資料庫英文錯誤。
+- 將報支基本資料、明細表、附件辨識按鈕與銀行帳戶卡片延伸為美編提案的紙張、深綠、細線及等寬金額風格；手機版改善欄位換行。
+- 同步畫面版號、套件版本與文件為 `0.5.4`。遠端主管配置僅業務部有 `manager`，其餘部門仍需管理員設定主管並做真實登入驗收。
+
 ## 0.5.3 - 2026-09-24
 
 - Added transactional audit rows to employee payee self-creation and default-recipient creation/update, including lookup of an existing payee.
 - Revoked direct `INSERT`, `UPDATE` and `DELETE` on payees and payment recipients from API roles; the employee self-create and finance edit RPCs remain the write paths.
 - Passed remote rollback tests for employee creation with and without bank details, existing-payee lookup, finance edits, foreign-currency voucher payment and payroll payment. Migration lint passed; test fixtures left no persistent rows.
+- Restored the multi-recipient partial payment, foreign-currency payment and cross-currency AP database suites after direct table writes were revoked. Fixture setup runs with the test administrator inside rollback transactions; payment and role assertions still run as `authenticated`.
 
 ## 0.5.2 - 2026-09-24
 

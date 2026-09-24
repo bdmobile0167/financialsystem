@@ -5258,6 +5258,7 @@ function initializeEventsInternal() {
           tripEndDate: tripEnd
         };
 
+        await verifyVoucherManager(departmentId, managerPicker);
         const result = await createVoucher(voucherPayload);
 
         if (!result || !result.success) {
@@ -5413,6 +5414,25 @@ async function initialize() {
             await showApp();
         }
     }
+}
+
+async function verifyVoucherManager(departmentId, picker) {
+  const managerId = picker?.value;
+  if (!managerId) return;
+  const optionIsCurrent = Array.from(picker.options).some(option => option.value === managerId);
+  if (!optionIsCurrent || picker.dataset.departmentId !== departmentId) {
+    throw new Error('審核主管名單已變更，請重新選擇該部門主管');
+  }
+  const { data, error } = await supabase.from('profiles')
+    .select('id')
+    .eq('id', managerId)
+    .eq('department_id', departmentId)
+    .eq('role', 'manager');
+  if (error) throw new Error('無法確認審核主管，請稍後重試');
+  if (!data?.length) {
+    picker.value = '';
+    throw new Error('所選主管已不屬於此部門，請重新選擇主管或不指定');
+  }
 }
 
 async function populateVoucherFormOptions() {
@@ -7977,6 +7997,7 @@ window.submitFullResubmission = async (e, voucherId) => {
 
   try {
     // 1. 透過共用 API 一次完成：更新主檔＋替換明細＋替換發票＋重送 workflow log＋附件
+    await verifyVoucherManager(departmentId, managerPicker);
     const updateResult = await updateVoucher(voucherId, {
       txDate: txDate,
       currency: currency,
