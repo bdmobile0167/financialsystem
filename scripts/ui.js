@@ -5119,11 +5119,18 @@ function initializeEventsInternal() {
         const generalSummary = document.getElementById('vTitle')?.value.trim() || "批量多行核銷單據";
         const departmentId = document.getElementById('vDepartment')?.value || null;
         const departmentBudgetId = document.getElementById('vDepartmentBudget')?.value || null;
-        const managerId = document.getElementById('vManagerPicker')?.value || null;
+        const managerPicker = document.getElementById('vManagerPicker');
+        const managerId = managerPicker?.value || null;
         const tripStart = document.getElementById('vTripStart')?.value || null;
         const tripEnd = document.getElementById('vTripEnd')?.value || null;
         if (!departmentId) {
           throw new Error('請選擇所屬部門');
+        }
+        if (managerPicker?.dataset.departmentId !== departmentId || managerPicker.dataset.managerCount === '0') {
+          throw new Error('此部門尚無可用主管，請先由管理員設定部門主管後再送出報支單');
+        }
+        if (managerId && (!managerPicker.selectedOptions[0] || managerPicker.dataset.departmentId !== departmentId)) {
+          throw new Error('審核主管與報支部門不符，請重新選擇同部門主管');
         }
         if (!projectId && !departmentBudgetId) {
           throw new Error('非專案報支請選擇部門年度預算');
@@ -5283,7 +5290,10 @@ function initializeEventsInternal() {
 
       } catch (err) {
         console.error(err);
-        alert('送出報支單失敗：' + err.message);
+        const message = err.message === 'Selected manager is not a manager in the voucher department'
+          ? '所選審核主管不是該報支部門的主管，請重新選擇同部門主管或不指定。'
+          : err.message;
+        alert('送出報支單失敗：' + message);
       }
       });
     });
@@ -5468,7 +5478,6 @@ async function populateVoucherFormOptions() {
     }
     await refreshVoucherCurrencyPreview();
     
-    await populateManagerPickerGrouped();
     // 部門 - 避免重複宣告
     const deptSelect = document.getElementById('vDepartment');
     if (deptSelect) {
@@ -5494,43 +5503,13 @@ async function populateVoucherFormOptions() {
       syncVoucherBudgetRequirement();
     }
 
-    async function populateManagerPickerGrouped() {
-      const managerSelect = document.getElementById('vManagerPicker');
-      if (!managerSelect) return;
-
-      const { data: managers, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, department_id, departments(name)')
-        .eq('role', 'manager');
-
-      if (error || !managers) {
-        managerSelect.innerHTML = '<option value="">不指定</option>';
-        return;
-      }
-
-      const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
-      const grouped = {};
-      managers.forEach(m => {
-        const deptName = m.departments?.name || '未分配部門';
-        if (!grouped[deptName]) grouped[deptName] = [];
-        grouped[deptName].push(m);
-      });
-
-      let html = '<option value="">不指定（整個部門主管都能審）</option>';
-      Object.keys(grouped).sort(strokeSort.compare).forEach(deptName => {
-        const people = grouped[deptName].sort((a, b) => strokeSort.compare(a.full_name, b.full_name));
-        html += `<optgroup label="${deptName}">`;
-        html += people.map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
-        html += `</optgroup>`;
-      });
-
-      managerSelect.innerHTML = html;
-    }
-
     // 部門下拉一改變，還是可以重新整理一次（保留原本互動）
     async function loadDepartmentPeople(deptId) {
       const managerSelect = document.getElementById('vManagerPicker');
       if (!managerSelect) return;
+      managerSelect.dataset.departmentId = '';
+      managerSelect.dataset.managerCount = '';
+      managerSelect.innerHTML = '<option value="">正在載入部門主管…</option>';
 
       if (!deptId) {
         managerSelect.innerHTML = '<option value="">請先選擇部門</option>';
@@ -5539,20 +5518,26 @@ async function populateVoucherFormOptions() {
 
       const { data: people, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .eq('department_id', deptId);
+        .select('id, full_name')
+        .eq('department_id', deptId)
+        .eq('role', 'manager');
+
+      if (document.getElementById('vDepartment')?.value !== deptId) return;
+      managerSelect.dataset.departmentId = deptId;
+      managerSelect.dataset.managerCount = error ? '0' : String(people?.length || 0);
 
       if (error || !people || people.length === 0) {
-        managerSelect.innerHTML = '<option value="">此部門尚無人員資料</option>';
+        managerSelect.innerHTML = error
+          ? '<option value="">主管名單載入失敗，請重試</option>'
+          : '<option value="">此部門尚無主管，請聯絡管理員設定</option>';
         return;
       }
 
       const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
       const sorted = [...people].sort((a, b) => strokeSort.compare(a.full_name || '', b.full_name || ''));
 
-      const ROLE_LABEL = { manager: '主管', accounting: '會計', admin: '管理員', employee: '專員' };
       managerSelect.innerHTML = '<option value="">不指定（整個部門主管都能審）</option>' +
-        sorted.map(p => `<option value="${p.id}">${p.full_name}${p.role === 'manager' ? '（主管）' : ` (${ROLE_LABEL[p.role] || p.role})`}</option>`).join('');
+        sorted.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.full_name || '未命名主管')}（主管）</option>`).join('');
     }
 
     document.getElementById('vDepartment')?.addEventListener('change', (e) => {
@@ -7478,36 +7463,39 @@ window.loadResubManagers = async (departmentId, selectedManagerId = '') => {
   const managerSelect = document.getElementById('resub-vManagerPicker');
   if (!managerSelect) return;
 
-  managerSelect.innerHTML = '<option value="">不指定（整個部門主管都能審）</option>';
-  if (!departmentId) return;
+  managerSelect.dataset.departmentId = '';
+  managerSelect.dataset.managerCount = '';
+  managerSelect.innerHTML = '<option value="">正在載入部門主管…</option>';
+  if (!departmentId) {
+    managerSelect.innerHTML = '<option value="">請先選擇部門</option>';
+    return;
+  }
 
   try {
-    // 試著從 users 或 profiles 撈取該部門的使用者（包含主管與專員）
-    let { data: users, error } = await supabase
-      .from('users')
-      .select('id, name, role')
-      .eq('department_id', departmentId);
-
-    if (error || !users || users.length === 0) {
-      // 若 users 查不到，改查 profiles
-      const res = await supabase
-        .from('profiles')
-        .select('id, full_name, role')
-        .eq('department_id', departmentId);
-      users = (res.data || []).map(p => ({ id: p.id, name: p.full_name, role: p.role }));
-    }
-
-    if (users && users.length > 0) {
-      users.forEach(u => {
+    const { data: managers, error } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('department_id', departmentId)
+      .eq('role', 'manager');
+    if (error) throw error;
+    if (document.getElementById('resub-vDepartment')?.value !== departmentId) return;
+    managerSelect.dataset.departmentId = departmentId;
+    managerSelect.dataset.managerCount = String(managers?.length || 0);
+    managerSelect.innerHTML = managers?.length
+      ? '<option value="">不指定（整個部門主管都能審）</option>'
+      : '<option value="">此部門尚無主管，請聯絡管理員設定</option>';
+    if (managers?.length) {
+      managers.forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.id;
-        opt.textContent = `${u.name || '未命名'} (${u.role || '成員'})`;
+        opt.textContent = `${u.full_name || '未命名主管'}（主管）`;
         if (u.id === selectedManagerId) opt.selected = true;
         managerSelect.appendChild(opt);
       });
     }
   } catch (err) {
     console.warn('載入部門主管清單失敗:', err);
+    managerSelect.innerHTML = '<option value="">主管名單載入失敗，請重試</option>';
   }
 };
 
@@ -7908,7 +7896,8 @@ window.submitFullResubmission = async (e, voucherId) => {
   const txDate = document.getElementById('resub-vDate').value;
   const currency = document.getElementById('resub-vCurrency').value;
   const departmentId = document.getElementById('resub-vDepartment').value;
-  const managerId = document.getElementById('resub-vManagerPicker').value || null;
+  const managerPicker = document.getElementById('resub-vManagerPicker');
+  const managerId = managerPicker.value || null;
   const projectId = document.getElementById('resub-vProject').value || null;
   const departmentBudgetId = document.getElementById('resub-vDepartmentBudget').value || null;
   const tripStart = document.getElementById('resub-vTripStart').value || null;
@@ -7916,6 +7905,14 @@ window.submitFullResubmission = async (e, voucherId) => {
 
   if (!projectId && !departmentBudgetId) {
     alert('非專案報支請選擇部門年度預算。');
+    return;
+  }
+  if (managerPicker.dataset.departmentId !== departmentId || managerPicker.dataset.managerCount === '0') {
+    alert('此部門尚無可用主管，請先由管理員設定部門主管後再送出報支單。');
+    return;
+  }
+  if (managerId && (!managerPicker.selectedOptions[0] || managerPicker.dataset.departmentId !== departmentId)) {
+    alert('審核主管與報支部門不符，請重新選擇同部門主管。');
     return;
   }
 
@@ -8010,7 +8007,10 @@ window.submitFullResubmission = async (e, voucherId) => {
 
   } catch (err) {
     console.error(err);
-    alert('修改失敗：' + err.message);
+    const message = err.message === 'Selected manager is not a manager in the voucher department'
+      ? '所選審核主管不是該報支部門的主管，請重新選擇同部門主管或不指定。'
+      : err.message;
+    alert('修改失敗：' + message);
   }
 };
 

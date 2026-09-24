@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 0.5.0 - 2026-09-24
+
+- 依新版美編提案調整實際 Dashboard 的角色列、簽核步驟、指標卡、側欄權限圖例與響應式版面；所有數值仍來自現有資料查詢。
+- 修正新建及修改重送報支單的主管清單，只列出所選部門的 `manager`，並在切換部門時清除舊選項；無主管部門顯示明確提示並阻止送出，資料庫維持同部門主管驗證。
+- 新增專案費用報表與圓餅圖、原子付款拆分、原子付款人與收款帳戶儲存，以及單據與手動交易稽核。
+- 收斂報支單直接新增權限，補主管審核角色驗證；v1.0.0 的真實登入驗收、測試資料清理與部署仍待完成。
+
 ## 0.3.0 - 2026-09-22
 
 - Separate registered capital, company-profile paid-in capital and the actual 3110 ledger balance in every equity overview, with an always-visible reconciliation difference.

@@ -179,14 +179,16 @@ export async function renderDashboard() {
     container.innerHTML = `
       <div class="dashboard-overview">
         <section class="dashboard-hero">
-          <div class="dashboard-hero-main">
+          <div class="dashboard-identity-bar">
             <span class="dashboard-role">目前角色：${escapeHtml(user.name || user.full_name || user.email || '使用者')}（${escapeHtml(ROLE_LABELS[role] || role)}）</span>
+            <div class="dashboard-actions">
+              <button type="button" class="dashboard-action dashboard-action-primary" data-dashboard-tab="voucherWorkflow">新增費用單據</button>
+              ${isEmployee ? '' : '<button type="button" class="dashboard-action" data-dashboard-tab="reports">查看 IFRS 報表</button>'}
+            </div>
+          </div>
+          <div class="dashboard-hero-main">
             <h1>總覽</h1>
             <p>${isEmployee ? '填報專案費用、追蹤主管與會計審核進度，並查看個人憑證狀態。' : '集中掌握單據簽核、會計過帳、專案預算與財務報表狀態。'}</p>
-          </div>
-          <div class="dashboard-actions">
-            <button type="button" class="dashboard-action dashboard-action-primary" data-dashboard-tab="voucherWorkflow">新增費用單據</button>
-            ${isEmployee ? '' : '<button type="button" class="dashboard-action" data-dashboard-tab="reports">查看 IFRS 報表</button>'}
           </div>
           <ol class="dashboard-workflow" aria-label="報支簽核流程">
             <li><span>1</span><div><strong>員工送出</strong><small>發票與收據登錄</small></div></li>

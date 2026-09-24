@@ -39,7 +39,6 @@ export async function populateVoucherFormOptions() {
         banks.map(b => `<option value="${b.id}">${b.nickname || b.bank_name}</option>`).join('');
     }
     
-    await populateManagerPickerGrouped();
     // 部門 - 避免重複宣告
     const deptSelect = document.getElementById('vDepartment');
     if (deptSelect) {
@@ -63,43 +62,13 @@ export async function populateVoucherFormOptions() {
         projects.map(p => `<option value="${p.id}">${p.project_code} - ${p.name}</option>`).join('');
     }
 
-    async function populateManagerPickerGrouped() {
-      const managerSelect = document.getElementById('vManagerPicker');
-      if (!managerSelect) return;
-
-      const { data: managers, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, department_id, departments(name)')
-        .eq('role', 'manager');
-
-      if (error || !managers) {
-        managerSelect.innerHTML = '<option value="">不指定</option>';
-        return;
-      }
-
-      const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
-      const grouped = {};
-      managers.forEach(m => {
-        const deptName = m.departments?.name || '未分配部門';
-        if (!grouped[deptName]) grouped[deptName] = [];
-        grouped[deptName].push(m);
-      });
-
-      let html = '<option value="">不指定（整個部門主管都能審）</option>';
-      Object.keys(grouped).sort(strokeSort.compare).forEach(deptName => {
-        const people = grouped[deptName].sort((a, b) => strokeSort.compare(a.full_name, b.full_name));
-        html += `<optgroup label="${deptName}">`;
-        html += people.map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
-        html += `</optgroup>`;
-      });
-
-      managerSelect.innerHTML = html;
-    }
-
     // 部門下拉一改變，還是可以重新整理一次（保留原本互動）
     async function loadDepartmentPeople(deptId) {
       const managerSelect = document.getElementById('vManagerPicker');
       if (!managerSelect) return;
+      managerSelect.dataset.departmentId = '';
+      managerSelect.dataset.managerCount = '';
+      managerSelect.innerHTML = '<option value="">正在載入部門主管…</option>';
 
       if (!deptId) {
         managerSelect.innerHTML = '<option value="">請先選擇部門</option>';
@@ -108,20 +77,26 @@ export async function populateVoucherFormOptions() {
 
       const { data: people, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .eq('department_id', deptId);
+        .select('id, full_name')
+        .eq('department_id', deptId)
+        .eq('role', 'manager');
+
+      if (document.getElementById('vDepartment')?.value !== deptId) return;
+      managerSelect.dataset.departmentId = deptId;
+      managerSelect.dataset.managerCount = error ? '0' : String(people?.length || 0);
 
       if (error || !people || people.length === 0) {
-        managerSelect.innerHTML = '<option value="">此部門尚無人員資料</option>';
+        managerSelect.innerHTML = error
+          ? '<option value="">主管名單載入失敗，請重試</option>'
+          : '<option value="">此部門尚無主管，請聯絡管理員設定</option>';
         return;
       }
 
       const strokeSort = new Intl.Collator('zh-Hant-u-co-stroke');
       const sorted = [...people].sort((a, b) => strokeSort.compare(a.full_name || '', b.full_name || ''));
 
-      const ROLE_LABEL = { manager: '主管', accounting: '會計', admin: '管理員', employee: '專員' };
       managerSelect.innerHTML = '<option value="">不指定（整個部門主管都能審）</option>' +
-        sorted.map(p => `<option value="${p.id}">${p.full_name}${p.role === 'manager' ? '（主管）' : ` (${ROLE_LABEL[p.role] || p.role})`}</option>`).join('');
+        sorted.map(p => `<option value="${p.id}">${p.full_name || '未命名主管'}（主管）</option>`).join('');
     }
 
     document.getElementById('vDepartment')?.addEventListener('change', (e) => {
