@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>財務管理系統</title>
   <link rel="stylesheet" href="./css/styles.css" />
-  <link rel="stylesheet" href="./css/editorial-theme.css" />
 </head>
 <body>
   <div id="loginView" class="login-shell">
@@ -116,10 +115,10 @@
                     🔔
                     <span id="notificationBadge" style="display:none; position:absolute; top:0; right:0; background:#dc2626; color:#fff; border-radius:999px; font-size:11px; line-height:1; padding:3px 5px; min-width:16px; text-align:center;"></span>
                   </button>
-                  <div id="notificationPanel" style="display:none; position:absolute; right:0; top:36px; width:320px; max-height:400px; overflow:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.15); z-index:1000;">
+                  <div id="notificationPanel" style="display:none; position:absolute; right:0; top:36px; width:320px; max-height:400px; overflow:auto; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); z-index:1000;">
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #eee;">
                       <strong style="font-size:14px;">通知</strong>
-                      <button id="markAllNotificationsReadBtn" type="button" style="background:none; border:none; color:#2563eb; font-size:12px; cursor:pointer;">全部標為已讀</button>
+                      <button id="markAllNotificationsReadBtn" type="button" style="background:none; border:none; color:var(--primary); font-size:12px; cursor:pointer;">全部標為已讀</button>
                     </div>
                     <div id="notificationList"></div>
                   </div>
@@ -207,14 +206,14 @@
                   <select id="txDebitAccount" required>
                     <option value="">請選擇借方科目</option>
                   </select>
-                  <div class="field-hint" id="txDebitHint">收入通常借記銀行存款；支出通常借記費用或成本。</div>
+                  <details class="field-help"><summary aria-label="借方科目說明" title="借方科目說明">?</summary><div class="field-hint" id="txDebitHint">收入通常借記銀行存款；支出通常借記費用或成本。</div></details>
                 </div>
                 <div>
                   <label for="txCreditAccount">貸方科目</label>
                   <select id="txCreditAccount" required>
                     <option value="">請選擇貸方科目</option>
                   </select>
-                  <div class="field-hint" id="txCreditHint">收入通常貸記 4xxx 收入；支出通常貸記銀行存款。</div>
+                  <details class="field-help"><summary aria-label="貸方科目說明" title="貸方科目說明">?</summary><div class="field-hint" id="txCreditHint">收入通常貸記 4xxx 收入；支出通常貸記銀行存款。</div></details>
                 </div>
                 <div>
                   <label for="txCustomer">交易對象</label>
@@ -417,7 +416,7 @@
                 <h4>核銷明細</h4>
                 <table class="voucher-entry-table" style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
                   <thead>
-                    <tr style="background: #f1f5f9;">
+                    <tr style="background: var(--surface-strong);">
                       <th style="padding: 8px; border: 1px solid #ddd; width: 13%;">單據年月</th>
                       <th style="padding: 8px; border: 1px solid #ddd; width: 10%;">憑證類型</th>
                       <th style="padding: 8px; border: 1px solid #ddd; width: 12%;">發票號碼</th>
@@ -521,15 +520,15 @@
                     <option value="">不指定，付款時再選</option>
                   </select>
                 </div>
-                <div style="margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                  <label for="projectTotalBudget" style="color: #0f172a; font-weight: bold;">設定初始總預算</label>
+                <div style="margin-bottom: 12px; padding: 12px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border);">
+                  <label for="projectTotalBudget" style="color: var(--text); font-weight: bold;">設定初始總預算</label>
                   <p class="muted" style="font-size: 12px; margin-top: 4px;">後續若有追加或刪減，需透過預算變更流程並填寫原因。</p>
                   <input type="number" id="projectTotalBudget" placeholder="例如：500000" required style="width: 100%; font-size: 16px; margin-top: 8px;" />
                 </div>
                 <button type="submit" class="primary-btn" style="width: 100%;">建立專案</button>
               </form>
               <div id="departmentBudgetPanel">
-                <hr style="margin: 22px 0; border: 0; border-top: 1px solid #e2e8f0;">
+                <hr style="margin: 22px 0; border: 0; border-top: 1px solid var(--border);">
                 <h3>部門預算申請</h3>
                 <form id="departmentBudgetForm" class="form-container">
                   <div style="margin-bottom: 12px;">
@@ -548,8 +547,8 @@
                 </div>
                   <label for="departmentBudgetNote">申請原因</label>
                   <textarea id="departmentBudgetNote" rows="2" required style="width: 100%;"></textarea>
-                  <fieldset style="margin-top:12px; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-                    <legend style="padding:0 6px; color:#475569; font-size:12px;">預算項目明細</legend>
+                  <fieldset style="margin-top:12px; border:1px solid var(--border); border-radius:var(--radius); padding:12px;">
+                    <legend style="padding:0 6px; color:var(--muted); font-size:12px;">預算項目明細</legend>
                     <div id="departmentBudgetItems">
                       <div class="department-budget-item-row" style="display:flex; gap:8px; margin-bottom:8px;">
                         <input class="department-budget-item-name" value="人事費用" placeholder="項目" style="flex:1;">
@@ -594,9 +593,9 @@
             <form id="editBudgetForm" onsubmit="event.preventDefault(); submitBudgetChange();">
               <input type="hidden" id="edit_budget_project_id" />
               <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-                <div style="flex: 1; padding: 10px; background: #f1f5f9; border-radius: 8px;">
+                <div style="flex: 1; padding: 10px; background: var(--surface-strong); border-radius: var(--radius);">
                   <label for="current_budget_val">目前總預算</label>
-                  <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: #475569;">$0</div>
+                  <div id="current_budget_display" style="font-size: 18px; font-weight: bold; color: var(--muted);">$0</div>
                   <input type="hidden" id="current_budget_val" />
                 </div>
                 <div style="flex: 1;">
@@ -614,11 +613,11 @@
               </div>
             </form>
 
-            <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+            <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
               <h4>預算異動紀錄</h4>
               <table style="width: 100%; font-size: 13px; margin-top: 8px;">
                 <thead>
-                  <tr style="background: #f8fafc;">
+                  <tr style="background: var(--bg);">
                     <th style="padding: 6px;">時間</th>
                     <th style="padding: 6px;">變更人</th>
                     <th style="padding: 6px;">金額異動</th>
@@ -657,7 +656,7 @@
 
             <table style="width:100%; font-size:13px; margin-bottom:16px;">
               <thead>
-                <tr style="background:#f8fafc;">
+                <tr style="background:var(--bg);">
                   <th style="padding:6px; text-align:left;">姓名</th>
                   <th style="padding:6px; text-align:left;">角色</th>
                   <th style="padding:6px; text-align:left;">部門</th>
@@ -672,11 +671,11 @@
               <button type="button" class="secondary" style="width:auto; padding:8px 16px;" onclick="closeProjectMembersModal()">取消</button>
             </div>
 
-            <div style="margin-top:24px; border-top:1px solid #e2e8f0; padding-top:16px;">
+            <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
               <h4>成員異動紀錄</h4>
               <table style="width:100%; font-size:12px; margin-top:8px;">
                 <thead>
-                  <tr style="background:#f8fafc;">
+                  <tr style="background:var(--bg);">
                     <th style="padding:6px;">時間</th>
                     <th style="padding:6px;">操作人</th>
                     <th style="padding:6px;">異動</th>
@@ -724,6 +723,11 @@
             <button id="parseStatementBtn" class="primary-btn" style="margin-top:12px;">解析 PDF</button>
             <div id="statementPreviewArea" style="margin-top:16px;"></div>
           </div>
+          <div class="panel" style="margin-top:20px;">
+            <h3>逐筆對帳</h3>
+            <p class="muted">選擇上方銀行帳戶，將帳單列與同帳戶、同幣別、同方向及同金額的已入帳流水配對。配對與解除配對會保留稽核紀錄。</p>
+            <div id="statementMatchList" aria-live="polite">請先選擇銀行帳戶。</div>
+          </div>
         </section>
         
         <section id="reports" class="tab-panel" style="display:none;">
@@ -761,7 +765,7 @@
             <!-- 報表頁籤導覽 -->
             <div class="report-tabbar no-print">
               <button type="button" class="report-tab-btn active-tab" data-report-tab="income">
-                <span class="report-tab-dot" style="background:#2563eb;"></span>損益表
+                <span class="report-tab-dot" style="background:var(--primary);"></span>損益表
               </button>
               <button type="button" class="report-tab-btn" data-report-tab="balance">
                 <span class="report-tab-dot" style="background:#0f766e;"></span>資產負債表
@@ -773,7 +777,7 @@
                 <span class="report-tab-dot" style="background:#7c3aed;"></span>權益變動表
               </button>
               <button type="button" class="report-tab-btn" data-report-tab="trial">
-                <span class="report-tab-dot" style="background:#475569;"></span>試算表
+                <span class="report-tab-dot" style="background:var(--muted);"></span>試算表
               </button>
               <button type="button" class="report-tab-btn" data-report-tab="project-expense">
                 <span class="report-tab-dot" style="background:#b45309;"></span>專案費用
@@ -782,7 +786,7 @@
                 <span class="report-tab-dot" style="background:#9333ea;"></span>募資精算
               </button>
               <button type="button" class="report-tab-btn" data-report-tab="ifrs-rules">
-                <span class="report-tab-dot" style="background:#2563eb;"></span>IFRS 準則引擎
+                <span class="report-tab-dot" style="background:var(--primary);"></span>準則參考
               </button>
               <button type="button" class="report-tab-btn" data-report-tab="adjustments">
                 <span class="report-tab-dot" style="background:#4f46e5;"></span>平行帳簿
@@ -814,9 +818,9 @@
             <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
             <div id="bankReconciliationStatus" class="reconciliation-status no-print" aria-live="polite"></div>
             <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
-              <div class="report-card financial-report-page active-tab" data-report-tab="income" style="--accent-color:#2563eb;">
+              <div class="report-card financial-report-page active-tab" data-report-tab="income" style="--accent-color:var(--primary);">
                 <div id="incomeLetterhead" class="report-letterhead"></div>
-                <div class="report-card-header"><span class="dot" style="background:#2563eb;"></span><h4>損益表</h4></div>
+                <div class="report-card-header"><span class="dot" style="background:var(--primary);"></span><h4>損益表</h4></div>
                 <table id="incomeTable"></table>
                 <div id="incomeSignature" class="report-signature-row"></div>
               </div>
@@ -838,9 +842,9 @@
                 <table id="equityTable"></table>
                 <div id="equitySignature" class="report-signature-row"></div>
               </div>
-              <div class="report-card" data-report-tab="trial" style="--accent-color:#475569;">
+              <div class="report-card" data-report-tab="trial" style="--accent-color:var(--muted);">
                 <div id="trialLetterhead" class="report-letterhead"></div>
-                <div class="report-card-header"><span class="dot" style="background:#475569;"></span><h4>試算表</h4></div>
+                <div class="report-card-header"><span class="dot" style="background:var(--muted);"></span><h4>試算表</h4></div>
                 <label for="includeIfrsAdjustmentsToggle" class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
                   <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
                   顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
@@ -901,14 +905,15 @@
                   <div class="fundraise-sim-results" id="fsResults"></div>
                 </div>
               </div>
-              <div class="report-card" data-report-tab="ifrs-rules" style="--accent-color:#2563eb;">
+              <div class="report-card" data-report-tab="ifrs-rules" style="--accent-color:var(--primary);">
                 <div class="report-card-header">
-                  <span class="dot" style="background:#2563eb;"></span>
-                  <h4>IFRS 國際財務報導準則規則引擎</h4>
-                  <span class="ifrs-badge ifrs-badge-blue" style="margin-left:auto;">2026 Accounting Standard Engine</span>
+                  <span class="dot" style="background:var(--primary);"></span>
+                  <h4>IFRS／IAS 準則參考</h4>
                 </div>
-                <p class="muted" style="font-size:12px; margin:2px 0 16px;">系統依據國際會計準則規範進行交易判定、收入分攤、使用權資產折舊與減損評估之參考說明。</p>
+                <p class="muted" style="font-size:12px; margin:2px 0 16px;">以下為會計準則摘要，供需要時查閱；實際入帳請依交易事實與已核准的憑證處理。</p>
 
+                <details class="ifrs-reference">
+                  <summary>展開準則摘要（IFRS 15／16／9／18、IAS 21／16／12）</summary>
                 <div class="ifrs-rules-grid">
                   <div class="ifrs-rule-card ifrs-rule-blue">
                     <div class="ifrs-rule-head">
@@ -918,7 +923,7 @@
                     <p>規定收入認列 5 步驟模型：辨認客戶合約 ➔ 辨認履約義務 ➔ 決定交易價格 ➔ 分攤交易價格 ➔ 於滿足履約義務時認列收入。</p>
                     <div class="ifrs-rule-notes">
                       <p>✔ 專案多階段合約分段認列（Over Time / Point in Time）</p>
-                      <p>✔ 自動生成【合約資產 Contract Asset】與【合約負債】</p>
+                      <p>✔ 合約資產與合約負債的分類及認列</p>
                     </div>
                   </div>
 
@@ -965,7 +970,7 @@
                     </div>
                     <p>劃分【機能貨幣 (Functional Currency)】與【表達貨幣】，外幣貨幣性項目期末按資產負債表日即期匯率重估損益。</p>
                     <div class="ifrs-rule-notes">
-                      <p>✔ 即時擷取 USD/EUR/JPY 匯率自動轉算 TWD</p>
+                      <p>✔ 外幣交易與期末匯率換算的判斷</p>
                       <p>✔ 期末認列未實現兌換損益（Unrealized FX Gain/Loss）</p>
                     </div>
                   </div>
@@ -983,6 +988,7 @@
                   </div>
                 </div>
                 <p class="muted" style="font-size:11px; margin-top:14px;">※ 本頁為準則規範參考說明，實際分錄仍依系統中已入帳之交易資料為準；若需將特定交易依上述準則調整入帳，請於「憑證」流程中註記對應科目。</p>
+                </details>
               </div>
               <div class="report-card" data-report-tab="adjustments" style="--accent-color:#4f46e5;">
                 <div class="report-card-header">

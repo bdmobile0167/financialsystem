@@ -11,6 +11,7 @@ import { buildVoucherRatePreview, fetchActiveVoucherCurrencies, fetchVoucherExch
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { importBankStatementRows } from '../src/modules/bank/bankStatementImport.js';
+import { fetchBankStatementPage, fetchBankStatementCandidates, setBankStatementMatch, BANK_STATEMENT_PAGE_SIZE } from '../src/modules/bank/bankStatementReconciliation.js';
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
 import { isAdminUser } from './auth.js';
@@ -4208,6 +4209,7 @@ function initializeEventsInternal() {
   });
 
   safeListener('parseStatementBtn', 'click', handleParseStatement);
+  safeListener('statementMatchList', 'click', handleStatementMatchClick);
 
   safeListener('changePasswordForm', 'submit', async (e) => {
     e.preventDefault();
@@ -4274,7 +4276,7 @@ function initializeEventsInternal() {
       });
       document.querySelectorAll('.modal-backdrop').forEach(modal => modal.remove());
 
-      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'paymentManagement' || tab === 'customers' || tab === 'arInvoices' || tab === 'arReceipts' || tab === 'arAging') && !isFinanceOperator()) {
+      if ((tab === 'transactions' || tab === 'bankAccounts' || tab === 'bankReconcile' || tab === 'paymentManagement' || tab === 'customers' || tab === 'arInvoices' || tab === 'arReceipts' || tab === 'arAging') && !isFinanceOperator()) {
         showMessage('僅會計部門與 Admin 可使用', true);
         return;
       }
@@ -8087,6 +8089,106 @@ function initCompanyInfoForm() {
 
 let parsedStatementRecords = [];
 let availableBankAccounts = []; // 用來暫存從 DB 抓取的銀行清單
+let statementMatchRows = [];
+let statementMatchPage = 0;
+let statementMatchRequest = 0;
+
+async function renderStatementMatchList() {
+  const list = document.getElementById('statementMatchList');
+  const bankAccountId = document.getElementById('statementBankAccountId')?.value;
+  if (!list) return;
+  const requestId = ++statementMatchRequest;
+  statementMatchRows = [];
+  if (!bankAccountId) {
+    list.textContent = '請先選擇銀行帳戶。';
+    return;
+  }
+  list.textContent = '正在載入帳單庫…';
+  try {
+    const { rows, count } = await fetchBankStatementPage(supabase, bankAccountId, statementMatchPage);
+    if (requestId !== statementMatchRequest) return;
+    statementMatchRows = rows;
+    if (!rows.length) {
+      list.textContent = count ? '此頁沒有帳單資料，請切換至前一頁。' : '此帳戶尚無已匯入帳單資料。';
+      return;
+    }
+    const totalPages = Math.ceil(count / BANK_STATEMENT_PAGE_SIZE);
+    list.innerHTML = `
+      <div class="table-scroll"><table class="statement-match-table">
+        <thead><tr><th>日期</th><th>摘要</th><th>方向</th><th class="numeric">金額</th><th>狀態</th><th>操作</th></tr></thead>
+        <tbody>${rows.map(row => {
+          const income = Number(row.income || 0);
+          const amount = income > 0 ? income : Number(row.expense || 0);
+          return `<tr>
+            <td>${escapeHtml(row.tx_date || '')}</td>
+            <td>${escapeHtml(row.detail || row.counterparty || '—')}</td>
+            <td>${income > 0 ? '收入' : '支出'}</td>
+            <td class="numeric">${escapeHtml(row.currency || 'TWD')} ${amount.toLocaleString()}</td>
+            <td>${row.is_reconciled ? '<span class="badge success">已對帳</span>' : '<span class="badge warning">待對帳</span>'}</td>
+            <td>${row.is_reconciled
+              ? `<button type="button" class="secondary" data-statement-action="unmatch" data-statement-id="${escapeHtml(row.id)}">解除配對</button>`
+              : `<button type="button" class="secondary" data-statement-action="candidates" data-statement-id="${escapeHtml(row.id)}">選擇流水</button>`}
+              <div id="statementCandidates-${escapeHtml(row.id)}" class="statement-candidates"></div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      <div class="statement-match-pager">
+        <button type="button" class="secondary" data-statement-action="previous" ${statementMatchPage === 0 ? 'disabled' : ''}>上一頁</button>
+        <span>第 ${statementMatchPage + 1} / ${totalPages} 頁，共 ${count} 筆</span>
+        <button type="button" class="secondary" data-statement-action="next" ${statementMatchPage + 1 >= totalPages ? 'disabled' : ''}>下一頁</button>
+      </div>`;
+  } catch (error) {
+    if (requestId === statementMatchRequest) list.textContent = `載入帳單庫失敗：${error.message}`;
+  }
+}
+
+async function handleStatementMatchClick(event) {
+  const button = event.target.closest('button[data-statement-action]');
+  if (!button) return;
+  const action = button.dataset.statementAction;
+  if (action === 'previous' || action === 'next') {
+    statementMatchPage += action === 'next' ? 1 : -1;
+    await renderStatementMatchList();
+    return;
+  }
+  const row = statementMatchRows.find(item => item.id === button.dataset.statementId);
+  if (!row) return;
+  const target = document.getElementById(`statementCandidates-${row.id}`);
+  try {
+    if (action === 'candidates') {
+      button.disabled = true;
+      target.textContent = '正在尋找同額銀行流水…';
+      const candidates = await fetchBankStatementCandidates(supabase, row);
+      if (!statementMatchRows.some(item => item.id === row.id) || !target.isConnected) return;
+      if (!candidates.length) {
+        target.textContent = '找不到同帳戶、同幣別、同方向及同金額的已入帳流水。';
+        return;
+      }
+      target.innerHTML = `
+        <label for="statementCandidateSelect-${escapeHtml(row.id)}">候選流水（最多顯示 100 筆）</label>
+        <select id="statementCandidateSelect-${escapeHtml(row.id)}">
+          ${candidates.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.tx_date)} · ${escapeHtml(item.transaction_no || item.description || '銀行流水')} · ${Number(item.amount).toLocaleString()}</option>`).join('')}
+        </select>
+        <button type="button" class="primary-btn" data-statement-action="match" data-statement-id="${escapeHtml(row.id)}">確認配對</button>`;
+    } else if (action === 'match' || action === 'unmatch') {
+      const candidateId = action === 'match'
+        ? document.getElementById(`statementCandidateSelect-${row.id}`)?.value
+        : null;
+      if (action === 'match' && !candidateId) throw new Error('請先選擇銀行流水。');
+      await withActionLock(`statement-match:${row.id}`, button, async () => {
+        await setBankStatementMatch(supabase, row.id, candidateId);
+        showMessage(action === 'match' ? '銀行流水已配對，稽核紀錄已建立。' : '已解除配對，稽核紀錄已建立。');
+        await renderStatementMatchList();
+      });
+    }
+  } catch (error) {
+    if (target?.isConnected) target.textContent = `對帳操作失敗：${error.message}`;
+    else showMessage(`對帳操作失敗：${error.message}`, true);
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
 
 // 1. 動態生成下拉選單
 async function populateStatementBankAccountSelect() {
@@ -8103,6 +8205,8 @@ async function populateStatementBankAccountSelect() {
 
   // 監聽選擇改變，提示使用者對應的解析規則
   select.onchange = (e) => {
+    statementMatchPage = 0;
+    renderStatementMatchList();
     const bankCode = detectParserCode(e.target.value);
     const hintEl = document.getElementById('detectedParserText');
     if (bankCode) {
@@ -8116,6 +8220,8 @@ async function populateStatementBankAccountSelect() {
       hintEl.textContent = '';
     }
   };
+  statementMatchPage = 0;
+  await renderStatementMatchList();
 }
 
 // 2. 自動判斷對應的 Parser 規則 (玉山187, 兆豐347...等)
@@ -8228,6 +8334,8 @@ async function handleConfirmImportStatement(event) {
       document.getElementById('statementFileInput').value = '';
       document.getElementById('detectedParserText').textContent = '';
       parsedStatementRecords = [];
+      statementMatchPage = 0;
+      await renderStatementMatchList();
     });
   } catch (error) {
     showMessage(`匯入失敗：${error.message}`, true);
