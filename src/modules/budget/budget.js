@@ -13,32 +13,17 @@ export async function createProject(projectData) {
 }
 
 // 新增：變更預算並寫入紀錄
-export async function updateProjectBudget(projectId, oldAmount, newAmount, reason, userId) {
-  // 1. 更新 projects 資料表的新預算
-  const { error: updateError } = await supabase
-    .from('projects')
-    .update({ 
-      total_budget: newAmount,
-      // 剩餘預算的重新計算應在後端或這裡一併處理（此處先簡化為由總額直接覆蓋，實際需扣除已花費）
-    })
-    .eq('id', projectId)
-    ;
-    
-  if (updateError) throw updateError;
-
-  // 2. 寫入 project_budget_logs 紀錄表
-  const { error: logError } = await supabase
-    .from('project_budget_logs')
-    .insert([{
-      project_id: projectId,
-      changed_by: userId,
-      old_amount: oldAmount,
-      new_amount: newAmount,
-      change_reason: reason
-    }]);
-
-  if (logError) throw logError;
-  return true;
+export async function updateProjectBudget(projectId, oldAmount, newAmount, reason, userId, settings = {}) {
+  // The database derives the actor and remaining budget inside one transaction.
+  const { data, error } = await supabase.rpc('update_project_budget_atomic', {
+    p_project_id: projectId,
+    p_expected_budget: oldAmount,
+    p_new_budget: newAmount,
+    p_reason: reason || '',
+    p_settings: settings
+  });
+  if (error) throw error;
+  return data;
 }
 
 // 新增：取得專案的預算變更歷史

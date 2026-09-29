@@ -127,7 +127,12 @@ button.danger:hover {
 }
 
 .admin-account-list-panel {
-  grid-row: span 2;
+  min-width: 0;
+}
+
+.admin-departments-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .admin-account-list {
@@ -187,10 +192,12 @@ button.danger:hover {
   width: 100%;
 }
 
-.admin-permission-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+.admin-permission-list,
+#permissionCheckboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+  gap: 8px 12px;
+  min-width: 0;
   margin: 14px 0 0;
   padding: 12px;
   border: 1px solid var(--border);
@@ -204,18 +211,25 @@ button.danger:hover {
   font-weight: 700;
 }
 
-.admin-permission-list .permission-option {
-  display: inline-flex;
+.admin-permission-list .permission-option,
+#permissionCheckboxes .permission-option {
+  display: flex;
   align-items: center;
   gap: 6px;
   margin: 0;
+  min-width: 0;
+  min-height: 32px;
   font-size: 12px;
 }
 
-.admin-permission-list input {
+.admin-permission-list input[type="checkbox"],
+#permissionCheckboxes input[type="checkbox"] {
+  flex: 0 0 16px;
   width: 16px;
   height: 16px;
   margin: 0;
+  padding: 0;
+  accent-color: var(--primary);
 }
 
 .department-create-form {
@@ -223,6 +237,31 @@ button.danger:hover {
   grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto;
   gap: 8px;
   align-items: end;
+}
+
+.department-create-form > input,
+.department-create-form > select,
+.department-create-form > button {
+  min-width: 0;
+  height: 44px;
+}
+
+.department-list-table {
+  margin-top: 16px;
+  width: 100%;
+  overflow-x: auto;
+}
+.department-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.department-actions button {
+  width: auto;
+  margin: 0;
+  padding: 6px 12px;
+  flex: 0 0 auto;
 }
 
 .payment-management-panel,
@@ -800,11 +839,8 @@ button.danger:hover {
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: block;
+  min-width: 0;
 }
 
 .transaction-panel p {
@@ -889,6 +925,17 @@ button.danger:hover {
 
 .transaction-entry-form {
   margin-top: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.transaction-entry-form .form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  align-items: start;
+}
+
+.transaction-entry-form .form-grid > div {
+  min-width: 0;
 }
 
 .field-hint {

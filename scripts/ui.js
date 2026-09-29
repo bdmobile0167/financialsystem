@@ -6269,93 +6269,50 @@ window.calcRemainingPreview = function(id, usedBudget) {
 
 // 3. 儲存專案修改（更新 Name、Total Budget 與 Department）
 async function updateProject(id) {
-  const nameInput = document.getElementById(`edit-name-${id}`);
-  const budgetInput = document.getElementById(`edit-budget-${id}`);
-  const deptSelect = document.getElementById(`edit-dept-${id}`);
-
-  if (!nameInput || !budgetInput || !deptSelect) return;
-
-  const newName = nameInput.value.trim();
-  const newBudget = Number(budgetInput.value) || 0;
-  const newDeptId = deptSelect.value || null;
-
-  if (!newName) {
-    alert('專案名稱不能為空！');
-    return;
-  }
-
-  try {
-    // 呼叫 Supabase 更新資料庫（請確認資料庫 Table 欄位名稱是否為 name, total_budget, department_id）
-    const { error } = await supabase
-      .from('projects')
-      .update({
-        name: newName,
-        total_budget: newBudget,
-        department_id: newDeptId
-      })
-      .eq('id', id)
-      ;
-
-    if (error) throw error;
-
-    alert('專案更新成功！');
-    renderProjectList(); // 重新載入，同步資料庫最新計算狀態
-  } catch (e) {
-    console.error('更新專案失敗:', e);
-    alert('更新失敗：' + (e.message || '請稍後再試'));
-  }
+  return window.updateProject(id);
 }
 
 window.updateProject = async (id) => {
-  const newBudgetInput = document.getElementById(`edit-budget-${id}`);
-  const newDeptInput = document.getElementById(`edit-dept-${id}`);
-  const newBankInput = document.getElementById(`edit-bank-${id}`);
-  const newBudget = Number(newBudgetInput.value);
-
+  const budgetInput = document.getElementById(`edit-budget-${id}`);
+  const deptInput = document.getElementById(`edit-dept-${id}`);
+  const bankInput = document.getElementById(`edit-bank-${id}`);
+  const nameInput = document.getElementById(`edit-name-${id}`);
+  if (!budgetInput || !deptInput) return;
+  const newBudget = Number(budgetInput.value);
+  if (!budgetInput.value.trim() || !Number.isFinite(newBudget) || newBudget < 0) {
+    alert('請輸入有效且不小於零的預算金額。');
+    return;
+  }
   try {
-    const { data: current, error: fetchErr } = await supabase
-      .from('projects').select('total_budget, remaining_budget').eq('id', id).single();
-    if (fetchErr) throw fetchErr;
-
+    const { data: current, error } = await supabase.from('projects')
+      .select('total_budget').eq('id', id).single();
+    if (error) throw error;
     const oldBudget = Number(current.total_budget || 0);
-
+    let reason = '';
     if (newBudget !== oldBudget) {
-      const reason = prompt(`預算將從 ${oldBudget.toLocaleString()} 改為 ${newBudget.toLocaleString()}，請輸入變更原因：`);
-      if (!reason || !reason.trim()) {
-        alert('未輸入原因，已取消變更。');
-        return;
-      }
-
-      const delta = newBudget - oldBudget;
-      let newRemaining = Number(current.remaining_budget || 0) + delta;
-
-      // 🛡️ 防呆機制：確保剩餘預算絕對不會超過新的總預算
-      newRemaining = Math.min(newRemaining, newBudget);
-      const { data: { user } } = await supabase.auth.getUser();
-
-      await updateProjectBudget(id, oldBudget, newBudget, reason.trim(), user.id);
-      const projectUpdates = {
-        remaining_budget: newRemaining,
-        department_id: newDeptInput.value || null
-      };
-      if (newBankInput) projectUpdates.default_bank_account_id = newBankInput.value || null;
-      await supabase.from('projects').update(projectUpdates).eq('id', id);
-    } else {
-      const projectUpdates = { department_id: newDeptInput.value || null };
-      if (newBankInput) projectUpdates.default_bank_account_id = newBankInput.value || null;
-      await supabase.from('projects').update(projectUpdates).eq('id', id);
+      reason = prompt(`預算將從 ${oldBudget.toLocaleString()} 改為 ${newBudget.toLocaleString()}，請輸入變更原因：`);
+      if (!reason?.trim()) return;
     }
-
+    const settings = { department_id: deptInput.value || null };
+    if (bankInput) settings.default_bank_account_id = bankInput.value || null;
+    if (nameInput) settings.name = nameInput.value.trim();
+    await updateProjectBudget(id, oldBudget, newBudget, reason.trim(), null, settings);
     showMessage('專案已更新。');
-    renderProjectList();
+    await renderProjectList();
   } catch (error) {
     alert('更新失敗：' + error.message);
   }
 };
 window.deleteProject = async (id) => {
   if (confirm('確定刪除此專案？')) {
-    await supabase.from('projects').delete().eq('id', id);
-    renderProjectList();
+    try {
+      const { error } = await supabase.from('projects').delete().eq('id', id).select('id').single();
+      if (error) throw error;
+      showMessage('專案已刪除。');
+      await renderProjectList();
+    } catch (error) {
+      alert('刪除失敗：' + error.message);
+    }
   }
 };
 
@@ -6392,8 +6349,10 @@ async function renderAdminDepartmentList() {
                 <td><span id="dept-display-name-${d.id}" class="department-name">${d.display_name || d.name}</span></td>
                 <td><span class="badge ${d.parent_department_id ? 'info' : ''}">${d.parent_department_id ? '組別' : '部門'}</span></td>
                 <td>
-                  <button onclick="editDepartmentName('${d.id}')" class="secondary" style="width:auto; padding:6px 12px;">修改名稱</button>
-                  <button onclick="deleteDepartment('${d.id}')" class="danger" style="width:auto; padding:6px 12px; margin-left:6px;">刪除</button>
+                  <div class="department-actions">
+                    <button type="button" onclick="editDepartmentName('${d.id}')" class="secondary">修改名稱</button>
+                    <button type="button" onclick="deleteDepartment('${d.id}')" class="danger">刪除</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}

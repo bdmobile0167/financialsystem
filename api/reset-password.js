@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
     const userId = String(req.body?.userId || '').trim();
     const password = String(req.body?.password || '').trim();
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
       json(res, 400, { ok: false, correlationId, message: 'userId must be a valid UUID.' });
       return;
     }

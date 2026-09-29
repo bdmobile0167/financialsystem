@@ -181,8 +181,9 @@ export async function createProject(data) {
 
 // 更新專案
 export async function updateProject(id, updates) {
-  const { error } = await supabase.from('projects').update(updates).eq('id', id);
+  const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select('id').single();
   if (error) throw error;
+  return data;
 }
 
 // 更新專案成員（採用差異比對，而非整批刪除重建，確保稽核紀錄只反映「真正的異動」）
@@ -261,17 +262,15 @@ export async function fetchProjectBudgetLogs(projectId) {
 }
 
 // 更新專案預算（含異動記錄）
-export async function updateProjectBudget(projectId, oldBudget, newBudget, reason, operatorId) {
-  const { error } = await supabase.from('project_budget_logs').insert({
-    project_id: projectId,
-    old_budget: oldBudget,
-    new_budget: newBudget,
-    change_reason: reason,
-    operator_id: operatorId
+export async function updateProjectBudget(projectId, oldAmount, newAmount, reason, userId, settings = {}) {
+  // The database derives the actor and remaining budget inside one transaction.
+  const { data, error } = await supabase.rpc('update_project_budget_atomic', {
+    p_project_id: projectId,
+    p_expected_budget: oldAmount,
+    p_new_budget: newAmount,
+    p_reason: reason || '',
+    p_settings: settings
   });
   if (error) throw error;
-  
-  // 更新專案總預算
-  const { error: updError } = await supabase.from('projects').update({ total_budget: newBudget }).eq('id', projectId);
-  if (updError) throw updError;
+  return data;
 }

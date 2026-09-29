@@ -130,6 +130,15 @@ module.exports = async (req, res) => {
     }
 
     const shouldUseSupabaseInvite = useSupabaseInviteEmail();
+    if (!shouldUseSupabaseInvite && (!process.env.GMAIL_USER?.trim() || !process.env.GMAIL_APP_PASSWORD?.trim())) {
+      json(res, 503, {
+        ok: false,
+        correlationId,
+        code: 'INVITE_EMAIL_NOT_CONFIGURED',
+        message: '尚未建立帳號：Gmail 寄信設定不完整。請在 Vercel Production 設定 GMAIL_USER 與 GMAIL_APP_PASSWORD 後重新部署；若使用已設定完成的 Supabase SMTP，請改設 INVITE_EMAIL_PROVIDER=supabase。'
+      });
+      return;
+    }
     const validation = validateInvitePayload(req.body || {}, { supabaseInvite: shouldUseSupabaseInvite });
     if (!validation.ok) {
       json(res, 400, { ok: false, correlationId, message: validation.errors.join(', ') });
