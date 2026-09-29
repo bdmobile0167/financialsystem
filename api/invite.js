@@ -52,7 +52,7 @@ function validateInvitePayload(body = {}, options = {}) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('email is invalid');
   if (!fullName) errors.push('fullName is required');
   if (!ALLOWED_ROLES.has(role)) errors.push('role is invalid');
-  if (departmentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(departmentId)) {
+  if (departmentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(departmentId)) {
     errors.push('departmentId must be a UUID');
   }
   if (!options.supabaseInvite && password.length < MIN_TEMP_PASSWORD_LENGTH) {

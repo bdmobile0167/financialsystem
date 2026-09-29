@@ -2194,7 +2194,24 @@ function renderReportLetterhead(elementId, reportTitle) {
   `;
 }
 
-function renderReportSignature(elementId) {
+async function fetchReportSigners() {
+  let departmentId = null;
+  if (state.currentProjectId && state.currentProjectId !== 'all') {
+    const { data, error } = await supabase.from('projects').select('department_id').eq('id', state.currentProjectId).single();
+    if (error) throw error;
+    departmentId = data.department_id;
+  }
+  const { data, error } = await supabase.from('profiles')
+    .select('id, full_name, role, department_id').eq('active', true)
+    .in('role', ['accounting', 'manager']).order('full_name');
+  if (error) throw error;
+  const names = role => [...new Set((data || [])
+    .filter(user => user.role === role && (role !== 'manager' || !departmentId || user.department_id === departmentId))
+    .map(user => user.full_name?.trim()).filter(Boolean))].join('、') || '尚未設定';
+  return { accounting: names('accounting'), manager: names('manager') };
+}
+
+function renderReportSignature(elementId, signers) {
   const container = document.getElementById(elementId);
   if (!container) return;
 
@@ -2204,13 +2221,13 @@ function renderReportSignature(elementId) {
   container.innerHTML = `
     <div class="report-signature-row">
       <div class="sign-box">
-        製表人：經辦
+        製表人：${escapeHtml(state.currentUser?.name || '尚未設定')}
       </div>
       <div class="sign-box">
-        會計主管：黃超明
+        會計主管：${escapeHtml(signers.accounting)}
       </div>
       <div class="sign-box">
-        單位主管：黃超明
+        單位主管：${escapeHtml(signers.manager)}
       </div>
       <div class="sign-box">
         日期：${customDate}
@@ -2647,6 +2664,13 @@ async function renderProjectExpenseReport(startDate, endDate) {
 }
 
 async function renderReports() {
+  let signers;
+  try {
+    signers = await fetchReportSigners();
+  } catch (error) {
+    console.error('Unable to load report signers', error);
+    signers = { accounting: '載入失敗', manager: '載入失敗' };
+  }
   let periodTx = getReportPeriodTransactions();
   const startDate = document.getElementById('reportPeriodStart')?.value || null;
   const endDate = document.getElementById('reportPeriodEnd')?.value || null;
@@ -2661,28 +2685,28 @@ async function renderReports() {
   renderReportLetterhead('incomeLetterhead', '損益表');
   const incomeStatement = await buildIncomeStatement(periodTx, startDate, endDate);
   renderTable('incomeTable', incomeStatement);
-  renderReportSignature('incomeSignature');
+  renderReportSignature('incomeSignature', signers);
 
   renderReportLetterhead('balanceLetterhead', '資產負債表');
   const balanceSheet = await buildBalanceSheet(periodTx, startDate, endDate);
   renderTable('balanceTable', balanceSheet);
-  renderReportSignature('balanceSignature');
+  renderReportSignature('balanceSignature', signers);
 
   renderReportLetterhead('cashflowLetterhead', '現金流量表');
   const cashflowStatement = await buildCashflowStatement(periodTx, startDate, endDate);
   renderTable('cashflowTable', cashflowStatement);
-  renderReportSignature('cashflowSignature');
+  renderReportSignature('cashflowSignature', signers);
 
   renderReportLetterhead('equityLetterhead', '權益變動表');
   const equityStatement = await buildEquityStatement(periodTx, startDate, endDate);
   renderTable('equityTable', equityStatement);
-  renderReportSignature('equitySignature');
+  renderReportSignature('equitySignature', signers);
 
   renderReportLetterhead('trialLetterhead', '試算表');
   const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
   const trialBalance = await buildTrialBalance(periodTx, startDate, endDate, includeAdjustments);
   renderTable('trialTable', trialBalance);
-  renderReportSignature('trialSignature');
+  renderReportSignature('trialSignature', signers);
 
   latestReportSnapshot = { incomeStatement, balanceSheet, cashflowStatement, equityStatement, trialBalance };
 

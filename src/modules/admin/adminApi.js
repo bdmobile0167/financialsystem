@@ -7,8 +7,9 @@ export async function fetchAllUsers() {
 }
 
 export async function updateUserProfile(id, updates) {
-  const { error } = await supabase.from('profiles').update(updates).eq('id', id);
+  const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select('id').single();
   if (error) throw error;
+  return data;
 }
 
 export async function resetUserPassword(id, password) {
@@ -32,13 +33,11 @@ export async function resetUserPassword(id, password) {
 }
 
 export async function toggleUserActive(id, active) {
-  const { error } = await supabase.from('profiles').update({ active }).eq('id', id);
-  if (error) throw error;
+  return updateUserProfile(id, { active });
 }
 
 export async function updateUserPermissions(id, permissions) {
-  const { error } = await supabase.from('profiles').update({ permissions }).eq('id', id);
-  if (error) throw error;
+  return updateUserProfile(id, { permissions });
 }
 
 export async function inviteNewUser(payload) {
