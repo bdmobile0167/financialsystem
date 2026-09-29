@@ -2251,11 +2251,11 @@ button.audit-voucher-link {
    12. 財報樣式
    ========================================= */
 .financial-hero {
-  background: linear-gradient(135deg, var(--primary-strong) 0%, var(--primary-strong) 100%);
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
   padding: 20px 22px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--primary-strong);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-wrap: wrap;
@@ -2269,15 +2269,15 @@ button.audit-voucher-link {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #818cf8;
+  color: var(--primary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.financial-hero h2 { margin: 4px 0 2px; font-size: 19px; font-weight: 800; }
-.financial-hero p { margin: 0; font-size: 12px; color: #94a3b8; max-width: 480px; }
+.financial-hero h2 { margin: 4px 0 2px; font: 600 19px/1.5 var(--font-serif); color: var(--primary-strong); }
+.financial-hero p { margin: 0; font-size: 12px; color: var(--muted); max-width: 480px; }
 
 .hero-btn {
   display: inline-flex;
@@ -2294,17 +2294,17 @@ button.audit-voucher-link {
 }
 
 .hero-btn-ghost {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.14);
-  color: var(--border);
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--primary);
 }
-.hero-btn-ghost:hover { background: rgba(255,255,255,0.12); }
+.hero-btn-ghost:hover { background: var(--surface-strong); }
 
 .hero-btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary));
-  color: #fff;
+  background: var(--primary);
+  color: var(--surface);
 }
-.hero-btn-primary:hover { background: linear-gradient(135deg, var(--primary-strong), var(--primary)); }
+.hero-btn-primary:hover { background: var(--primary-strong); }
 
 .report-tabbar {
   display: flex;
@@ -2463,18 +2463,18 @@ button.audit-voucher-link {
 
 .fundraise-stat-card .stat-label { font-size: 11px; font-weight: 700; }
 .fundraise-stat-card .stat-value { font-size: 19px; font-weight: 800; font-family: var(--font-mono); }
-.fundraise-stat-card.indigo { background: #eef2ff; border-color: #c7d2fe; }
-.fundraise-stat-card.indigo .stat-label { color: #4338ca; }
-.fundraise-stat-card.indigo .stat-value { color: #312e81; }
-.fundraise-stat-card.purple { background: #faf5ff; border-color: #e9d5ff; }
-.fundraise-stat-card.purple .stat-label { color: #7e22ce; }
-.fundraise-stat-card.purple .stat-value { color: #581c87; }
+.fundraise-stat-card.indigo,
+.fundraise-stat-card.purple,
+.fundraise-stat-card.emerald { background: var(--primary-light); border-color: var(--border); }
+.fundraise-stat-card.indigo .stat-label,
+.fundraise-stat-card.purple .stat-label,
+.fundraise-stat-card.emerald .stat-label { color: var(--muted); }
+.fundraise-stat-card.indigo .stat-value,
+.fundraise-stat-card.purple .stat-value,
+.fundraise-stat-card.emerald .stat-value { color: var(--primary-strong); }
 .fundraise-stat-card.slate { background: var(--surface-strong); border-color: var(--border); }
 .fundraise-stat-card.slate .stat-label { color: var(--muted); }
 .fundraise-stat-card.slate .stat-value { color: var(--text); }
-.fundraise-stat-card.emerald { background: var(--success-light); border-color: #a7f3d0; }
-.fundraise-stat-card.emerald .stat-label { color: var(--success); }
-.fundraise-stat-card.emerald .stat-value { color: #064e3b; }
 
 .fundraise-sim {
   background: var(--surface-strong);
@@ -2515,11 +2515,11 @@ button.audit-voucher-link {
 .fundraise-result span { font-size: 11px; color: var(--muted); font-weight: 600; }
 .fundraise-result strong { font-size: 14px; color: var(--text); font-family: var(--font-mono); }
 .fundraise-result.highlight {
-  background: linear-gradient(135deg, var(--primary), #7c3aed);
-  border-color: transparent;
+  background: var(--primary);
+  border-color: var(--primary-strong);
 }
-.fundraise-result.highlight span { color: rgba(255,255,255,0.8); }
-.fundraise-result.highlight strong { color: #fff; font-size: 16px; }
+.fundraise-result.highlight span { color: var(--primary-light); }
+.fundraise-result.highlight strong { color: var(--surface); font-size: 16px; }
 
 /* IFRS 規則卡片 */
 .ifrs-rules-grid {
@@ -2528,15 +2528,18 @@ button.audit-voucher-link {
   gap: 14px;
 }
 .ifrs-rule-card {
+  background: var(--surface-strong);
+  color: var(--primary);
   border-radius: var(--radius);
-  border: 1px solid;
+  border: 1px solid var(--border);
   padding: 14px;
   font-size: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.ifrs-rule-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ifrs-rule-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ifrs-badge { padding: 3px 6px; background: var(--primary-light); color: var(--primary-strong); border-radius: var(--radius-sm); font: 500 11px/1.5 var(--font-mono); }
 .ifrs-rule-head span:first-child { font-weight: 700; font-size: 13px; }
 .ifrs-rule-card p { margin: 0; color: var(--muted); line-height: 1.5; }
 .ifrs-rule-notes {
@@ -3438,6 +3441,7 @@ button.dashboard-link {
 .ar-invoice-grid input, .ar-invoice-grid select, .ar-invoice-grid textarea { width: 100%; min-width: 0; }
 .ar-invoice-grid textarea { min-height: 76px; resize: vertical; }
 .ar-invoice-grid .ar-wide { grid-column: 1 / -1; }
+.table-wrapper { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; }
 .ar-lines { min-width: 980px; margin-top: 16px; }
 .ar-lines input, .ar-lines select { width: 100%; min-width: 90px; }
 .ar-lines th:first-child, .ar-lines td:first-child { min-width: 220px; }
@@ -3886,10 +3890,6 @@ button.dashboard-link {
   .dashboard-metrics { grid-template-columns: minmax(0, 1fr); }
   .dashboard-metric { border-right: 0; border-bottom: 1px solid var(--border); }
   .dashboard-metric:last-child { border-bottom: 0; }
-}
-
-@media screen and (max-width: 390px) {
-  .dashboard-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media print {
