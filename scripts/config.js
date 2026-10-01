@@ -1,4 +1,4 @@
 
-export const APP_VERSION = '0.6.6';
+export const APP_VERSION = '0.6.18';
 export const STORAGE_KEY = 'finance_vercel_app_v1';
 export const USER_KEY = 'finance_vercel_user';

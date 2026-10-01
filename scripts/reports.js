@@ -1,4 +1,4 @@
-import { runAccountingPipeline, buildEquityAnalysis, buildCashFlowByActivity } from '../src/modules/accounting/index.js';
+import { runAccountingPipeline, buildEquityAnalysis } from '../src/modules/accounting/index.js';
 import { supabase } from './supabaseClient.js';
 import { getCompanyInfo } from './companyContext.js';
 
@@ -253,7 +253,7 @@ async function fetchAllSupabaseRows(buildQuery, {
 
   for (let from = 0; ; from += pageSize) {
     const to = from + pageSize - 1;
-    const { data, error } = await buildQuery().range(from, to);
+    const { data, error } = await buildQuery().order('id', { ascending: true }).range(from, to);
     if (error) throw error;
     const page = data || [];
     rows.push(...page);
@@ -261,8 +261,12 @@ async function fetchAllSupabaseRows(buildQuery, {
     if (from > 100000) throw new Error(`${label} pagination exceeded safety limit`);
   }
 
-  if (expectedCount !== null && rows.length < expectedCount) {
-    console.warn(`${label} fetched ${rows.length} rows but count is ${expectedCount}.`);
+  if (expectedCount !== null && rows.length !== expectedCount) {
+    throw new Error(`${label} fetched ${rows.length} rows but count is ${expectedCount}; report was not produced.`);
+  }
+  const ids = rows.map(row => row.id).filter(Boolean);
+  if (ids.length !== new Set(ids).size) {
+    throw new Error(`${label} contains duplicate IDs; report was not produced.`);
   }
 
   return rows;
@@ -319,8 +323,11 @@ async function fetchSupabaseTrialBalance(startDate = null, endDate = null) {
   });
 
   entries.forEach(entry => {
-    if (ledger[entry.debit_account_id]) ledger[entry.debit_account_id].debitTotal += debitBase(entry);
-    if (ledger[entry.credit_account_id]) ledger[entry.credit_account_id].creditTotal += creditBase(entry);
+    if (!ledger[entry.debit_account_id] || !ledger[entry.credit_account_id]) {
+      throw new Error(`總帳分錄 ${entry.id || ''} 的借方或貸方科目不存在，財報已停止產生`);
+    }
+    ledger[entry.debit_account_id].debitTotal += debitBase(entry);
+    ledger[entry.credit_account_id].creditTotal += creditBase(entry);
   });
 
   const rows = Object.values(ledger)
@@ -335,22 +342,56 @@ async function fetchSupabaseTrialBalance(startDate = null, endDate = null) {
 
   const totalDebit = rows.reduce((sum, row) => sum + Number(row.debitTotal || 0), 0);
   const totalCredit = rows.reduce((sum, row) => sum + Number(row.creditTotal || 0), 0);
-  return { rows, totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 0.01 };
+  if (Math.abs(totalDebit - totalCredit) >= 0.01) {
+    throw new Error('總帳試算表借貸不平，財報已停止產生');
+  }
+  return { rows, totalDebit, totalCredit, isBalanced: true };
 }
 
-async function fetchTrialBalance(transactions = [], startDate = null, endDate = null) {
-  try {
-    return await fetchSupabaseTrialBalance(startDate, endDate);
-  } catch (error) {
-    console.warn('Unable to load Supabase trial balance, using local transactions:', error.message);
-    return localTrialBalance(transactions);
+async function fetchTrialBalance(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
+  const trialBalance = await fetchSupabaseTrialBalance(startDate, endDate);
+  if (!includeAdjustments) return trialBalance;
+
+  const rows = trialBalance.rows.map(row => ({ ...row }));
+  const rowsByCode = new Map(rows.map(row => [row.code, row]));
+  const buildAdjustmentsQuery = (columns, options = {}) => {
+    let query = supabase.from('ifrs_adjustment_lines')
+      .select(columns, options).eq('ifrs_adjustments.status', 'approved');
+    if (startDate) query = query.gte('ifrs_adjustments.entry_date', startDate);
+    if (endDate) query = query.lte('ifrs_adjustments.entry_date', endDate);
+    return query;
+  };
+  const adjustments = await fetchAllSupabaseRows(
+    () => buildAdjustmentsQuery('id, debit_amount, credit_amount, accounts(code, name, type), ifrs_adjustments!inner(status, entry_date)'),
+    {
+      label: 'approved IFRS adjustment lines',
+      buildCountQuery: () => buildAdjustmentsQuery('id, ifrs_adjustments!inner(status, entry_date)', { count: 'exact', head: true })
+    }
+  );
+  adjustments.forEach(line => {
+    const account = line.accounts;
+    if (!account?.code) throw new Error('IFRS 調整分錄科目資料不完整');
+    let row = rowsByCode.get(account.code);
+    if (!row) {
+      row = { code: account.code, name: account.name, type: account.type, debitTotal: 0, creditTotal: 0 };
+      rows.push(row);
+      rowsByCode.set(account.code, row);
+    }
+    row.debitTotal += Number(line.debit_amount || 0);
+    row.creditTotal += Number(line.credit_amount || 0);
+  });
+  rows.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const totalDebit = rows.reduce((sum, row) => sum + Number(row.debitTotal || 0), 0);
+  const totalCredit = rows.reduce((sum, row) => sum + Number(row.creditTotal || 0), 0);
+  if (Math.abs(totalDebit - totalCredit) >= 0.01) {
+    throw new Error('IFRS 調整後試算表借貸不平，財報已停止產生');
   }
+  return { rows, totalDebit, totalCredit, isBalanced: true };
 }
 
 export async function buildJournal(transactions = [], startDate = null, endDate = null) {
-  try {
-    const journalEntries = await fetchAllSupabaseRows(
-      () => buildJournalEntriesQuery(`
+  const journalEntries = await fetchAllSupabaseRows(
+    () => buildJournalEntriesQuery(`
         id,
         entry_date,
         memo,
@@ -365,44 +406,29 @@ export async function buildJournal(transactions = [], startDate = null, endDate 
         debit_account:accounts!journal_entries_debit_account_id_fkey(code, name),
         credit_account:accounts!journal_entries_credit_account_id_fkey(code, name),
         vouchers(voucher_no)
-      `, startDate, endDate).order('entry_date', { ascending: false }),
-      {
-        label: 'journal_entries journal view',
-        buildCountQuery: () => buildJournalEntriesQuery('id', startDate, endDate, { count: 'exact', head: true })
-      }
-    );
+    `, startDate, endDate).order('entry_date', { ascending: false }),
+    {
+      label: 'journal_entries journal view',
+      buildCountQuery: () => buildJournalEntriesQuery('id', startDate, endDate, { count: 'exact', head: true })
+    }
+  );
 
-    return Array.from(new Map(journalEntries.map(entry => [entry.id, entry])).values()).map(entry => ({
-      id: entry.id,
-      date: entry.entry_date,
-      summary: entry.memo || LABELS.noMemo,
-      bank: '-',
-      debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
-      debitAmount: debitBase(entry),
-      creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
-      creditAmount: creditBase(entry),
-      voucher: entry.vouchers?.voucher_no || entry.voucher_id || entry.transaction_id || '-',
-      status: 'posted'
-    }));
-  } catch (error) {
-    console.warn('Unable to load Supabase journal, using local transactions:', error.message);
-    const { journalEntries } = runAccountingPipeline(transactions);
-    return journalEntries.map(entry => ({
-      date: entry.date,
-      summary: entry.memo,
-      bank: entry.bank,
-      debitAccount: `${entry.debitAccountCode} ${entry.debitAccountName}`,
-      debitAmount: entry.debitAmount,
-      creditAccount: `${entry.creditAccountCode} ${entry.creditAccountName}`,
-      creditAmount: entry.creditAmount,
-      voucher: entry.voucher,
-      status: entry.status
-    }));
-  }
+  return journalEntries.map(entry => ({
+    id: entry.id,
+    date: entry.entry_date,
+    summary: entry.memo || LABELS.noMemo,
+    bank: '-',
+    debitAccount: entry.debit_account ? `${entry.debit_account.code} ${entry.debit_account.name}` : '-',
+    debitAmount: debitBase(entry),
+    creditAccount: entry.credit_account ? `${entry.credit_account.code} ${entry.credit_account.name}` : '-',
+    creditAmount: creditBase(entry),
+    voucher: entry.vouchers?.voucher_no || entry.voucher_id || entry.transaction_id || '-',
+    status: 'posted'
+  }));
 }
 
-export async function buildIncomeStatement(transactions = [], startDate = null, endDate = null) {
-  const { rows } = await fetchTrialBalance(transactions, startDate, endDate);
+export async function buildIncomeStatement(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
+  const { rows } = await fetchTrialBalance(transactions, startDate, endDate, includeAdjustments);
   const revenueRows = rows.filter(row => String(row.code || '').startsWith('4'));
   const expenseRows = rows.filter(row => String(row.code || '').startsWith('5') || String(row.code || '').startsWith('6'));
   const totalRevenue = revenueRows.reduce((sum, row) => sum + (Number(row.creditTotal || 0) - Number(row.debitTotal || 0)), 0);
@@ -497,12 +523,13 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
 
   const actualBalance = balanceRows.reduce((sum, row) => sum + Number(row.display_balance || 0), 0);
   let ledgerBalance = null;
+  let balanceError = null;
   try {
     const { rows } = await fetchSupabaseTrialBalance(null, asOfDate);
     const bankRow = rows.find(row => row.code === '1102');
     ledgerBalance = bankRow ? Number(bankRow.debitTotal || 0) - Number(bankRow.creditTotal || 0) : 0;
   } catch (error) {
-    console.warn('Unable to calculate ledger bank balance:', error.message);
+    balanceError = error;
   }
 
   const difference = ledgerBalance === null ? null : actualBalance - ledgerBalance;
@@ -511,17 +538,19 @@ export async function getBankReconciliationStatus(startDate = null, endDate = nu
     ledgerBalance,
     difference,
     balanceRows,
+    balanceError,
     status: ledgerBalance === null ? 'unknown' : Math.abs(difference) < 0.01 ? 'matched' : 'difference'
   };
 }
 
-export async function buildBalanceSheet(transactions = [], startDate = null, endDate = null) {
-  const { rows } = await fetchTrialBalance(transactions, startDate, endDate);
+export async function buildBalanceSheet(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
+  // A balance sheet is a snapshot as of its end date; opening balances must remain included.
+  const { rows } = await fetchTrialBalance(transactions, null, endDate, includeAdjustments);
   const currentAssetsRows = rows.filter(row => String(row.code || '').startsWith('1') && !String(row.code || '').startsWith('16'));
   const nonCurrentAssetsRows = rows.filter(row => String(row.code || '').startsWith('16'));
   const currentLiabilitiesRows = rows.filter(row => String(row.code || '').startsWith('2'));
   const equityRows = rows.filter(row => String(row.code || '').startsWith('3'));
-  const income = await buildIncomeStatement(transactions, startDate, endDate);
+  const income = await buildIncomeStatement(transactions, null, endDate, includeAdjustments);
   const netProfit = Number(income.netProfit || 0);
   const currentAssetsTotal = currentAssetsRows.reduce((sum, row) => sum + accountBalance(row), 0);
   const nonCurrentAssetsTotal = nonCurrentAssetsRows.reduce((sum, row) => sum + accountBalance(row), 0);
@@ -567,42 +596,19 @@ export async function buildBalanceSheet(transactions = [], startDate = null, end
 }
 
 export async function buildCashflowStatement(transactions = [], startDate = null, endDate = null) {
-  try {
-    return await buildCashflowStatementByLinkedBanks(transactions, startDate, endDate);
-  } catch (error) {
-    console.warn('Unable to build linked-bank cashflow, using local transactions:', error.message);
-    const analysis = buildCashFlowByActivity(transactions || []);
-    return [
-      [LABELS.operatingCashflow, analysis.operating],
-      [LABELS.investingCashflow, analysis.investing],
-      [LABELS.financingCashflow, analysis.financing],
-      [LABELS.netCashChange, analysis.net]
-    ];
-  }
+  return buildCashflowStatementByLinkedBanks(transactions, startDate, endDate);
 }
 
-export async function buildCashflowStatementByLinkedBanks(transactions = [], startDate = null, endDate = null) {
-  const entries = await fetchAllSupabaseRows(
-    () => buildJournalEntriesQuery(`
-      id,
-      debit_amount,
-      credit_amount,
-      debit_amount_base,
-      credit_amount_base,
-      vouchers(category)
-    `, startDate, endDate),
-    {
-      label: 'journal_entries cashflow',
-      buildCountQuery: () => buildJournalEntriesQuery('id', startDate, endDate, { count: 'exact', head: true })
-    }
-  );
-
+export function summarizeBankCashflows(bankTransactions = []) {
   const totals = { [OPERATING]: 0, [INVESTING]: 0, [FINANCING]: 0 };
-  entries.forEach(entry => {
-    const activity = cashflowActivity(entry.vouchers?.category);
-    totals[activity] += debitBase(entry) - creditBase(entry);
+  bankTransactions.forEach(transaction => {
+    const type = normalizeType(transaction.type);
+    if (type !== 'income' && type !== 'expense') {
+      throw new Error(`Unsupported bank transaction type in cashflow: ${transaction.type}`);
+    }
+    const activity = cashflowActivity(transaction.category || transaction.vouchers?.category);
+    totals[activity] += (type === 'expense' ? -1 : 1) * amountBase(transaction);
   });
-
   const net = totals[OPERATING] + totals[INVESTING] + totals[FINANCING];
   return [
     [LABELS.operatingCashflow, totals[OPERATING]],
@@ -612,76 +618,62 @@ export async function buildCashflowStatementByLinkedBanks(transactions = [], sta
   ];
 }
 
-export async function buildEquityStatement(transactions = [], startDate = null, endDate = null) {
-  try {
-    if (!startDate && !endDate) {
-      const { rows } = await fetchSupabaseTrialBalance();
-      return createEquityStatementRows({
-        openingCapital: 0,
-        capitalChange: netCreditBalance(rows, '3110'),
-        retainedAccountChange: netCreditBalance(rows, '3310'),
-        netProfitThisPeriod: netIncomeFromRows(rows)
-      });
+export async function buildCashflowStatementByLinkedBanks(transactions = [], startDate = null, endDate = null) {
+  const bankTransactions = await fetchAllSupabaseRows(
+    () => buildBankTransactionsQuery(
+      'id, tx_date, type, category, amount, amount_base, vouchers(category)',
+      startDate, endDate),
+    {
+      label: 'bank_transactions cashflow',
+      buildCountQuery: () => buildBankTransactionsQuery('id', startDate, endDate, { count: 'exact', head: true })
     }
+  );
+  return summarizeBankCashflows(bankTransactions);
+}
 
-    const openingCutoff = dayBefore(startDate);
-    const openingTrialBalance = startDate ? await fetchSupabaseTrialBalance(null, openingCutoff) : { rows: [] };
-    const openingCapital = netCreditBalance(openingTrialBalance.rows, '3110');
-    const openingRetainedEarnings = netCreditBalance(openingTrialBalance.rows, '3310') + netIncomeFromRows(openingTrialBalance.rows);
-
-    const { rows } = await fetchSupabaseTrialBalance(startDate, endDate);
-    const capitalChange = netCreditBalance(rows, '3110');
-    const retainedAccountChange = netCreditBalance(rows, '3310');
-    const netProfitThisPeriod = netIncomeFromRows(rows);
+export async function buildEquityStatement(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
+  if (!startDate && !endDate) {
+    const { rows } = await fetchTrialBalance(transactions, null, null, includeAdjustments);
     return createEquityStatementRows({
-      openingCapital,
-      openingRetainedEarnings,
-      capitalChange,
-      retainedAccountChange,
-      netProfitThisPeriod
-    });
-  } catch (error) {
-    console.warn('Unable to load Supabase equity statement, using local transactions:', error.message);
-    const analysis = buildEquityAnalysis(transactions || [], 0);
-    return createEquityStatementRows({
-      openingCapital: analysis.openingCapital,
-      capitalChange: analysis.capitalChange,
-      netProfitThisPeriod: analysis.retainedEarnings
+      openingCapital: 0,
+      capitalChange: netCreditBalance(rows, '3110'),
+      retainedAccountChange: netCreditBalance(rows, '3310'),
+      netProfitThisPeriod: netIncomeFromRows(rows)
     });
   }
+
+  const openingCutoff = dayBefore(startDate);
+  const openingTrialBalance = startDate ? await fetchTrialBalance(transactions, null, openingCutoff, includeAdjustments) : { rows: [] };
+  const openingCapital = netCreditBalance(openingTrialBalance.rows, '3110');
+  const openingRetainedEarnings = netCreditBalance(openingTrialBalance.rows, '3310') + netIncomeFromRows(openingTrialBalance.rows);
+
+  const { rows } = await fetchTrialBalance(transactions, startDate, endDate, includeAdjustments);
+  return createEquityStatementRows({
+    openingCapital,
+    openingRetainedEarnings,
+    capitalChange: netCreditBalance(rows, '3110'),
+    retainedAccountChange: netCreditBalance(rows, '3310'),
+    netProfitThisPeriod: netIncomeFromRows(rows)
+  });
 }
 
 export async function buildEquityOverviewSnapshot(transactions = []) {
-  try {
-    const [{ rows }, company] = await Promise.all([
-      fetchSupabaseTrialBalance(),
-      getCompanyInfo()
-    ]);
-    const totalCapital = Number(company.totalCapital || 0);
-    const paidInCapital = getCompanyPaidInCapital(company);
-    const ledgerCapital = netCreditBalance(rows, '3110');
-    const retainedEarnings = netCreditBalance(rows, '3310') + netIncomeFromRows(rows);
-    return {
-      totalCapital,
-      paidInCapital,
-      ledgerCapital,
-      reconciliationDifference: paidInCapital - ledgerCapital,
-      retainedEarnings,
-      rows: createEquityOverviewRows({ totalCapital, paidInCapital, ledgerCapital, retainedEarnings })
-    };
-  } catch (error) {
-    console.warn('Unable to load Supabase equity overview, using local transactions:', error.message);
-    const analysis = buildEquityAnalysis(transactions || [], 0);
-    const ledgerCapital = analysis.openingCapital + analysis.capitalChange;
-    return {
-      totalCapital: 0,
-      paidInCapital: 0,
-      ledgerCapital,
-      reconciliationDifference: -ledgerCapital,
-      retainedEarnings: analysis.retainedEarnings,
-      rows: createEquityOverviewRows({ ledgerCapital, retainedEarnings: analysis.retainedEarnings })
-    };
-  }
+  const [{ rows }, company] = await Promise.all([
+    fetchSupabaseTrialBalance(),
+    getCompanyInfo()
+  ]);
+  const totalCapital = Number(company.totalCapital || 0);
+  const paidInCapital = getCompanyPaidInCapital(company);
+  const ledgerCapital = netCreditBalance(rows, '3110');
+  const retainedEarnings = netCreditBalance(rows, '3310') + netIncomeFromRows(rows);
+  return {
+    totalCapital,
+    paidInCapital,
+    ledgerCapital,
+    reconciliationDifference: paidInCapital - ledgerCapital,
+    retainedEarnings,
+    rows: createEquityOverviewRows({ totalCapital, paidInCapital, ledgerCapital, retainedEarnings })
+  };
 }
 
 export async function buildEquityOverview(transactions = []) {
@@ -690,33 +682,7 @@ export async function buildEquityOverview(transactions = []) {
 }
 
 export async function buildTrialBalance(transactions = [], startDate = null, endDate = null, includeAdjustments = false) {
-  const trialBalance = await fetchTrialBalance(transactions, startDate, endDate);
-  const rows = [...trialBalance.rows];
-
-  if (includeAdjustments) {
-    try {
-      const { data: adjustments, error } = await supabase
-        .from('ifrs_adjustment_lines')
-        .select('debit_amount, credit_amount, accounts(code, name, type)');
-      if (error) throw error;
-
-      (adjustments || []).forEach(line => {
-        const account = line.accounts;
-        if (!account?.code) return;
-        let row = rows.find(item => item.code === account.code);
-        if (!row) {
-          row = { code: account.code, name: account.name, type: account.type, debitTotal: 0, creditTotal: 0 };
-          rows.push(row);
-        }
-        row.debitTotal += Number(line.debit_amount || 0);
-        row.creditTotal += Number(line.credit_amount || 0);
-      });
-    } catch (error) {
-      console.warn('Unable to apply IFRS adjustment lines:', error.message);
-    }
-  }
-
-  rows.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const { rows } = await fetchTrialBalance(transactions, startDate, endDate, includeAdjustments);
   return {
     type: 'structured',
     sections: [

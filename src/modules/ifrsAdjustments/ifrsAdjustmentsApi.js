@@ -21,48 +21,22 @@ export async function fetchIfrsAdjustments() {
  * lines: [{ account_id, debit_amount, credit_amount, memo }]
  */
 export async function createIfrsAdjustment({ standard, reason, entryDate, lines }) {
-  if (!lines || lines.length === 0) {
+  if (!Array.isArray(lines) || lines.length < 2) {
     throw new Error('請至少填寫一行借方與一行貸方分錄');
   }
-  const totalDebit = lines.reduce((s, l) => s + Number(l.debit_amount || 0), 0);
-  const totalCredit = lines.reduce((s, l) => s + Number(l.credit_amount || 0), 0);
-  if (totalDebit !== totalCredit) {
-    throw new Error(`借貸不平衡（借方 ${totalDebit.toLocaleString()} / 貸方 ${totalCredit.toLocaleString()}），請檢查後再送出`);
-  }
-
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id;
-
-  const { data: adjustment, error: headerError } = await supabase
-    .from('ifrs_adjustments')
-    .insert({
-      standard,
-      reason,
-      entry_date: entryDate || new Date().toISOString().slice(0, 10),
-      status: 'draft',
-      created_by: userId
-    })
-    .select()
-    .single();
-  if (headerError) throw headerError;
-
-  const linePayload = lines.map((l, idx) => ({
-    adjustment_id: adjustment.id,
-    account_id: l.account_id,
-    debit_amount: Number(l.debit_amount || 0),
-    credit_amount: Number(l.credit_amount || 0),
-    memo: l.memo || null,
-    line_no: idx + 1
-  }));
-
-  const { error: linesError } = await supabase.from('ifrs_adjustment_lines').insert(linePayload);
-  if (linesError) {
-    // 明細寫入失敗時，把已建立的主檔一併清掉，避免留下沒有明細的空分錄
-    await supabase.from('ifrs_adjustments').delete().eq('id', adjustment.id);
-    throw linesError;
-  }
-
-  return adjustment;
+  const { data, error } = await supabase.rpc('create_ifrs_adjustment_atomic', {
+    p_standard: standard,
+    p_reason: reason,
+    p_entry_date: entryDate || new Date().toISOString().slice(0, 10),
+    p_lines: lines.map(line => ({
+      account_id: line.account_id,
+      debit_amount: Number(line.debit_amount || 0),
+      credit_amount: Number(line.credit_amount || 0),
+      memo: line.memo || null
+    }))
+  });
+  if (error) throw error;
+  return data;
 }
 
 /**
@@ -116,15 +90,17 @@ export async function reverseIfrsAdjustment(adjustmentId, reason) {
 }
 
 /**
- * 刪除草稿（僅限尚未核准的分錄；已核准的分錄由資料庫 trigger 擋下刪除）。
+ * 原子刪除草稿及明細；資料庫會驗證角色、狀態並寫入稽核紀錄。
  */
 export async function deleteIfrsAdjustmentDraft(adjustmentId) {
-  const { error } = await supabase
-    .from('ifrs_adjustments')
-    .delete()
-    .eq('id', adjustmentId)
-    .eq('status', 'draft');
+  const { data, error } = await supabase.rpc('delete_ifrs_adjustment_draft', {
+    p_adjustment_id: adjustmentId
+  });
   if (error) throw error;
+  if (!data?.deleted || data.id !== adjustmentId) {
+    throw new Error('草稿未刪除，請重新整理後再試。');
+  }
+  return data;
 }
 
 /**

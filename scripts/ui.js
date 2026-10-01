@@ -2183,30 +2183,24 @@ function renderReportLetterhead(elementId, reportTitle) {
   const today = new Date().toLocaleDateString('zh-TW');
   const company = state.companyInfo || {};
   el.innerHTML = `
-    <div class="report-company">${company.companyNameZh || '（尚未設定公司名稱）'}</div>
-    <div class="report-title">${reportTitle}</div>
-    <div class="report-period">期間：${periodText}</div>
+    <div class="report-company">${escapeHtml(company.companyNameZh || '（尚未設定公司名稱）')}</div>
+    <div class="report-title">${escapeHtml(reportTitle)}</div>
+    <div class="report-period">範圍：全公司｜期間：${escapeHtml(periodText)}</div>
     <div class="report-meta-row">
-      <span>統一編號：${company.taxId || '-'}</span>
+      <span>統一編號：${escapeHtml(company.taxId || '-')}</span>
       <span>單位：新臺幣元</span>
-      <span>列印日期：${today}</span>
+      <span>列印日期：${escapeHtml(today)}</span>
     </div>
   `;
 }
 
 async function fetchReportSigners() {
-  let departmentId = null;
-  if (state.currentProjectId && state.currentProjectId !== 'all') {
-    const { data, error } = await supabase.from('projects').select('department_id').eq('id', state.currentProjectId).single();
-    if (error) throw error;
-    departmentId = data.department_id;
-  }
   const { data, error } = await supabase.from('profiles')
     .select('id, full_name, role, department_id').eq('active', true)
     .in('role', ['accounting', 'manager']).order('full_name');
   if (error) throw error;
   const names = role => [...new Set((data || [])
-    .filter(user => user.role === role && (role !== 'manager' || !departmentId || user.department_id === departmentId))
+    .filter(user => user.role === role)
     .map(user => user.full_name?.trim()).filter(Boolean))].join('、') || '尚未設定';
   return { accounting: names('accounting'), manager: names('manager') };
 }
@@ -2664,6 +2658,20 @@ async function renderProjectExpenseReport(startDate, endDate) {
 }
 
 async function renderReports() {
+  try {
+    await renderReportsContent();
+  } catch (error) {
+    latestReportSnapshot = null;
+    for (const id of ['incomeTable', 'balanceTable', 'cashflowTable', 'equityTable', 'trialTable']) {
+      const container = document.getElementById(id);
+      if (container) container.innerHTML = `<p class="message error">財報載入失敗：${escapeHtml(error.message)}</p>`;
+    }
+    console.error('Unable to load financial reports', error);
+    showMessage(`財報載入失敗：${error.message}`, true);
+  }
+}
+
+async function renderReportsContent() {
   let signers;
   try {
     signers = await fetchReportSigners();
@@ -2671,24 +2679,20 @@ async function renderReports() {
     console.error('Unable to load report signers', error);
     signers = { accounting: '載入失敗', manager: '載入失敗' };
   }
-  let periodTx = getReportPeriodTransactions();
+  const periodTx = getReportPeriodTransactions();
   const startDate = document.getElementById('reportPeriodStart')?.value || null;
   const endDate = document.getElementById('reportPeriodEnd')?.value || null;
+  const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
 
   await renderProjectExpenseReport(startDate, endDate);
 
-  // 專案過濾
-  if (state.currentProjectId && state.currentProjectId !== 'all') {
-    periodTx = periodTx.filter(tx => tx.project_id === state.currentProjectId);
-  }
-
-  renderReportLetterhead('incomeLetterhead', '損益表');
-  const incomeStatement = await buildIncomeStatement(periodTx, startDate, endDate);
+  renderReportLetterhead('incomeLetterhead', includeAdjustments ? '損益表（含 IFRS 調整）' : '損益表');
+  const incomeStatement = await buildIncomeStatement(periodTx, startDate, endDate, includeAdjustments);
   renderTable('incomeTable', incomeStatement);
   renderReportSignature('incomeSignature', signers);
 
-  renderReportLetterhead('balanceLetterhead', '資產負債表');
-  const balanceSheet = await buildBalanceSheet(periodTx, startDate, endDate);
+  renderReportLetterhead('balanceLetterhead', includeAdjustments ? '資產負債表（含 IFRS 調整）' : '資產負債表');
+  const balanceSheet = await buildBalanceSheet(periodTx, startDate, endDate, includeAdjustments);
   renderTable('balanceTable', balanceSheet);
   renderReportSignature('balanceSignature', signers);
 
@@ -2697,13 +2701,12 @@ async function renderReports() {
   renderTable('cashflowTable', cashflowStatement);
   renderReportSignature('cashflowSignature', signers);
 
-  renderReportLetterhead('equityLetterhead', '權益變動表');
-  const equityStatement = await buildEquityStatement(periodTx, startDate, endDate);
+  renderReportLetterhead('equityLetterhead', includeAdjustments ? '權益變動表（含 IFRS 調整）' : '權益變動表');
+  const equityStatement = await buildEquityStatement(periodTx, startDate, endDate, includeAdjustments);
   renderTable('equityTable', equityStatement);
   renderReportSignature('equitySignature', signers);
 
   renderReportLetterhead('trialLetterhead', '試算表');
-  const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
   const trialBalance = await buildTrialBalance(periodTx, startDate, endDate, includeAdjustments);
   renderTable('trialTable', trialBalance);
   renderReportSignature('trialSignature', signers);
@@ -2736,6 +2739,7 @@ async function exportReportsToExcel() {
   const company = state.companyInfo || {};
   const start = document.getElementById('reportPeriodStart')?.value;
   const end = document.getElementById('reportPeriodEnd')?.value;
+  const includeAdjustments = document.getElementById('includeIfrsAdjustmentsToggle')?.checked || false;
   const periodText = start && end ? `${start} 至 ${end}` : (start ? `${start} 起` : (end ? `截至 ${end}` : '全部歷史資料'));
   const printDate = new Date().toLocaleDateString('zh-TW');
 
@@ -2747,6 +2751,7 @@ async function exportReportsToExcel() {
       [company.companyNameZh || '（尚未設定公司名稱）'],
       [`統一編號：${company.taxId || '-'}`],
       [title],
+      ['報表範圍：全公司'],
       [`期間：${periodText}`],
       [`列印日期：${printDate}`],
       [],
@@ -2758,10 +2763,10 @@ async function exportReportsToExcel() {
     XLSX.utils.book_append_sheet(wb, sheet, sheetName);
   }
 
-  addStatementSheet('損益表', '損益表', await buildIncomeStatement(periodTx, start, end));
-  addStatementSheet('資產負債表', '資產負債表', await buildBalanceSheet(periodTx, start, end));
+  addStatementSheet('損益表', includeAdjustments ? '損益表（含 IFRS 調整）' : '損益表', await buildIncomeStatement(periodTx, start, end, includeAdjustments));
+  addStatementSheet('資產負債表', includeAdjustments ? '資產負債表（含 IFRS 調整）' : '資產負債表', await buildBalanceSheet(periodTx, start, end, includeAdjustments));
   addStatementSheet('現金流量表', '現金流量表', await buildCashflowStatement(periodTx, start, end));
-  addStatementSheet('權益變動表', '權益變動表', await buildEquityStatement(periodTx, start, end));
+  addStatementSheet('權益變動表', includeAdjustments ? '權益變動表（含 IFRS 調整）' : '權益變動表', await buildEquityStatement(periodTx, start, end, includeAdjustments));
 
   const journal = await buildJournal(periodTx, start, end);
   const journalAoa = [
@@ -2849,11 +2854,11 @@ function renderTable(id, rows) {
           <td colspan="3">
             <div class="reconciliation-box">
               <strong>銀行餘額勾稽</strong>
-              <span>實際銀行餘額（TWD 基準）：${Number(r.actualBalance || 0).toLocaleString()}</span>
+              <span>實際銀行餘額（TWD 基準）：${r.actualBalance == null ? '無法取得' : Number(r.actualBalance).toLocaleString()}</span>
               ${(r.balanceRows || []).map(b => `<span class="reconcile-detail">${escapeHtml(b.nickname || b.bank_name || '銀行帳戶')}：${escapeHtml(b.currency || 'TWD')} ${Number(b.current_balance ?? 0).toLocaleString()} / TWD ${Number(b.current_balance_base ?? b.display_balance ?? 0).toLocaleString()}</span>`).join('')}
-              <span>總帳銀行科目餘額（TWD）：${Number(r.ledgerBalance || 0).toLocaleString()}</span>
-              <span class="${Math.abs(Number(r.difference || 0)) < 0.01 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異（TWD）：${Number(r.difference || 0).toLocaleString()}</span>
-              ${r.balanceError ? `<span class="reconcile-diff">實際餘額讀取失敗：${r.balanceError.code ? r.balanceError.code + ' - ' : ''}${r.balanceError.message}</span>` : ''}
+              <span>總帳銀行科目餘額（TWD）：${r.ledgerBalance == null ? '無法取得' : Number(r.ledgerBalance).toLocaleString()}</span>
+              <span class="${r.difference != null && Math.abs(Number(r.difference)) < 0.01 ? 'reconcile-ok' : 'reconcile-diff'}">未調節差異（TWD）：${r.difference == null ? '無法計算' : Number(r.difference).toLocaleString()}</span>
+              ${r.balanceError ? `<span class="reconcile-diff">銀行勾稽讀取失敗：${escapeHtml(r.balanceError.code ? r.balanceError.code + ' - ' : '')}${escapeHtml(r.balanceError.message || '未知錯誤')}</span>` : ''}
             </div>
           </td>
         </tr>
@@ -3710,21 +3715,21 @@ async function renderJournalFiltered() {
     filtered.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td style="white-space:nowrap;">${row.date}</td>
-        <td>${row.summary}</td>
-        <td>${row.bank}</td>
-        <td><span style="color:#1d4ed8; font-weight:600;">借</span> ${row.debitAccount}</td>
+        <td style="white-space:nowrap;">${escapeHtml(row.date || '')}</td>
+        <td>${escapeHtml(row.summary || '')}</td>
+        <td>${escapeHtml(row.bank || '')}</td>
+        <td><span style="color:#1d4ed8; font-weight:600;">借</span> ${escapeHtml(row.debitAccount || '')}</td>
         <td style="text-align:right; font-variant-numeric:tabular-nums;">${Number(row.debitAmount).toLocaleString()}</td>
-        <td><span style="color:#b45309; font-weight:600;">貸</span> ${row.creditAccount}</td>
+        <td><span style="color:#b45309; font-weight:600;">貸</span> ${escapeHtml(row.creditAccount || '')}</td>
         <td style="text-align:right; font-variant-numeric:tabular-nums;">${Number(row.creditAmount).toLocaleString()}</td>
-        <td>${row.voucher || '-'}</td>
-        <td><span class="badge success">${row.status}</span></td>
+        <td>${escapeHtml(row.voucher || '-')}</td>
+        <td><span class="badge success">${escapeHtml(row.status || '')}</span></td>
       `;
       journalBody.appendChild(tr);
     });
   } catch (err) {
     console.error('渲染日記帳失敗:', err);
-    journalBody.innerHTML = '<tr><td colspan="9" class="muted">載入失敗</td></tr>';
+    journalBody.innerHTML = `<tr><td colspan="9" class="message error">日記帳載入失敗：${escapeHtml(err.message || '未知錯誤')}</td></tr>`;
   }
 }
 

@@ -189,41 +189,16 @@ export async function updateProject(id, updates) {
 // 更新專案成員（採用差異比對，而非整批刪除重建，確保稽核紀錄只反映「真正的異動」）
 export async function updateProjectMembers(projectId, members, actorId = null) {
   const { data: existing, error: fetchError } = await supabase
-    .from('project_members').select('id, user_id, role').eq('project_id', projectId);
+    .from('project_members').select('user_id, role').eq('project_id', projectId);
   if (fetchError) throw fetchError;
-
-  const existingByUserId = new Map((existing || []).map(m => [m.user_id, m]));
-  const nextUserIds = new Set((members || []).map(m => m.user_id));
-
-  // 刪除：原本有、但新名單裡沒有的成員
-  const toRemove = (existing || []).filter(m => !nextUserIds.has(m.user_id));
-  if (toRemove.length > 0) {
-    const { error: delError } = await supabase
-      .from('project_members').delete().in('id', toRemove.map(m => m.id));
-    if (delError) throw delError;
-  }
-
-  // 新增：新名單裡有、但原本沒有的成員
-  const toAdd = (members || []).filter(m => !existingByUserId.has(m.user_id));
-  if (toAdd.length > 0) {
-    const { error: insError } = await supabase.from('project_members').insert(
-      toAdd.map(m => ({ project_id: projectId, user_id: m.user_id, role: m.role || 'member', added_by: actorId }))
-    );
-    if (insError) throw insError;
-  }
-
-  // 角色變更：使用者仍在名單內，但擔任角色不同（例如 member 改 owner）
-  for (const m of (members || [])) {
-    const prev = existingByUserId.get(m.user_id);
-    if (prev && prev.role !== (m.role || 'member')) {
-      const { error: updError } = await supabase
-        .from('project_members').update({ role: m.role || 'member' }).eq('id', prev.id);
-      if (updError) throw updError;
-    }
-  }
-
-  const refreshedMembers = await fetchProjectMembers(projectId);
-  return { success: true, added: toAdd.length, removed: toRemove.length, members: refreshedMembers };
+  const normalize = member => ({ user_id: member.user_id, role: member.role || 'member' });
+  const { data, error } = await supabase.rpc('replace_project_members_atomic', {
+    p_project_id: projectId,
+    p_expected: (existing || []).map(normalize),
+    p_members: (members || []).map(normalize)
+  });
+  if (error) throw error;
+  return { success: true, added: data.added, removed: data.removed, changed: data.changed };
 }
 
 // 取得專案成員

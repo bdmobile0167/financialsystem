@@ -1,7 +1,6 @@
 import { supabase } from '../../../scripts/supabaseClient.js';
 import { saveAttachment, deleteAttachment, deleteAttachmentFiles } from './attachments.js';
 import { resolveVoucherNumber } from './voucherNumbering.js';
-import { createNotification, createNotificationForMany, getUserIdsByRole } from '../../../scripts/notifications.js';
 
 function normalizeUuidSelection(value) {
   if (!value || value === 'all') return null;
@@ -38,24 +37,6 @@ function buildInvoicePayload(lines = []) {
     amount: Number(invoice.amount || 0),
     tax_amount: Number(invoice.tax_amount || 0)
   }));
-}
-
-async function notifyUser(userId, title, body, voucherId) {
-  if (!userId) return;
-  try {
-    await createNotification(userId, title, body, voucherId);
-  } catch (error) {
-    console.warn('Notification failed.', error.message);
-  }
-}
-
-async function notifyRoles(role, title, body, voucherId) {
-  try {
-    const userIds = await getUserIdsByRole(role);
-    await createNotificationForMany(userIds, title, body, voucherId);
-  } catch (error) {
-    console.warn(`Notification for ${role} failed.`, error.message);
-  }
 }
 
 export async function fetchAccounts() {
@@ -175,13 +156,6 @@ export async function createVoucher(payload) {
     await Promise.all(uploads);
   }
 
-  await notifyUser(
-    currentManagerId,
-    'New voucher pending review',
-    `${summary || voucherNo}, amount ${currency} ${Number(totalAmount || 0).toLocaleString()}`,
-    voucher.id
-  );
-
   return { success: true, data: voucher };
 }
 
@@ -193,18 +167,6 @@ export async function managerApprove(voucher) {
   if (error) throw error;
   if (!data) throw new Error('Manager approval failed. Check voucher status and permissions.');
 
-  const { data: full } = await supabase
-    .from('vouchers')
-    .select('voucher_no, summary, total_amount, currency')
-    .eq('id', voucher.id)
-    .single();
-
-  await notifyRoles(
-    'accounting',
-    'Voucher approved; pending accounting review',
-    `${full?.summary || full?.voucher_no || ''}, amount ${full?.currency || 'TWD'} ${Number(full?.total_amount || 0).toLocaleString()}`,
-    voucher.id
-  );
 }
 
 export async function managerReject(voucher, reason) {
@@ -216,18 +178,6 @@ export async function managerReject(voucher, reason) {
   if (error) throw error;
   if (!data) throw new Error('Manager rejection failed. Check voucher status and permissions.');
 
-  const { data: full } = await supabase
-    .from('vouchers')
-    .select('applicant_id, voucher_no, summary')
-    .eq('id', voucher.id)
-    .single();
-
-  await notifyUser(
-    full?.applicant_id,
-    'Voucher rejected by manager',
-    `${full?.summary || full?.voucher_no || ''}${reason ? `: ${reason}` : ''}`,
-    voucher.id
-  );
 }
 
 export async function accountingApprove(voucher, options = {}) {
@@ -249,18 +199,6 @@ export async function accountingApprove(voucher, options = {}) {
   if (error) throw error;
   if (!approvedVoucher) throw new Error('Accounting approval failed. Check voucher status and permissions.');
 
-  const { data: full } = await supabase
-    .from('vouchers')
-    .select('applicant_id, voucher_no, summary')
-    .eq('id', voucher.id)
-    .single();
-
-  await notifyUser(
-    full?.applicant_id,
-    'Voucher completed accounting review',
-    `${full?.summary || full?.voucher_no || ''}`,
-    voucher.id
-  );
 }
 
 export async function accountingReject(voucher, reason) {
@@ -272,18 +210,6 @@ export async function accountingReject(voucher, reason) {
   if (error) throw error;
   if (!data) throw new Error('Accounting rejection failed. Check voucher status and permissions.');
 
-  const { data: full } = await supabase
-    .from('vouchers')
-    .select('applicant_id, voucher_no, summary')
-    .eq('id', voucher.id)
-    .single();
-
-  await notifyUser(
-    full?.applicant_id,
-    'Voucher rejected by accounting',
-    `${full?.summary || full?.voucher_no || ''}${reason ? `: ${reason}` : ''}`,
-    voucher.id
-  );
 }
 
 export async function updateVoucher(voucherId, payload) {

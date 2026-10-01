@@ -740,7 +740,7 @@
                   <span>IFRS 國際會計準則財務報表系統</span>
                 </div>
                 <h2>四大財務報表</h2>
-                <p>依 IFRS 準則編製，可依期間篩選並切換各報表檢視，列印時將自動輸出全部報表。</p>
+                <p>四大財報與試算表涵蓋全公司，可依期間篩選；專案費用請使用下方「專案費用報表」選單。列印時將輸出全部報表。</p>
               </div>
               <div class="button-row financial-hero-actions">
                 <button id="showAllReportsBtn" type="button" class="hero-btn hero-btn-ghost">
@@ -816,6 +816,11 @@
               <button type="button" class="secondary period-preset-btn" data-preset="all">全部</button>
             </div>
             <small class="muted no-print" style="display:block; margin-top:4px;">不填期間預設顯示全部歷史資料加總。</small>
+            <label for="includeIfrsAdjustmentsToggle" class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:8px 0 4px; cursor:pointer;">
+              <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
+              套用已核准 IFRS 調整至損益、資產負債、權益與試算表
+            </label>
+            <small class="muted no-print" style="display:block; margin-bottom:4px;">現金流量表依實際銀行流水計算，不把非現金調整列為現金收支。</small>
             <div id="bankReconciliationStatus" class="reconciliation-status no-print" aria-live="polite"></div>
             <div class="report-cards-stack" id="reportCardsGrid" style="margin-top: 12px;">
               <div class="report-card financial-report-page active-tab" data-report-tab="income" style="--accent-color:var(--primary);">
@@ -845,10 +850,6 @@
               <div class="report-card" data-report-tab="trial" style="--accent-color:var(--muted);">
                 <div id="trialLetterhead" class="report-letterhead"></div>
                 <div class="report-card-header"><span class="dot" style="background:var(--muted);"></span><h4>試算表</h4></div>
-                <label for="includeIfrsAdjustmentsToggle" class="no-print" style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; margin:6px 0 4px; cursor:pointer;">
-                  <input type="checkbox" id="includeIfrsAdjustmentsToggle" />
-                  顯示 IFRS 調整後數字（納入「平行帳簿」中已核准的調整分錄）
-                </label>
                 <table id="trialTable"></table>
                 <div id="trialSignature" class="report-signature-row"></div>
               </div>
