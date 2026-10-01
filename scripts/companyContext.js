@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { getCapitalComparison, parseCapitalAmount } from '../src/modules/company/capital.js';
+import { listAccessibleCompanies, readCompanyMembership, canAccessCompany } from '../src/modules/company/companyAccess.js';
 
 let companyInfoCache = null;
 
@@ -100,48 +101,12 @@ export async function saveCompanyInfo(companyInfo) {
 
   const { data, error } = await supabase
     .from('company_settings')
-    .upsert(payload, { onConflict: 'id' })
+    .upsert(payload, { onConflict: 'company_id,id' })
     .select()
     .single();
   if (error) throw error;
   companyInfoCache = mapCompanySettings(data);
   return { ...companyInfoCache };
-}
-
-export async function saveCompanyBusinessItems(items = []) {
-  const cleanItems = items
-    .map((item, index) => ({
-      code: String(item.code || '').trim().toUpperCase(),
-      item: String(item.item || '').trim(),
-      sort_order: index + 1,
-      updated_at: new Date().toISOString()
-    }))
-    .filter(item => item.code || item.item);
-
-  cleanItems.forEach(item => {
-    if (!item.code || !item.item) throw new Error('營業項目需同時填寫代碼與項目名稱');
-  });
-
-  const seenCodes = new Set();
-  for (const item of cleanItems) {
-    if (seenCodes.has(item.code)) throw new Error(`營業項目代碼重複：${item.code}`);
-    seenCodes.add(item.code);
-  }
-
-  const { error: deleteError } = await supabase
-    .from('company_business_items')
-    .delete()
-    .neq('code', '');
-  if (deleteError) throw deleteError;
-
-  if (cleanItems.length) {
-    const { error: insertError } = await supabase
-      .from('company_business_items')
-      .insert(cleanItems);
-    if (insertError) throw insertError;
-  }
-
-  return cleanItems.map(item => ({ code: item.code, item: item.item, sortOrder: item.sort_order }));
 }
 
 export async function saveCompanyShareholders(shareholders = []) {
@@ -184,19 +149,22 @@ export async function saveCompanyShareholders(shareholders = []) {
 }
 
 export async function getMyCompanies() {
-  return [];
+  return listAccessibleCompanies(supabase);
 }
 
-export async function getCurrentMembership() {
-  return null;
+export async function getCurrentMembership(companyId = getActiveCompanyId()) {
+  return readCompanyMembership(supabase, companyId);
 }
 
-export async function validateCompanyAccess() {
-  return true;
+export async function validateCompanyAccess(companyId = getActiveCompanyId()) {
+  return canAccessCompany(supabase, companyId);
 }
 
 export async function getActiveCompany() {
-  return { id: null, name: '當前公司' };
+  const companyId = getActiveCompanyId();
+  if (!companyId) return null;
+  const companies = await getMyCompanies();
+  return companies.find(company => company.company_id === companyId) || null;
 }
 
 const ROLE_PERMISSIONS = {
@@ -220,9 +188,9 @@ export function getActiveCompanyId() {
 }
 
 export function setActiveCompanyId() {
-  return null;
+  throw new Error('公司帳務隔離尚未完成，暫不開放公司切換。');
 }
 
 export function clearCompanyCache() {
-  return null;
+  companyInfoCache = null;
 }

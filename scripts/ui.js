@@ -29,7 +29,8 @@ import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNo
 import { calcInvoiceTax } from './taxCalc.js';
 import { runVoucherCrossVerification } from './voucherVerification.js';
 import { userHasPermission as hasUserPermission } from '../src/modules/utils/permissions.js';
-import { getCompanyDataBundle, saveCompanyInfo, saveCompanyBusinessItems, saveCompanyShareholders } from './companyContext.js';
+import { getCompanyDataBundle, saveCompanyInfo } from './companyContext.js';
+import { saveCompanyStructure } from '../src/modules/company/companyStructure.js';
 import { applyPaidInCapitalTotal, getCapitalComparison, getPaidInCapital, getShareholderContributionTotal, parseCapitalAmount, useCashOnlyCapital } from '../src/modules/company/capital.js';
 import { mountFxRevaluation } from '../src/modules/accounting/fxRevaluation.js';
 import { mountBankOpeningReconciliation } from '../src/modules/bank/bankOpeningReconciliation.js';
@@ -1278,6 +1279,7 @@ function renderBusinessData() {
   const shareholderTotal = getShareholderContributionTotal(directors);
   const paidInCapital = getPaidInCapital(state.companyInfo || {});
   const capitalMatches = shareholderTotal === paidInCapital;
+  const roleHint = '<p class="muted">營業項目：啟用帳戶可檢視。董監名單與名單修改：會計、管理員、超級管理員。</p>';
   const businessRows = businessItems.map(item => canEdit
     ? buildBusinessItemRow(item)
     : `<li>${escapeHtml(item.code)} - ${escapeHtml(item.item)}</li>`
@@ -1289,6 +1291,7 @@ function renderBusinessData() {
 
   if (canEdit) {
     container.innerHTML = `
+      ${roleHint}
       <div class="info-block">
         <h4>營業項目</h4>
         <div class="table-scroll">
@@ -1319,6 +1322,7 @@ function renderBusinessData() {
   }
 
   container.innerHTML = `
+    ${roleHint}
     <div class="info-block">
       <h4>營業項目</h4>
       <ul>${businessRows || '<li>尚未設定</li>'}</ul>
@@ -3206,7 +3210,7 @@ async function saveExchangeRateFromForm(event) {
           rate: rateValue,
           source,
           created_by: authData?.user?.id || null
-        }, { onConflict: 'currency_code,rate_date' });
+        }, { onConflict: 'company_id,currency_code,rate_date' });
 
       if (error) throw error;
       document.getElementById('exchangeRateValue').value = '';
@@ -4683,8 +4687,8 @@ function initializeEventsInternal() {
         if (!businessItems.length) throw new Error('至少需要一筆營業項目');
         if (!shareholders.length) throw new Error('至少需要一筆董監名單');
 
-        state.businessItems = await saveCompanyBusinessItems(businessItems);
-        const result = await saveCompanyShareholders(shareholders);
+        const result = await saveCompanyStructure(supabase, businessItems, shareholders);
+        state.businessItems = result.businessItems;
         state.directorShareholders = result.shareholders;
         saveState(state);
         renderBusinessData();

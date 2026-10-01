@@ -1,5 +1,36 @@
 # 變更紀錄
 
+## 0.6.24 - 2026-10-01
+
+- 遠端套用 20261001101941_company_financial_scope：48 張業務表 company_id／NOT NULL／default／restrictive RLS／不可搬移公司 guard；回填既有資料至 legacy 公司，增加 140 個業務與會員同公司 FK，會員部門另有同公司 FK。公司內唯一鍵與單例主鍵涵蓋科目、憑證／付款／AR 編號、會計期間、匯率、公司設定等。
+- 70 個 public 財務 definer 函式改由 NOLOGIN／NOBYPASSRLS financial_rpc 擁有，API 角色不能繼承／切換成該 owner；只繼承 ordinary authenticated schema/function 權限，沒有 service_role 權限，表 owner 仍 postgres。RPC 仍保持單次原子交易。
+- get_my_role／get_my_department 改讀公司會員；主管／會計路由改讀 private 的公司資格 view。直接 profile 查詢加公司限制，共用身分的全域權限變更受阻。單公司舊前端在無公司 header 時保留經會員資格核對的 legacy bridge；明確錯誤 header 不退回 legacy。
+- 回滾 SQL 通過两公司全部 48 表讀取／錯誤 header、view、跨公司科目／銀行／會員 FK、RPC 建立／刪除、全表名單替換、公司內 employee 無法借全域 admin 權限。手動交易的交易／流水／分錄／audit 同公司同步。
+- 既有手動交易、AR 收款、拆分付款、開帳／反轉、期間、通知、IFRS、期末 FX、付款人／銀行、專案會員、帳單匯入、停用角色、公司會員、薪資回滾驗證通過；套用後再測租戶、交易、AR、通知及薪資。fixtures=0／ready=0，原營業項目 3 筆保留，遠端 161、本機 127 migration。
+- 前端公司設定與匯率 upsert 改用公司唯一鍵，四組 Chrome 回歸及 migration lint 通過。Security advisor 兩項無 policy 提示已消失；48 個 intentional authenticated definer 及未開啟外洩密碼保護提示仍在。
+- 前端未部署，公司切換仍暫禁。Storage、帳號 API、公司配置與前端有效角色／header 切換、全新資料完整流程與輪換發版仍未完成，v1.0.0 保守驗收估計約 35%，不宣稱正式多公司上線。
+
+## 0.6.23 - 2026-10-01
+
+- 補上 companies／company_memberships／company_access_audit 公司會員基礎。既有 5 個 profile 回填至同一 legacy 公司，舊邀請／角色／停用異動同步會員；帳務表與 get_my_role 尚未切換到公司範圍。
+- 公司建立與會員管理使用單一 RPC，稽核 trigger 與寫入同交易；建立 request ID 防重，最後管理員檢查使用公司列鎖。RLS 以公司內角色控制會員／audit 讀取，直接寫入與匿名權限撤銷。
+- 遠端 migration 20261001094936 已套用。兩家公司回滾測試、跨公司／停用拒絕、公司內角色優先於全域角色、稽核失敗回滾、建立防重通過。兩個獨立連線同時停用管理員：一成功、一拒絕，DB 保留一位有效管理員；fixture／test trigger 殘留 0。
+- 前端公司清單與資格查詢改讀 RPC，不再無條件放行。公司切換仍明確禁止；ready 公司數為 0，避免尚未隔離的帳務資料混用。companyAccess／companyStructure／companyCapital 瀏覽器回歸與 migration lint 通過；前端未部署。
+- 本批是多公司遷移的會員階段，完整帳務隔離、跨公司 FK／RPC／Storage、全新端到端帳務、憑證輪換與部署仍未完成。v1.0.0 保守驗收估計維持 30%，完整範圍未縮減。
+
+## 0.6.22 - 2026-10-01
+
+- 補實際匿名加密 PDF 測試，修正 pdfplumber 0.11.7 包裝密碼例外造成漏判，現在明確回 422 encrypted_pdf，不回傳例外內容。
+- 正確合成密碼可開啟 PDF；未提供密碼時解析器與隔離 worker 均拒絕。3 MiB PDF 可解析、超過 1 byte 回 413；HTTP employee／manager／無啟用角色回 403。pytest 19 passed。
+- 無資料庫異動，未部署。真實銀行版面、Supabase session、vercel dev／Preview 仍待驗收；台新三帳戶仍不支援，見 docs/BANK_STATEMENT_PARSER_V2.md。
+
+## 0.6.21 - 2026-10-01
+
+- 修正公司名單儲存先刪營業項目、再新增、再存董監的跨請求不一致風險。前端改為單一 save_company_structure RPC，DB 同交易替換兩份名單並寫兩筆 audit；只在完整成功回應後更新本機 state。
+- 撤銷 authenticated 營業項目直接 INSERT／UPDATE／DELETE；新 RPC 與既有獨立董監 RPC 使用相同交易鎖，限制啟用 accounting／admin／super_admin，UI 明示檢視與修改角色，資本設定不隨名單變更。
+- 遠端套用 20261001091719_company_structure_atomic。DB 回滾證明無效董監與最後 audit 失敗不留部分資料；employee／manager／缺 profile／未登入與直接寫入拒絕，並行呼叫測試通過。測試殘留 0；遠端 159、本機 125 migration。瀏覽器公司名單、資本、銀行解析回歸通過。前端未部署。
+- 核對遠端 schema 發現並無 company_id／company membership，多公司切換為空殼。列為 v1.0.0 重大未完成項，不提升正式版完成度，見 docs/V1_ACCEPTANCE.md。
+
 ## 0.6.20 - 2026-10-01
 
 - 新增 Python `GET/POST /api/parse_statement`，驗證 Supabase token 與既有 `get_my_role()`，僅限啟用 accounting／admin／super_admin。不儲存上傳檔案，不記錄解析文字，以隔離子程序限制 20 秒解析。

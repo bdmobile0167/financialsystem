@@ -236,6 +236,7 @@ def parse_pages(pages, bank_code):
 
 def parse_pdf(content, bank_code):
     import pdfplumber
+    from pdfplumber.utils.exceptions import PdfminerException
     from pdfminer.pdfdocument import PDFPasswordIncorrect
     deadline = time.monotonic() + 18
     try:
@@ -254,5 +255,11 @@ def parse_pdf(content, bank_code):
         raise
     except PDFPasswordIncorrect:
         raise StatementError(422, "encrypted_pdf", "請先移除 PDF 密碼保護再上傳。") from None
+    except PdfminerException as error:
+        # pdfplumber 0.11.7 wraps PDFDocument errors as its first argument.
+        # Inspect the exception type only; never expose its message or contents.
+        if error.args and isinstance(error.args[0], PDFPasswordIncorrect):
+            raise StatementError(422, "encrypted_pdf", "請先移除 PDF 密碼保護再上傳。") from None
+        raise StatementError(422, "invalid_pdf", "PDF 無法讀取，請確認檔案完整且未加密。") from None
     except Exception:
         raise StatementError(422, "invalid_pdf", "PDF 無法讀取，請確認檔案完整且未加密。") from None
