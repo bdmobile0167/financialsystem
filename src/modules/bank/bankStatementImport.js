@@ -16,27 +16,32 @@ function normalizeAmount(value, label, { nullable = false } = {}) {
   return amount;
 }
 
-export function normalizeBankStatementRows(records) {
+export function normalizeBankStatementRows(records, { onSkipped = () => {} } = {}) {
   if (!Array.isArray(records) || !records.length) throw new Error('沒有可匯入的對帳資料。');
   if (records.length > 2000) throw new Error('單次最多匯入 2000 筆對帳資料。');
 
-  return records.map((record, index) => {
+  return records.flatMap((record, index) => {
     const expense = normalizeAmount(record.expense, `第 ${index + 1} 筆支出`);
     const income = normalizeAmount(record.income, `第 ${index + 1} 筆收入`);
-    if (Number(expense > 0) + Number(income > 0) !== 1) {
+    const txDate = normalizeDate(record.date ?? record.tx_date);
+    if (expense === 0 && income === 0) {
+      onSkipped({ row: index + 1, reason: 'zero_amount' });
+      return [];
+    }
+    if (expense > 0 && income > 0) {
       throw new Error(`第 ${index + 1} 筆必須只有支出或收入其中一項大於 0。`);
     }
     const detail = String(record.detail || '').trim();
     const counterparty = String(record.counterparty || '').trim();
     if (detail.length > 500 || counterparty.length > 300) throw new Error(`第 ${index + 1} 筆摘要或對象過長。`);
-    return {
-      tx_date: normalizeDate(record.date ?? record.tx_date),
+    return [{
+      tx_date: txDate,
       detail: detail || null,
       counterparty: counterparty || null,
       expense,
       income,
       balance: normalizeAmount(record.balance, `第 ${index + 1} 筆餘額`, { nullable: true })
-    };
+    }];
   });
 }
 
@@ -45,7 +50,10 @@ export async function importBankStatementRows(client, { bankAccountId, bankCode,
   if (!bankAccountId) throw new Error('請先選擇對應的銀行帳戶。');
   if (!String(bankCode || '').trim()) throw new Error('找不到銀行對帳單解析代碼。');
   if (!String(sourceFileName || '').trim()) throw new Error('找不到來源檔名。');
-  const rows = normalizeBankStatementRows(records);
+  const skippedRows = [];
+  const rows = normalizeBankStatementRows(records, { onSkipped: row => skippedRows.push(row) });
+  if (!rows.length) return { success: true, row_count: 0, imported_count: 0, duplicate_count: 0,
+    skipped_count: skippedRows.length, skipped_rows: skippedRows };
   const { data, error } = await client.rpc('import_bank_statement_rows', {
     p_bank_account_id: bankAccountId,
     p_bank_code: String(bankCode).trim(),
@@ -53,5 +61,6 @@ export async function importBankStatementRows(client, { bankAccountId, bankCode,
     p_rows: rows
   });
   if (error) throw error;
-  return data || { success: true, row_count: rows.length, imported_count: rows.length, duplicate_count: 0 };
+  return { ...(data || { success: true, row_count: rows.length, imported_count: rows.length, duplicate_count: 0 }),
+    skipped_count: skippedRows.length, skipped_rows: skippedRows };
 }

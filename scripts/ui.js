@@ -11,6 +11,7 @@ import { buildVoucherRatePreview, fetchActiveVoucherCurrencies, fetchVoucherExch
 import { openTransactionAccountEditor } from '../src/modules/bank/transactionAccountEditor.js';
 import { fetchTransactionRows, fetchTransactionJournals, summarizeTransactionJournals } from '../src/modules/bank/transactionQueries.js';
 import { importBankStatementRows } from '../src/modules/bank/bankStatementImport.js';
+import { statementApi, selectedStatementRows, validateStatementAccount, STATEMENT_MAX_FILE_BYTES } from '../src/modules/bank/bankStatementParser.js';
 import { fetchBankStatementPage, fetchBankStatementCandidates, setBankStatementMatch, BANK_STATEMENT_PAGE_SIZE } from '../src/modules/bank/bankStatementReconciliation.js';
 import { populateBankCurrencySelect, setBankCurrencyLock } from '../src/modules/bank/bankAccountCurrency.js';
 import { defaultState, loadState, saveState, USER_KEY } from './state.js';
@@ -8076,6 +8077,10 @@ function initCompanyInfoForm() {
 }
 
 let parsedStatementRecords = [];
+let statementParseContext = null;
+let statementParseRequest = 0;
+let supportedStatementParsers = [];
+let statementParserProfiles = [];
 let availableBankAccounts = []; // 用來暫存從 DB 抓取的銀行清單
 let statementMatchRows = [];
 let statementMatchPage = 0;
@@ -8178,150 +8183,145 @@ async function handleStatementMatchClick(event) {
   }
 }
 
-// 1. 動態生成下拉選單
+function clearStatementPreview() {
+  statementParseRequest += 1;
+  parsedStatementRecords = [];
+  statementParseContext = null;
+  const preview = document.getElementById('statementPreviewArea');
+  if (preview) preview.innerHTML = '';
+}
+
 async function populateStatementBankAccountSelect() {
   const select = document.getElementById('statementBankAccountId');
-  if (!select) return;
-  
-  // 呼叫你系統既有的 API 抓取 DB 裡的銀行帳戶
+  const parserSelect = document.getElementById('statementParserCode');
+  if (!select || !parserSelect) return;
+  clearStatementPreview();
   availableBankAccounts = await fetchBankAccounts();
-  
   select.innerHTML = '<option value="">請選擇銀行帳戶...</option>' +
     availableBankAccounts.map(b =>
       `<option value="${escapeHtml(b.id)}">${escapeHtml(b.bank_name)} - ${escapeHtml(String(b.account_number || '').slice(-4))} (${escapeHtml(b.nickname || '')}) · ${escapeHtml(b.currency || 'TWD')}</option>`
     ).join('');
-
-  // 監聽選擇改變，提示使用者對應的解析規則
-  select.onchange = (e) => {
+  supportedStatementParsers = [];
+  statementParserProfiles = [];
+  try {
+    const result = await statementApi(supabase);
+    supportedStatementParsers = result.supported;
+    statementParserProfiles = result.profiles;
+    parserSelect.innerHTML = '<option value="">請選擇 PDF 解析規則</option>' +
+      supportedStatementParsers.map(code => `<option value="${escapeHtml(code)}">${escapeHtml(code)}</option>`).join('');
+    document.getElementById('detectedParserText').textContent = '請依 PDF 帳戶選擇解析規則；台新版面尚未支援。';
+  } catch (error) {
+    parserSelect.innerHTML = '<option value="">支援清單載入失敗</option>';
+    document.getElementById('detectedParserText').textContent = error.message;
+  }
+  select.onchange = () => {
+    clearStatementPreview();
+    parserSelect.value = '';
     statementMatchPage = 0;
     renderStatementMatchList();
-    const bankCode = detectParserCode(e.target.value);
-    const hintEl = document.getElementById('detectedParserText');
-    if (bankCode) {
-      const bank = availableBankAccounts.find(item => item.id === e.target.value);
-      hintEl.textContent = `已對應 ${bankCode} 解析規則；匯入幣別為 ${bank?.currency || 'TWD'}。`;
-      hintEl.style.color = 'var(--success, #047857)';
-    } else if (e.target.value) {
-      hintEl.textContent = '系統目前沒有此銀行帳戶的 PDF 解析規則。';
-      hintEl.style.color = 'var(--danger, #b91c1c)';
-    } else {
-      hintEl.textContent = '';
-    }
   };
+  parserSelect.onchange = clearStatementPreview;
+  const fileInput = document.getElementById('statementFileInput');
+  if (fileInput) fileInput.onchange = clearStatementPreview;
   statementMatchPage = 0;
   await renderStatementMatchList();
 }
 
-// 2. 自動判斷對應的 Parser 規則 (玉山187, 兆豐347...等)
-function detectParserCode(bankId) {
-  const bank = availableBankAccounts.find(b => b.id === bankId);
-  if (!bank) return null;
-
-  const bankName = bank.bank_name || '';
-  const accNum = bank.account_number || '';
-  const last3 = accNum.slice(-3); // 取帳號末三碼
-
-  if (bankName.includes('玉山')) return `玉山${last3}`;
-  if (bankName.includes('兆豐')) return `兆豐${last3}`;
-  
-  return null; 
+function selectedParserCode() {
+  const code = document.getElementById('statementParserCode')?.value;
+  return supportedStatementParsers.includes(code) ? code : null;
 }
 
-// 3. 修改解析按鈕邏輯
-async function handleParseStatement() {
+async function handleParseStatement(event) {
   const fileInput = document.getElementById('statementFileInput');
   const bankAccountId = document.getElementById('statementBankAccountId').value;
   const previewArea = document.getElementById('statementPreviewArea');
   const file = fileInput?.files[0];
-
+  const bankCode = selectedParserCode();
   if (!bankAccountId) { showMessage('請先選擇對應的銀行帳戶。', true); return; }
   if (!file) { showMessage('請先選擇 PDF 檔案。', true); return; }
-
-  // 動態取得 bankCode
-  const bankCode = detectParserCode(bankAccountId);
-  if (!bankCode) {
-    showMessage('系統目前無法解析此銀行的對帳單，請確認是否為支援的帳戶。', true);
-    return;
-  }
-
+  if (!bankCode) { showMessage('請選擇伺服器支援的 PDF 解析規則。', true); return; }
+  try {
+    validateStatementAccount(availableBankAccounts.find(bank => bank.id === bankAccountId), statementParserProfiles.find(profile => profile.bankCode === bankCode));
+  } catch (error) { showMessage(error.message, true); return; }
+  clearStatementPreview();
+  if (file.size > STATEMENT_MAX_FILE_BYTES) { showMessage('PDF 不可超過 3 MB，請拆分後再上傳。', true); return; }
+  const requestId = statementParseRequest;
+  const button = event?.currentTarget || document.getElementById('parseStatementBtn');
+  if (button) button.disabled = true;
   previewArea.innerHTML = '<p class="muted">解析中，請稍候…</p>';
-
   try {
     const fileBase64 = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('PDF 檔案讀取失敗。'));
       reader.readAsDataURL(file);
     });
-
-    const response = await fetch('/api/parse-bank-statement', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileBase64, bankCode }) // 送出動態產生的 bankCode
-    });
-    
-    const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.message || '解析失敗');
-
+    const result = await statementApi(supabase, { payload: { fileBase64, bankCode } });
+    if (requestId !== statementParseRequest) return;
     parsedStatementRecords = result.records;
-
-    if (!parsedStatementRecords.length) {
-      previewArea.innerHTML = '<p class="muted">沒有解析到任何交易紀錄，請確認 PDF 格式或銀行別是否正確。</p>';
-      return;
-    }
-
-    const selectedBank = availableBankAccounts.find(bank => bank.id === bankAccountId);
-    const currency = selectedBank?.currency || 'TWD';
+    statementParseContext = { bankAccountId, bankCode, file };
+    const currency = availableBankAccounts.find(bank => bank.id === bankAccountId)?.currency || 'TWD';
+    const reasons = { missing_date: '缺少日期', invalid_date: '日期無效', missing_amount: '缺少金額',
+      ambiguous_direction: '收支方向不明', ambiguous_columns: '金額欄位不明', negative_amount: '負金額',
+      unsupported_layout: '版面無法辨識', invalid_amount: '金額無效', unclassified_line: '無法分類的文字列' };
+    const issues = [...(result.warnings || []).map(w => `第 ${w.row} 列：${w.message}`),
+      ...(result.rejected_rows || []).map(r => `第 ${r.row} 列未解析：${reasons[r.reason] || r.reason}`)];
+    const blocked = new Set((result.warnings || []).filter(w => ['zero_amount', 'text_too_long'].includes(w.code)).map(w => w.record_index));
+    const checkLabels = { passed: '通過', failed: '有差異，請檢查警告', skipped: '資料不足，未檢查' };
     previewArea.innerHTML = `
-      <p>解析到 <strong>${parsedStatementRecords.length}</strong> 筆交易，請確認後匯入：</p>
-      <table>
-        <thead><tr><th>日期</th><th>摘要</th><th>對象</th><th>支出（${escapeHtml(currency)}）</th><th>收入（${escapeHtml(currency)}）</th><th>餘額（${escapeHtml(currency)}）</th></tr></thead>
-        <tbody>
-          ${parsedStatementRecords.map(r => `
-            <tr>
-              <td>${escapeHtml(r.date || '-')}</td><td>${escapeHtml(r.detail || '-')}</td><td>${escapeHtml(r.counterparty || '-')}</td>
-              <td>${Number(r.expense) > 0 ? escapeHtml(Number(r.expense).toLocaleString()) : '-'}</td>
-              <td>${Number(r.income) > 0 ? escapeHtml(Number(r.income).toLocaleString()) : '-'}</td>
-              <td>${r.balance != null && Number.isFinite(Number(r.balance)) ? escapeHtml(Number(r.balance).toLocaleString()) : '-'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-      <button id="confirmImportStatementBtn" class="primary-btn" style="margin-top:12px;">確認匯入帳單庫</button>
-    `;
-
+      <p>解析 ${parsedStatementRecords.length} 筆；未解析 ${(result.rejected_rows || []).length} 列。餘額檢查：${escapeHtml(checkLabels[result.stats?.balance_check] || '未檢查')}。</p>
+      ${issues.length ? `<details open><summary>解析警告與未解析列（${issues.length}）</summary><ul>${issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul></details>` : ''}
+      <div class="table-scroll"><table>
+        <thead><tr><th>匯入</th><th>日期</th><th>摘要</th><th>對象</th><th>支出（${escapeHtml(currency)}）</th><th>收入（${escapeHtml(currency)}）</th><th>餘額（${escapeHtml(currency)}）</th></tr></thead>
+        <tbody>${parsedStatementRecords.map((r, i) => `<tr>
+          <td><input type="checkbox" data-statement-index="${i}" aria-label="匯入第 ${i + 1} 筆" ${blocked.has(i) ? 'disabled' : 'checked'}></td>
+          <td>${escapeHtml(r.date || '-')}</td><td>${escapeHtml(r.detail || '-')}</td><td>${escapeHtml(r.counterparty || '-')}</td>
+          <td>${escapeHtml(Number(r.expense).toLocaleString())}</td><td>${escapeHtml(Number(r.income).toLocaleString())}</td>
+          <td>${r.balance == null ? '-' : escapeHtml(Number(r.balance).toLocaleString())}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <p id="statementSelectionCount"></p>
+      ${parsedStatementRecords.length ? '<button id="confirmImportStatementBtn" class="primary-btn" style="margin-top:12px;">確認匯入帳單庫</button>' : ''}`;
+    const updateCount = () => {
+      const count = selectedStatementRows(parsedStatementRecords, previewArea).length;
+      document.getElementById('statementSelectionCount').textContent = `勾選匯入 ${count} 筆，未選取 ${parsedStatementRecords.length - count} 筆。`;
+      const confirm = document.getElementById('confirmImportStatementBtn');
+      if (confirm) confirm.disabled = count === 0 || count > 2000;
+    };
+    previewArea.onchange = updateCount;
+    updateCount();
     document.getElementById('confirmImportStatementBtn')?.addEventListener('click', handleConfirmImportStatement);
   } catch (error) {
-    previewArea.innerHTML = `<p class="muted">解析失敗：${error.message}</p>`;
+    if (requestId === statementParseRequest) previewArea.innerHTML = `<p class="muted">解析失敗：${escapeHtml(error.message)}</p>`;
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
-// 4. 修改確認匯入邏輯
 async function handleConfirmImportStatement(event) {
-  const bankAccountId = document.getElementById('statementBankAccountId').value;
-  const bankCode = detectParserCode(bankAccountId);
-  const fileName = document.getElementById('statementFileInput')?.files[0]?.name || '';
+  const context = statementParseContext;
+  const preview = document.getElementById('statementPreviewArea');
   const button = event?.currentTarget || document.getElementById('confirmImportStatementBtn');
-
   try {
-    await withActionLock(`bank-statement-import:${bankAccountId}:${fileName}`, button, async () => {
+    if (!context || context.bankAccountId !== document.getElementById('statementBankAccountId').value ||
+        context.bankCode !== selectedParserCode() || context.file !== document.getElementById('statementFileInput')?.files[0]) {
+      throw new Error('帳戶、規則或檔案已變更，請重新解析。');
+    }
+    const records = selectedStatementRows(parsedStatementRecords, preview);
+    if (!records.length) throw new Error('請至少勾選一筆資料。');
+    await withActionLock(`bank-statement-import:${context.bankAccountId}:${context.file.name}`, button, async () => {
       const result = await importBankStatementRows(supabase, {
-        bankAccountId,
-        bankCode,
-        sourceFileName: fileName,
-        records: parsedStatementRecords.filter(record => record.date || record.tx_date)
+        bankAccountId: context.bankAccountId, bankCode: context.bankCode,
+        sourceFileName: context.file.name, records
       });
-      const importedCount = Number(result.imported_count || 0);
-      const duplicateCount = Number(result.duplicate_count || 0);
-      if (!importedCount) {
-        showMessage(`沒有新增資料，${duplicateCount} 筆都已存在於帳單庫。`);
-      } else {
-        const skippedText = duplicateCount ? `，已跳過 ${duplicateCount} 筆重複資料` : '';
-        showMessage(`已匯入 ${importedCount} 筆 ${result.currency || 'TWD'} 對帳資料${skippedText}。`);
-      }
-      document.getElementById('statementPreviewArea').innerHTML = '';
+      const imported = Number(result.imported_count || 0);
+      const duplicates = Number(result.duplicate_count || 0);
+      const skipped = Number(result.skipped_count || 0);
+      const discrepancy = imported + duplicates + skipped !== records.length ? '；回報筆數不一致，請重新載入帳單庫核對' : '';
+      showMessage(`勾選 ${records.length} 筆，新增 ${imported} 筆，重複 ${duplicates} 筆，零金額跳過 ${skipped} 筆${discrepancy}。`);
+      clearStatementPreview();
       document.getElementById('statementFileInput').value = '';
-      document.getElementById('detectedParserText').textContent = '';
-      parsedStatementRecords = [];
       statementMatchPage = 0;
       await renderStatementMatchList();
     });
